@@ -1,5 +1,5 @@
 #include "mem/pmm.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "cpu/cpu.h"
 #include "limine.h"
 #include "mem/kvmm.h"

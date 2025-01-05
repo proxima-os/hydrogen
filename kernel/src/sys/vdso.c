@@ -1,5 +1,5 @@
 #include "sys/vdso.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "mem/pmm.h"
 #include "mem/vmm.h"
 #include "sched/proc.h"

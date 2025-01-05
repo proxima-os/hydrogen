@@ -3,7 +3,7 @@
 #include "asm/idle.h"
 #include "cpu/idt.h"
 #include "cpu/irqvec.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "util/panic.h"
 #include <stdbool.h>
 

@@ -2,7 +2,7 @@
 #define HYDROGEN_SYS_VDSO_H
 
 #include "mem/vmm.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "util/time.h"
 #include <stdint.h>
 

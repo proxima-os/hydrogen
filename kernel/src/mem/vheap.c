@@ -1,5 +1,5 @@
 #include "mem/vheap.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "mem/heap.h"
 #include "mem/kvmm.h"
 #include "mem/pmap.h"

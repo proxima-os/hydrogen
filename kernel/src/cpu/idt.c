@@ -3,7 +3,7 @@
 #include "asm/tables.h"
 #include "cpu/cpu.h"
 #include "cpu/gdt.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "util/panic.h"
 #include <stdint.h>
 

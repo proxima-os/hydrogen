@@ -2,7 +2,7 @@
 #include "asm/fsgsbase.h"
 #include "asm/irq.h"
 #include "asm/msr.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "cpu/cpu.h"
 #include "cpu/idt.h"
 #include "cpu/irqvec.h"

@@ -1,5 +1,5 @@
 #include "fs/vfs.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "hydrogen/error.h"
 #include "hydrogen/stat.h"
 #include "mem/vheap.h"

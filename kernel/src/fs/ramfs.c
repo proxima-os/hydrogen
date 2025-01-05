@@ -1,5 +1,5 @@
 #include "fs/ramfs.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "fs/vfs.h"
 #include "hydrogen/dirent.h"
 #include "hydrogen/error.h"

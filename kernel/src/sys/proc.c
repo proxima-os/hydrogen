@@ -3,7 +3,7 @@
 #include "hydrogen/error.h"
 #include "hydrogen/fcntl.h"
 #include "mem/vheap.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "sched/exec.h"
 #include "string.h"
 #include "sys/syscall.h"

@@ -7,7 +7,7 @@
 #include "hydrogen/stat.h"
 #include "mem/pmap.h"
 #include "mem/vheap.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "sched/proc.h"
 #include "sys/sysvecs.h"
 #include "sys/vdso.h"

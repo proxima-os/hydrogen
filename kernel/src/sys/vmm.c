@@ -1,7 +1,7 @@
 #include "mem/vmm.h"
 #include "asm/fsgsbase.h"
 #include "asm/msr.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "cpu/cpu.h"
 #include "fs/vfs.h"
 #include "hydrogen/error.h"

@@ -1,4 +1,4 @@
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "hydrogen/error.h"
 #include "hydrogen/fcntl.h"
 #include "sched/proc.h"

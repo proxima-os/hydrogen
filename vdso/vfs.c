@@ -1,5 +1,5 @@
 #include "hydrogen/vfs.h"
-#include "proxima/compiler.h"
+#include "compiler.h"
 #include "sys/sysvecs.h"
 #include "syscall.h"
 
