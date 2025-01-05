@@ -39,5 +39,5 @@ install_headers(
     subdir: 'hydrogen',
 )
 
-hydrogen_dep = declare_dependency(include_directories: api_inc, dependencies: proxutils, link_with: vdso)
+hydrogen_dep = declare_dependency(include_directories: api_inc, link_with: vdso)
 meson.override_dependency('hydrogen', hydrogen_dep)
