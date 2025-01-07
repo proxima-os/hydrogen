@@ -1,7 +1,7 @@
 linker_script = meson.current_source_dir() / 'vdso.lds'
 
 vdso = shared_library(
-    'hydrogen-vdso',
+    'hydrogen',
     'sched.c',
     'vfs.c',
     c_args: ['-ffreestanding', '-fno-stack-check', '-fno-stack-protector'],

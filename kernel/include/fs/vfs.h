@@ -185,7 +185,7 @@ static inline vnode_type_t mode_to_type(uint32_t mode) {
 
 static inline unsigned char type_to_dirent_kind(vnode_type_t type) {
     switch (type) {
-    case VNODE_UNKNOWN: return DT_UNKNOWN;
+    default: return DT_UNKNOWN;
     case VNODE_DIRECTORY: return DT_DIR;
     case VNODE_SYMLINK: return DT_LNK;
     case VNODE_REGULAR: return DT_REG;
