@@ -54,7 +54,7 @@ typedef struct {
 #define PF_R 4
 
 typedef struct {
-    int a_type;
+    long a_type;
     union {
         long a_val;
         void *a_ptr;
