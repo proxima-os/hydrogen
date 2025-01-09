@@ -43,4 +43,4 @@ hydrogen_dep = declare_dependency(include_directories: api_inc, link_with: vdso)
 meson.override_dependency('hydrogen', hydrogen_dep)
 
 pkg = import('pkgconfig')
-pkg.generate(vdso, filebase: 'hydrogen', subdirs: 'hydrogen')
+pkg.generate(vdso, filebase: 'hydrogen')
