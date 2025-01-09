@@ -20,6 +20,12 @@ static ctx_style_t ctx_style;
 static size_t ctx_size;
 static uint64_t xcr0;
 
+#define XCR0_X87 (1ul << 0)
+#define XCR0_SSE (1ul << 1)
+#define XCR0_AVX (1ul << 2)
+#define XCR0_AVX512 (7ul << 5) // Hi16_ZMM, ZMM_Hi256, opmask
+#define XCR0_SUPPORTED_MASK (XCR0_AVX512 | XCR0_AVX | XCR0_SSE | XCR0_X87)
+
 static void detect_xsave(void) {
     if (!xsave_supported) {
         ctx_style = CTX_FXSAVE;
@@ -33,7 +39,7 @@ static void detect_xsave(void) {
     // Set xcr0
     unsigned eax, ebx, ecx, edx;
     cpuid2(0x0d, 0, &eax, &ebx, &ecx, &edx);
-    xcr0 = ((uint64_t)edx << 32) | eax;
+    xcr0 = (((uint64_t)edx << 32) | eax) & XCR0_SUPPORTED_MASK;
     write_xcr(0, xcr0);
 
     // Get context area size
