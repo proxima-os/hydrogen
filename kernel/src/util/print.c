@@ -133,7 +133,7 @@ static int kcon_write(UNUSED file_t *self, const void *buffer, size_t *size) {
 
     while (n > 0) {
         size_t cur = n < sizeof(buf) ? n : sizeof(buf);
-        int error = memcpy_user(buf, buffer, n);
+        int error = memcpy_user(buf, buffer, cur);
         if (unlikely(error)) return error;
 
         irq_state_t state = spin_lock(&term_lock);
