@@ -3,6 +3,7 @@
 #include "fs/vfs.h"
 #include "hydrogen/dirent.h"
 #include "hydrogen/error.h"
+#include "hydrogen/memory.h"
 #include "hydrogen/stat.h"
 #include "hydrogen/vfs.h"
 #include "mem/pmm.h"

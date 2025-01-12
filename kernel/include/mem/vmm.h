@@ -6,12 +6,6 @@
 #include "util/list.h"
 #include <stdint.h>
 
-#define VMM_READ (1u << 0)
-#define VMM_WRITE (1u << 1)
-#define VMM_EXEC (1u << 2)
-#define VMM_EXACT (1u << 3)
-#define VMM_PRIVATE (1u << 4)
-
 typedef struct vm_object vm_object_t;
 typedef struct vm_region vm_region_t;
 

@@ -33,8 +33,10 @@ install_headers(
     'include/hydrogen/error.h',
     'include/hydrogen/fcntl.h',
     'include/hydrogen/limits.h',
+    'include/hydrogen/memory.h',
     'include/hydrogen/sched.h',
     'include/hydrogen/stat.h',
+    'include/hydrogen/time.h',
     'include/hydrogen/vfs.h',
     subdir: 'hydrogen',
 )

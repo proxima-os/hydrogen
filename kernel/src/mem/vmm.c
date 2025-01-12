@@ -1,5 +1,6 @@
 #include "mem/vmm.h"
 #include "hydrogen/error.h"
+#include "hydrogen/memory.h"
 #include "mem/pmap.h"
 #include "mem/pmm.h"
 #include "mem/vheap.h"
@@ -12,7 +13,7 @@
 #include "util/panic.h"
 #include <stdint.h>
 
-#define VMM_FLAGS (VMM_PRIVATE | VMM_EXACT | VMM_EXEC | VMM_WRITE | VMM_READ)
+#define VMM_FLAGS (VMM_TRY_EXACT | VMM_PRIVATE | VMM_EXACT | VMM_EXEC | VMM_WRITE | VMM_READ)
 #define VMM_PFLAG (VMM_EXEC | VMM_WRITE | VMM_READ)
 
 int vmm_create(vmm_t **out) {
@@ -384,7 +385,7 @@ struct found_pos {
     vm_region_t *next;
 };
 
-static int find_position(vmm_t *vmm, uintptr_t addr, size_t size, struct found_pos *out) {
+static int find_position(vmm_t *vmm, uintptr_t addr, size_t size, struct found_pos *out, bool exact) {
     size_t limit = size - 1;
 
     if (addr != 0) {
@@ -410,6 +411,8 @@ static int find_position(vmm_t *vmm, uintptr_t addr, size_t size, struct found_p
         }
     }
 choose:
+    if (exact) return ERR_OUT_OF_MEMORY;
+
     limit |= PAGE_MASK;
 
     vm_region_t *prev = node_to_obj(vm_region_t, node, vmm->reg_list.last);
@@ -459,7 +462,7 @@ int vmm_add(uintptr_t *addr, size_t size, int flags, vm_object_t *object, size_t
     mutex_lock(&vmm->lock);
 
     struct found_pos pos;
-    int error = find_position(vmm, *addr, size, &pos);
+    int error = find_position(vmm, *addr, size, &pos, flags & VMM_TRY_EXACT);
     if (unlikely(error)) goto out;
 
     size = pos.tail - pos.head + 1;

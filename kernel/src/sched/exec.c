@@ -5,6 +5,7 @@
 #include "fs/vfs.h"
 #include "hydrogen/error.h"
 #include "hydrogen/fcntl.h"
+#include "hydrogen/memory.h"
 #include "mem/pmm.h"
 #include "mem/vheap.h"
 #include "mem/vmm.h"

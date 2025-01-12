@@ -1,5 +1,6 @@
 #include "sys/vdso.h"
 #include "compiler.h"
+#include "hydrogen/memory.h"
 #include "mem/pmm.h"
 #include "mem/vmm.h"
 #include "sched/proc.h"

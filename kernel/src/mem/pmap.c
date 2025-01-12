@@ -8,6 +8,7 @@
 #include "cpu/irqvec.h"
 #include "cpu/lapic.h"
 #include "hydrogen/error.h"
+#include "hydrogen/memory.h"
 #include "mem/heap.h"
 #include "mem/pmm.h"
 #include "mem/vheap.h"

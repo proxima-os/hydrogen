@@ -3,6 +3,7 @@
 #include "hydrogen/error.h"
 #include "hydrogen/fcntl.h"
 #include "hydrogen/limits.h"
+#include "hydrogen/memory.h"
 #include "hydrogen/stat.h"
 #include "hydrogen/vfs.h"
 #include "mem/vheap.h"
