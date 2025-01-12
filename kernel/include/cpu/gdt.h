@@ -18,8 +18,8 @@ typedef struct {
 
 #define GDT_SEL_KCODE offsetof(cpu_gdt_t, kernel_code)
 #define GDT_SEL_KDATA offsetof(cpu_gdt_t, kernel_data)
-#define GDT_SEL_UCODE offsetof(cpu_gdt_t, user_code)
-#define GDT_SEL_UDATA offsetof(cpu_gdt_t, user_data)
+#define GDT_SEL_UCODE (offsetof(cpu_gdt_t, user_code) | 3)
+#define GDT_SEL_UDATA (offsetof(cpu_gdt_t, user_data) | 3)
 #define GDT_SEL_TSS offsetof(cpu_gdt_t, tss_low)
 
 void init_gdt(cpu_t *cpu);
