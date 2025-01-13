@@ -75,39 +75,45 @@ int get_pci_config(uintptr_t *out, pci_address_t address) {
 uint8_t pci_readb(uintptr_t config, unsigned offset) {
     ASSERT(offset < 4096);
 
-    return mmio_read8(config, offset);
+    uint8_t value;
+    asm volatile("mov %1, %0" : "=a"(value) : "m"(*(volatile uint8_t *)(config + offset)));
+    return value;
 }
 
 uint16_t pci_readw(uintptr_t config, unsigned offset) {
     ASSERT(offset < 4096);
     ASSERT((offset & 1) == 0);
 
-    return mmio_read16(config, offset);
+    uint16_t value;
+    asm volatile("mov %1, %0" : "=a"(value) : "m"(*(volatile uint16_t *)(config + offset)));
+    return value;
 }
 
 uint32_t pci_readl(uintptr_t config, unsigned offset) {
     ASSERT(offset < 4096);
     ASSERT((offset & 3) == 0);
 
-    return mmio_read32(config, offset);
+    uint32_t value;
+    asm volatile("mov %1, %0" : "=a"(value) : "m"(*(volatile uint32_t *)(config + offset)));
+    return value;
 }
 
 void pci_writeb(uintptr_t config, unsigned offset, uint8_t value) {
     ASSERT(offset < 4096);
 
-    mmio_write8(config, offset, value);
+    asm("mov %0, %1" ::"a"(value), "m"(*(volatile uint8_t *)(config + offset)));
 }
 
 void pci_writew(uintptr_t config, unsigned offset, uint16_t value) {
     ASSERT(offset < 4096);
     ASSERT((offset & 1) == 0);
 
-    mmio_write16(config, offset, value);
+    asm("mov %0, %1" ::"a"(value), "m"(*(volatile uint16_t *)(config + offset)));
 }
 
 void pci_writel(uintptr_t config, unsigned offset, uint32_t value) {
     ASSERT(offset < 4096);
     ASSERT((offset & 3) == 0);
 
-    mmio_write32(config, offset, value);
+    asm("mov %0, %1" ::"a"(value), "m"(*(volatile uint32_t *)(config + offset)));
 }
