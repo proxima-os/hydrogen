@@ -1,6 +1,8 @@
 #ifndef HYDROGEN_VFS_H
 #define HYDROGEN_VFS_H
 
+#include "stat.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -18,6 +20,8 @@ typedef struct {
 int hydrogen_open(int base, const void *path, size_t path_len, int flags, uint32_t mode);
 int hydrogen_reopen(int fd, int flags);
 int hydrogen_close(int fd);
+
+int hydrogen_stat(int base, const void *path, size_t path_len, hydrogen_stat_t *out, bool follow);
 
 int hydrogen_seek(int fd, uint64_t *offset, hydrogen_whence_t whence);
 hydrogen_io_res_t hydrogen_read(int fd, void *buffer, size_t size);

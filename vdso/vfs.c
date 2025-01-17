@@ -19,6 +19,10 @@ int hydrogen_close(int fd) {
     return syscall1(SYS_CLOSE, fd).error;
 }
 
+int hydrogen_stat(int base, const void *path, size_t path_len, hydrogen_stat_t *out, bool follow) {
+    return syscall5(SYS_STAT, base, (uintptr_t)path, path_len, (uintptr_t)out, follow).error;
+}
+
 int hydrogen_seek(int fd, uint64_t *offset, hydrogen_whence_t whence) {
     syscall_result_t result = syscall3(SYS_SEEK, fd, *offset, whence);
     if (unlikely(result.error)) return result.error;
