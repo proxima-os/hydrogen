@@ -21,6 +21,16 @@ int hydrogen_open(int base, const void *path, size_t path_len, int flags, uint32
 int hydrogen_reopen(int fd, int flags);
 int hydrogen_close(int fd);
 
+int hydrogen_unlink(int base, const void *path, size_t path_len, bool dir);
+int hydrogen_rename(
+        int src_base,
+        const void *src_path,
+        size_t src_path_len,
+        int dst_base,
+        const void *dst_path,
+        size_t dst_path_len
+);
+
 int hydrogen_stat(int base, const void *path, size_t path_len, hydrogen_stat_t *out, bool follow);
 
 int hydrogen_seek(int fd, uint64_t *offset, hydrogen_whence_t whence);

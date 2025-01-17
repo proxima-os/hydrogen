@@ -19,6 +19,29 @@ int hydrogen_close(int fd) {
     return syscall1(SYS_CLOSE, fd).error;
 }
 
+int hydrogen_unlink(int base, const void *path, size_t path_len, bool dir) {
+    return syscall4(SYS_UNLINK, base, (uintptr_t)path, path_len, dir).error;
+}
+
+int hydrogen_rename(
+        int src_base,
+        const void *src_path,
+        size_t src_path_len,
+        int dst_base,
+        const void *dst_path,
+        size_t dst_path_len
+) {
+    return syscall6(
+            SYS_RENAME,
+            src_base,
+            (uintptr_t)src_path,
+            src_path_len,
+            dst_base,
+            (uintptr_t)dst_path,
+            dst_path_len
+    ).error;
+}
+
 int hydrogen_stat(int base, const void *path, size_t path_len, hydrogen_stat_t *out, bool follow) {
     return syscall5(SYS_STAT, base, (uintptr_t)path, path_len, (uintptr_t)out, follow).error;
 }
