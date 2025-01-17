@@ -24,7 +24,7 @@ syscall_result_t sys_mknod(int fd, const void *path, size_t path_len, uint32_t m
     }
 
     error = vfs_mknod(rel, path, path_len, mode);
-    file_deref(rel);
+    if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
 }
@@ -50,7 +50,7 @@ syscall_result_t sys_symlink(int fd, const void *spath, size_t slen, const void 
     }
 
     error = vfs_symlink(rel, spath, slen, ktpath, tlen);
-    file_deref(rel);
+    if (rel) file_deref(rel);
     vmfree(kspath, slen);
     vmfree(ktpath, tlen);
     return SYSCALL_ERR(error);
@@ -86,15 +86,15 @@ syscall_result_t sys_link(const sys_link_args_t *args_ptr) {
     file_t *trel;
     error = fd_to_file_opt(args.target_rel, &trel);
     if (unlikely(error)) {
-        file_deref(srel);
+        if (srel) file_deref(srel);
         vmfree(kspath, args.source_length);
         vmfree(ktpath, args.target_length);
         return SYSCALL_ERR(ERR_INVALID_HANDLE);
     }
 
     error = vfs_link(srel, kspath, args.source_length, trel, ktpath, args.target_length, args.follow_symlinks);
-    file_deref(srel);
-    file_deref(trel);
+    if (srel) file_deref(srel);
+    if (trel) file_deref(trel);
     vmfree(kspath, args.source_length);
     vmfree(ktpath, args.target_length);
     return SYSCALL_ERR(error);
@@ -113,7 +113,7 @@ syscall_result_t sys_unlink(int fd, const void *path, size_t path_len, bool dir)
     }
 
     error = vfs_unlink(rel, path, path_len, dir);
-    file_deref(rel);
+    if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
 }
@@ -141,15 +141,15 @@ syscall_result_t sys_rename(int sfd, const void *spath, size_t slen, int tfd, co
     file_t *trel;
     error = fd_to_file_opt(tfd, &trel);
     if (unlikely(error)) {
-        file_deref(srel);
+        if (srel) file_deref(srel);
         vmfree(kspath, slen);
         vmfree(ktpath, tlen);
         return SYSCALL_ERR(ERR_INVALID_HANDLE);
     }
 
     error = vfs_rename(srel, kspath, slen, trel, ktpath, tlen);
-    file_deref(srel);
-    file_deref(trel);
+    if (srel) file_deref(srel);
+    if (trel) file_deref(trel);
     vmfree(kspath, slen);
     vmfree(ktpath, tlen);
     return SYSCALL_ERR(error);
@@ -171,7 +171,7 @@ syscall_result_t sys_readlink(int fd, const void *path, size_t path_len, void *b
     }
 
     error = vfs_readlink(rel, path, path_len, buf, &buf_len);
-    file_deref(rel);
+    if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return likely(!error) ? SYSCALL_NUM(buf_len) : SYSCALL_ERR(error);
 }
@@ -192,8 +192,8 @@ syscall_result_t sys_stat(int fd, const void *path, size_t path_len, hydrogen_st
     }
 
     hydrogen_stat_t buf;
-    error = vfs_stat(rel, path, path_len, &buf, follow);
-    file_deref(rel);
+    error = vfs_stat(rel, kpath, path_len, &buf, follow);
+    if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     if (unlikely(error)) return SYSCALL_ERR(error);
 
@@ -230,7 +230,7 @@ syscall_result_t sys_truncate(int fd, const void *path, size_t path_len, uint64_
     }
 
     error = vfs_truncate(rel, path, path_len, size);
-    file_deref(rel);
+    if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
 }
@@ -257,7 +257,7 @@ syscall_result_t sys_utimes(int fd, const void *path, size_t path_len, int64_t a
     }
 
     error = vfs_utimes(rel, path, path_len, atime, mtime, follow);
-    file_deref(rel);
+    if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
 }
@@ -284,7 +284,7 @@ syscall_result_t sys_chown(int fd, const void *path, size_t path_len, uint32_t u
     }
 
     error = vfs_chown(rel, path, path_len, uid, gid, follow);
-    file_deref(rel);
+    if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
 }
@@ -311,7 +311,7 @@ syscall_result_t sys_chmod(int fd, const void *path, size_t path_len, uint32_t m
     }
 
     error = vfs_chmod(rel, path, path_len, mode, follow);
-    file_deref(rel);
+    if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
 }

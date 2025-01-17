@@ -16,15 +16,10 @@ syscall_result_t sys_open(int fd, const void *path, size_t path_len, int flags, 
     if (unlikely(error)) return SYSCALL_ERR(error);
 
     file_t *file;
-
-    if (fd >= 0) {
-        file = get_file_description(current_proc, fd, false);
-        if (unlikely(!file)) {
-            vmfree(kpath, path_len);
-            return SYSCALL_ERR(ERR_INVALID_HANDLE);
-        }
-    } else {
-        file = NULL;
+    error = fd_to_file_opt(fd, &file);
+    if (unlikely(error)) {
+        vmfree(kpath, path_len);
+        return SYSCALL_ERR(error);
     }
 
     file_t *description;
