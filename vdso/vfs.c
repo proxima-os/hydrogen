@@ -3,6 +3,22 @@
 #include "sys/sysvecs.h"
 #include "syscall.h"
 
+int hydrogen_open(int base, const void *path, size_t path_len, int flags, uint32_t mode) {
+    syscall_result_t result = syscall5(SYS_OPEN, base, (uintptr_t)path, path_len, flags, mode);
+    if (unlikely(result.error)) return -result.error;
+    return result.value.num;
+}
+
+int hydrogen_reopen(int fd, int flags) {
+    syscall_result_t result = syscall2(SYS_REOPEN, fd, flags);
+    if (unlikely(result.error)) return -result.error;
+    return result.value.num;
+}
+
+int hydrogen_close(int fd) {
+    return syscall1(SYS_CLOSE, fd).error;
+}
+
 int hydrogen_seek(int fd, uint64_t *offset, hydrogen_whence_t whence) {
     syscall_result_t result = syscall3(SYS_SEEK, fd, *offset, whence);
     if (unlikely(result.error)) return result.error;

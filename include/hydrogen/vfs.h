@@ -15,6 +15,10 @@ typedef struct {
     int error;
 } hydrogen_io_res_t;
 
+int hydrogen_open(int base, const void *path, size_t path_len, int flags, uint32_t mode);
+int hydrogen_reopen(int fd, int flags);
+int hydrogen_close(int fd);
+
 int hydrogen_seek(int fd, uint64_t *offset, hydrogen_whence_t whence);
 hydrogen_io_res_t hydrogen_read(int fd, void *buffer, size_t size);
 hydrogen_io_res_t hydrogen_write(int fd, const void *buffer, size_t size);
