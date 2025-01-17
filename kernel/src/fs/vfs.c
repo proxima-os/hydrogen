@@ -749,7 +749,7 @@ int vfs_rename(file_t *rel, const void *path, size_t path_len, file_t *trel, con
         return ERR_DIFFERENT_FILESYSTEMS;
     }
 
-    error = verify_trailing_ok(dstdir, tpath, &tlen, true, true);
+    error = verify_trailing_ok(dstdir, tpath, &tlen, false, true);
     if (unlikely(error)) {
         mutex_unlock(&dstdir->lock);
         vnode_deref(srcdir);
@@ -758,11 +758,11 @@ int vfs_rename(file_t *rel, const void *path, size_t path_len, file_t *trel, con
         return error;
     }
 
-    mutex_lock(&srcdir->lock);
+    if (srcdir != dstdir) mutex_lock(&srcdir->lock);
 
     error = verify_trailing_ok(srcdir, path, &path_len, true, true);
     if (unlikely(error)) {
-        mutex_unlock(&srcdir->lock);
+        if (srcdir != dstdir) mutex_unlock(&srcdir->lock);
         mutex_unlock(&dstdir->lock);
         vnode_deref(srcdir);
         vnode_deref(dstdir);
@@ -770,8 +770,9 @@ int vfs_rename(file_t *rel, const void *path, size_t path_len, file_t *trel, con
         return error;
     }
 
-    if (!srcdir->ops->access(srcdir, S_IWOTH, ident) || !dstdir->ops->access(dstdir, S_IWOTH, ident)) {
-        mutex_unlock(&srcdir->lock);
+    if (!srcdir->ops->access(srcdir, S_IWOTH, ident) ||
+        (srcdir != dstdir && !dstdir->ops->access(dstdir, S_IWOTH, ident))) {
+        if (srcdir != dstdir) mutex_unlock(&srcdir->lock);
         mutex_unlock(&dstdir->lock);
         vnode_deref(srcdir);
         vnode_deref(dstdir);
@@ -780,12 +781,12 @@ int vfs_rename(file_t *rel, const void *path, size_t path_len, file_t *trel, con
     }
 
     error = srcdir->ops->dir.rename(srcdir, path, path_len, dstdir, tpath, tlen, ident);
-    mutex_unlock(&srcdir->lock);
+    if (srcdir != dstdir) mutex_unlock(&srcdir->lock);
     mutex_unlock(&dstdir->lock);
     vnode_deref(srcdir);
     vnode_deref(dstdir);
     ident_deref(ident);
-    return ERR_ACCESS_DENIED;
+    return 0;
 }
 
 int vfs_truncate(file_t *rel, const void *path, size_t path_len, uint64_t size) {
