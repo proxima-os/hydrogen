@@ -23,7 +23,7 @@ syscall_result_t sys_mknod(int fd, const void *path, size_t path_len, uint32_t m
         return SYSCALL_ERR(ERR_INVALID_HANDLE);
     }
 
-    error = vfs_mknod(rel, path, path_len, mode);
+    error = vfs_mknod(rel, kpath, path_len, mode);
     if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
@@ -49,7 +49,7 @@ syscall_result_t sys_symlink(int fd, const void *spath, size_t slen, const void 
         return SYSCALL_ERR(ERR_INVALID_HANDLE);
     }
 
-    error = vfs_symlink(rel, spath, slen, ktpath, tlen);
+    error = vfs_symlink(rel, kspath, slen, ktpath, tlen);
     if (rel) file_deref(rel);
     vmfree(kspath, slen);
     vmfree(ktpath, tlen);
@@ -112,7 +112,7 @@ syscall_result_t sys_unlink(int fd, const void *path, size_t path_len, bool dir)
         return SYSCALL_ERR(ERR_INVALID_HANDLE);
     }
 
-    error = vfs_unlink(rel, path, path_len, dir);
+    error = vfs_unlink(rel, kpath, path_len, dir);
     if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
@@ -170,7 +170,7 @@ syscall_result_t sys_readlink(int fd, const void *path, size_t path_len, void *b
         return SYSCALL_ERR(ERR_INVALID_HANDLE);
     }
 
-    error = vfs_readlink(rel, path, path_len, buf, &buf_len);
+    error = vfs_readlink(rel, kpath, path_len, buf, &buf_len);
     if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return likely(!error) ? SYSCALL_NUM(buf_len) : SYSCALL_ERR(error);
@@ -229,7 +229,7 @@ syscall_result_t sys_truncate(int fd, const void *path, size_t path_len, uint64_
         return SYSCALL_ERR(ERR_INVALID_HANDLE);
     }
 
-    error = vfs_truncate(rel, path, path_len, size);
+    error = vfs_truncate(rel, kpath, path_len, size);
     if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
@@ -256,7 +256,7 @@ syscall_result_t sys_utimes(int fd, const void *path, size_t path_len, int64_t a
         return SYSCALL_ERR(ERR_INVALID_HANDLE);
     }
 
-    error = vfs_utimes(rel, path, path_len, atime, mtime, follow);
+    error = vfs_utimes(rel, kpath, path_len, atime, mtime, follow);
     if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
@@ -283,7 +283,7 @@ syscall_result_t sys_chown(int fd, const void *path, size_t path_len, uint32_t u
         return SYSCALL_ERR(ERR_INVALID_HANDLE);
     }
 
-    error = vfs_chown(rel, path, path_len, uid, gid, follow);
+    error = vfs_chown(rel, kpath, path_len, uid, gid, follow);
     if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
@@ -310,7 +310,7 @@ syscall_result_t sys_chmod(int fd, const void *path, size_t path_len, uint32_t m
         return SYSCALL_ERR(ERR_INVALID_HANDLE);
     }
 
-    error = vfs_chmod(rel, path, path_len, mode, follow);
+    error = vfs_chmod(rel, kpath, path_len, mode, follow);
     if (rel) file_deref(rel);
     vmfree(kpath, path_len);
     return SYSCALL_ERR(error);
