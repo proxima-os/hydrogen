@@ -184,7 +184,8 @@ static void handle_page_fault(idt_frame_t *frame) {
 
                             page_t *src = phys_to_page(l1e & PTE_ADDR);
 
-                            if (__atomic_load_n(&src->anon.references, __ATOMIC_ACQUIRE) == 1) {
+                            if (__atomic_sub_fetch(&src->anon.references, 1, __ATOMIC_ACQ_REL) == 1) {
+                                src->anon.references = 1;
                                 l1e = (l1e & ~PTE_COW) | PTE_WRITABLE;
                             } else {
                                 page_t *dest = alloc_page();
@@ -192,9 +193,6 @@ static void handle_page_fault(idt_frame_t *frame) {
                                 dest->anon.autounreserve = false;
                                 memcpy(page_to_virt(dest), page_to_virt(src), PAGE_SIZE);
                                 l1e = (l1e & ~(PTE_ADDR | PTE_COW)) | page_to_phys(dest) | PTE_WRITABLE;
-
-                                UNUSED size_t new_ref = __atomic_sub_fetch(&src->anon.references, 1, __ATOMIC_ACQ_REL);
-                                ASSERT(new_ref != 0);
                             }
 
                             for (size_t i = 0; i < ENTRIES_PER_PAGE; i++) {
