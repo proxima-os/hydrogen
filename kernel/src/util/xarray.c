@@ -10,7 +10,7 @@
 #define LEVEL_SIZE (LEVEL_COUNT * sizeof(void *))
 
 static void **get_elem_ptr(xarray_t *arr, size_t index, bool alloc) {
-    while (arr->levels == 0 || ((index >> (arr->levels * LEVEL_SHIFT)) & ~LEVEL_MASK)) {
+    while (arr->levels == 0 || (index >> (arr->levels * LEVEL_SHIFT)) != 0) {
         if (!alloc) return NULL;
 
         void **table = vmalloc(LEVEL_SIZE);
