@@ -1,7 +1,9 @@
 #ifndef HYDROGEN_STAT_H
 #define HYDROGEN_STAT_H
 
-#include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define S_IXOTH (1u << 0)
 #define S_IWOTH (1u << 1)
@@ -37,20 +39,8 @@
 #define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)
 #define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)
 
-typedef struct {
-    uint64_t fs;
-    uint64_t id;
-    uint64_t links;
-    uint64_t size;
-    uint64_t blocks;
-    uint64_t block_size;
-    int64_t atime;
-    int64_t btime;
-    int64_t ctime;
-    int64_t mtime;
-    uint32_t mode;
-    uint32_t uid;
-    uint32_t gid;
-} hydrogen_stat_t;
+#ifdef __cplusplus
+};
+#endif
 
 #endif // HYDROGEN_STAT_H

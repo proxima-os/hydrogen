@@ -1,6 +1,10 @@
 #ifndef HYDROGEN_ERROR_H
 #define HYDROGEN_ERROR_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define ERR_INVALID_ARGUMENT 1
 #define ERR_OUT_OF_MEMORY 2
 #define ERR_BUSY 3
@@ -20,5 +24,9 @@
 #define ERR_INVALID_IMAGE 17
 #define ERR_NO_MORE_HANDLES 18
 #define ERR_INVALID_POINTER 19
+
+#ifdef __cplusplus
+};
+#endif
 
 #endif // HYDROGEN_ERROR_H

@@ -4,6 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define DT_UNKNOWN 0
 #define DT_DIR 1
 #define DT_LNK 2
@@ -20,5 +24,9 @@ typedef struct {
     unsigned char kind;
     char name[]; // not zero-terminated
 } hydrogen_dirent_t;
+
+#ifdef __cplusplus
+};
+#endif
 
 #endif // HYDROGEN_DIRENT_H

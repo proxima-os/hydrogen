@@ -1,6 +1,10 @@
 #ifndef HYDROGEN_FCNTL_H
 #define HYDROGEN_FCNTL_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define O_RDONLY (1u << 0)
 #define O_WRONLY (1u << 1)
 #define O_EXEC (1u << 2)
@@ -20,5 +24,9 @@
 
 #define FD_CLOEXEC (1u << 0)
 #define FD_CLOFORK (1u << 1)
+
+#ifdef __cplusplus
+};
+#endif
 
 #endif // HYDROGEN_FCNTL_H
