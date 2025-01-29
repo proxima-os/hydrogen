@@ -2,10 +2,10 @@
 #include "compiler.h"
 #include "hydrogen/error.h"
 #include "hydrogen/stat.h"
-#include "hydrogen/sysvecs.h"
 #include "mem/vheap.h"
 #include "sched/proc.h"
 #include "sys/syscall.h"
+#include "sys/sysvecs.h"
 
 syscall_result_t sys_umask(uint32_t mask) {
     return SYSCALL_NUM(vfs_umask(mask));

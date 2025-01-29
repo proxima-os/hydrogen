@@ -36,7 +36,6 @@ install_headers(
     'include/hydrogen/memory.h',
     'include/hydrogen/sched.h',
     'include/hydrogen/stat.h',
-    'include/hydrogen/sysvecs.h',
     'include/hydrogen/time.h',
     'include/hydrogen/vfs.h',
     subdir: 'hydrogen',

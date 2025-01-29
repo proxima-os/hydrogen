@@ -1,6 +1,6 @@
 #include "hydrogen/memory.h"
 #include "compiler.h"
-#include "hydrogen/sysvecs.h"
+#include "sys/sysvecs.h"
 #include "syscall.h"
 
 intptr_t hydrogen_map_memory(uintptr_t preferred, size_t size, int flags, int fd, uint64_t offset) {
