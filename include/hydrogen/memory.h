@@ -21,6 +21,14 @@ int hydrogen_set_memory_protection(uintptr_t start, size_t size, int flags);
 
 int hydrogen_unmap_memory(uintptr_t start, size_t size);
 
+uintptr_t hydrogen_get_fs_base(void);
+
+uintptr_t hydrogen_get_gs_base(void);
+
+int hydrogen_set_fs_base(uintptr_t value);
+
+int hydrogen_set_gs_base(uintptr_t value);
+
 #ifdef __cplusplus
 };
 #endif
