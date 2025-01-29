@@ -3,8 +3,8 @@
 
 #include "fs/vfs.h"
 #include "hydrogen/stat.h"
+#include "hydrogen/sysvecs.h"
 #include "hydrogen/vfs.h"
-#include "sys/sysvecs.h"
 #include <stdbool.h>
 #include <stdint.h>
 

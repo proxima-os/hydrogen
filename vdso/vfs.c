@@ -1,6 +1,6 @@
 #include "hydrogen/vfs.h"
 #include "compiler.h"
-#include "sys/sysvecs.h"
+#include "hydrogen/sysvecs.h"
 #include "syscall.h"
 
 int hydrogen_open(int base, const void *path, size_t path_len, int flags, uint32_t mode) {
@@ -32,14 +32,15 @@ int hydrogen_rename(
         size_t dst_path_len
 ) {
     return syscall6(
-            SYS_RENAME,
-            src_base,
-            (uintptr_t)src_path,
-            src_path_len,
-            dst_base,
-            (uintptr_t)dst_path,
-            dst_path_len
-    ).error;
+                   SYS_RENAME,
+                   src_base,
+                   (uintptr_t)src_path,
+                   src_path_len,
+                   dst_base,
+                   (uintptr_t)dst_path,
+                   dst_path_len
+    )
+            .error;
 }
 
 int hydrogen_stat(int base, const void *path, size_t path_len, hydrogen_stat_t *out, bool follow) {

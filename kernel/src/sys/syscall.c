@@ -1,17 +1,15 @@
 #include "sys/syscall.h"
 #include "asm/msr.h"
+#include "compiler.h"
 #include "cpu/cpu.h"
 #include "cpu/gdt.h"
 #include "cpu/idt.h"
 #include "hydrogen/error.h"
 #include "hydrogen/stat.h"
+#include "hydrogen/sysvecs.h"
 #include "mem/pmap.h"
 #include "mem/vheap.h"
-#include "compiler.h"
 #include "sched/proc.h"
-#include "sys/sysvecs.h"
-#include "sys/vdso.h"
-#include "util/panic.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -94,10 +92,10 @@ static syscall_result_t do_syscall(
 }
 
 void syscall_dispatch(idt_frame_t *frame) {
-    if (!is_address_in_vdso(frame->rip)) {
+    /*if (!is_address_in_vdso(frame->rip)) {
         // TODO: Make this send a signal instead of panicking
         panic("syscalls are not allowed from outside vdso");
-    }
+    }*/
 
     enable_irq();
     syscall_result_t
