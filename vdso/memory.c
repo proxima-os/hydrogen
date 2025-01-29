@@ -31,7 +31,7 @@ static uintptr_t rdfsbase(void) {
 static uintptr_t (*resolve_gfsb(void))(void) {
     unsigned eax, ebx, ecx, edx;
     if (!__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) return sys_get_fs_base;
-    return eax & bit_FSGSBASE ? rdfsbase : sys_get_fs_base;
+    return ebx & bit_FSGSBASE ? rdfsbase : sys_get_fs_base;
 }
 
 uintptr_t hydrogen_get_fs_base(void) __attribute__((ifunc("resolve_gfsb")));
@@ -49,13 +49,13 @@ static uintptr_t rdgsbase(void) {
 static uintptr_t (*resolve_ggsb(void))(void) {
     unsigned eax, ebx, ecx, edx;
     if (!__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) return sys_get_gs_base;
-    return eax & bit_FSGSBASE ? rdgsbase : sys_get_gs_base;
+    return ebx & bit_FSGSBASE ? rdgsbase : sys_get_gs_base;
 }
 
 uintptr_t hydrogen_get_gs_base(void) __attribute__((ifunc("resolve_ggsb")));
 
 static int sys_set_fs_base(uintptr_t value) {
-    return syscall1(SYS_GET_FS_BASE, value).error;
+    return syscall1(SYS_SET_FS_BASE, value).error;
 }
 
 static int wrfsbase(uintptr_t value) {
@@ -66,13 +66,13 @@ static int wrfsbase(uintptr_t value) {
 static int (*resolve_sfsb(void))(uintptr_t) {
     unsigned eax, ebx, ecx, edx;
     if (!__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) return sys_set_fs_base;
-    return eax & bit_FSGSBASE ? wrfsbase : sys_set_fs_base;
+    return ebx & bit_FSGSBASE ? wrfsbase : sys_set_fs_base;
 }
 
 int hydrogen_set_fs_base(uintptr_t) __attribute__((ifunc("resolve_sfsb")));
 
 static int sys_set_gs_base(uintptr_t value) {
-    return syscall1(SYS_GET_GS_BASE, value).error;
+    return syscall1(SYS_SET_GS_BASE, value).error;
 }
 
 static int wrgsbase(uintptr_t value) {
@@ -83,7 +83,7 @@ static int wrgsbase(uintptr_t value) {
 static int (*resolve_sgsb(void))(uintptr_t) {
     unsigned eax, ebx, ecx, edx;
     if (!__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx)) return sys_set_gs_base;
-    return eax & bit_FSGSBASE ? wrgsbase : sys_set_gs_base;
+    return ebx & bit_FSGSBASE ? wrgsbase : sys_set_gs_base;
 }
 
 int hydrogen_set_gs_base(uintptr_t) __attribute__((ifunc("resolve_sgsb")));
