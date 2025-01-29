@@ -21,7 +21,7 @@
 #include "util/spinlock.h"
 #include <stdint.h>
 
-#define DEFAULT_STACK_SIZE 0x2000
+#define DEFAULT_STACK_SIZE 0x100000
 
 static uint8_t wanted_ident[] = {ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3, ELFCLASS64, ELFDATA2LSB, EV_CURRENT};
 
