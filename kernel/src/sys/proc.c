@@ -7,7 +7,6 @@
 #include "sched/exec.h"
 #include "string.h"
 #include "sys/syscall.h"
-#include "sys/sysvecs.h"
 
 static int create_execve_strings(execve_string_t **out, const void **ptrs, size_t *sizes, size_t count) {
     int error = verify_user_ptr(ptrs, sizeof(*ptrs) * count);

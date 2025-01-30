@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_CPU_IDT_H
-#define HYDROGEN_CPU_IDT_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -43,5 +42,3 @@ void idt_uninstall(uint8_t vector, idt_handler_t handler);
 bool paranoid_enter(idt_frame_t *frame);
 
 void paranoid_exit(bool swapped);
-
-#endif // HYDROGEN_CPU_IDT_H

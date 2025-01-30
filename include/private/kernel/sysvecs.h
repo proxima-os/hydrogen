@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_SYS_SYSVECS_H
-#define HYDROGEN_SYS_SYSVECS_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -72,5 +71,3 @@ typedef struct {
     size_t *env_sizes;
     size_t envp_count;
 } sys_execve_args_t;
-
-#endif // HYDROGEN_SYS_SYSVECS_H

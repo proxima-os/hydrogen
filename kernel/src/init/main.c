@@ -14,6 +14,7 @@
 #include "hydrogen/error.h"
 #include "hydrogen/fcntl.h"
 #include "init/initrd.h"
+#include "kernel/vdso.h"
 #include "limine.h"
 #include "mem/pmm.h"
 #include "mem/vheap.h"
@@ -29,7 +30,6 @@
 #include "util/print.h"
 #include "util/time.h"
 #include <stddef.h>
-#include <stdint.h>
 
 __attribute__((used, section(".requests0"))) LIMINE_REQUESTS_START_MARKER;
 __attribute__((used, section(".requests2"))) LIMINE_REQUESTS_END_MARKER;

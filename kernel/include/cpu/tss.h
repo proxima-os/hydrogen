@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_CPU_TSS_H
-#define HYDROGEN_CPU_TSS_H
+#pragma once
 
 #include <stdint.h>
 
@@ -18,5 +17,3 @@ typedef struct {
 } tss_init_data_t;
 
 void init_tss(tss_init_data_t *data);
-
-#endif // HYDROGEN_CPU_TSS_H

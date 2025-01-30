@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_FS_VFS_H
-#define HYDROGEN_FS_VFS_H
+#pragma once
 
 #include "hydrogen/dirent.h"
 #include "hydrogen/stat.h"
@@ -195,5 +194,3 @@ static inline unsigned char type_to_dirent_kind(vnode_type_t type) {
     case VNODE_SOCKET: return DT_SOCK;
     }
 }
-
-#endif // HYDROGEN_FS_VFS_H

@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_MEM_PMAP_H
-#define HYDROGEN_MEM_PMAP_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -68,5 +67,3 @@ void unmap(uintptr_t vaddr, size_t size);
 
 // Extends the HHDM to cover a new range
 void extend_hhdm(uint64_t paddr, size_t size);
-
-#endif // HYDROGEN_MEM_PMAP_H

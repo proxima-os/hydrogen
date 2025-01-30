@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_DRV_PCI_H
-#define HYDROGEN_DRV_PCI_H
+#pragma once
 
 #include <stdint.h>
 
@@ -25,5 +24,3 @@ void pci_writeb(uintptr_t config, unsigned offset, uint8_t value);
 void pci_writew(uintptr_t config, unsigned offset, uint16_t value);
 
 void pci_writel(uintptr_t config, unsigned offset, uint32_t value);
-
-#endif // HYDROGEN_DRV_PCI_H

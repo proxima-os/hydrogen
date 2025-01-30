@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_ASM_IRQ_H
-#define HYDROGEN_ASM_IRQ_H
+#pragma once
 
 typedef unsigned long irq_state_t;
 
@@ -23,5 +22,3 @@ static inline irq_state_t save_disable_irq(void) {
 static inline void restore_irq(irq_state_t state) {
     if (state & 0x200) enable_irq();
 }
-
-#endif // HYDROGEN_ASM_IRQ_H

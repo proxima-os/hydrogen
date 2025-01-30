@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_SCHED_PROC_H
-#define HYDROGEN_SCHED_PROC_H
+#pragma once
 
 #include "cpu/cpu.h"
 #include "fs/vfs.h"
@@ -89,5 +88,3 @@ void set_identity(ident_t *identity);
 vnode_t *get_root(void);
 
 void set_root(vnode_t *vnode);
-
-#endif // HYDROGEN_SCHED_PROC_H

@@ -1,6 +1,7 @@
 #include "compiler.h"
 #include "hydrogen/error.h"
 #include "hydrogen/fcntl.h"
+#include "kernel/sysvecs.h"
 #include "sched/proc.h"
 #include "sys/syscall.h"
 

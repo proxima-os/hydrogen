@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_MEM_PMM_H
-#define HYDROGEN_MEM_PMM_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -84,5 +83,3 @@ static inline page_t *virt_to_page(const void *virt) {
 static inline uint64_t virt_to_phys(const void *virt) {
     return virt - hhdm_start;
 }
-
-#endif // HYDROGEN_MEM_PMM_H

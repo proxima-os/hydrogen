@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_SCHED_SEMA_H
-#define HYDROGEN_SCHED_SEMA_H
+#pragma once
 
 #include "util/list.h"
 #include "util/spinlock.h"
@@ -21,5 +20,3 @@ bool sema_wait(semaphore_t *sema, uint64_t timeout);
 void sema_signal(semaphore_t *sema);
 
 void sema_reset(semaphore_t *sema);
-
-#endif // HYDROGEN_SCHED_SEMA_H

@@ -4,12 +4,11 @@
 #include "cpu/gdt.h"
 #include "cpu/idt.h"
 #include "hydrogen/error.h"
-#include "hydrogen/stat.h"
+#include "kernel/sysvecs.h"
 #include "mem/pmap.h"
 #include "mem/vheap.h"
 #include "compiler.h"
 #include "sched/proc.h"
-#include "sys/sysvecs.h"
 #include "sys/vdso.h"
 #include "util/panic.h"
 #include <stddef.h>

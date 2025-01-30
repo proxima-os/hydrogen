@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_ASM_PIO_H
-#define HYDROGEN_ASM_PIO_H
+#pragma once
 
 #include <stdint.h>
 
@@ -32,5 +31,3 @@ static inline uint32_t inl(uint16_t port) {
     asm volatile("inl %1, %0" : "=a"(value) : "Nd"(port) : "memory");
     return value;
 }
-
-#endif // HYDROGEN_ASM_PIO_H

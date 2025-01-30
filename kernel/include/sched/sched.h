@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_SCHED_SCHED_H
-#define HYDROGEN_SCHED_SCHED_H
+#pragma once
 
 #include "util/list.h"
 #include "util/spinlock.h"
@@ -115,5 +114,3 @@ _Noreturn void enter_user_mode(uintptr_t rip, uintptr_t rsp);
 void *allocate_kernel_stack(void);
 
 void free_kernel_stack(void *stack);
-
-#endif // HYDROGEN_SCHED_SCHED_H

@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_CPU_CPU_H
-#define HYDROGEN_CPU_CPU_H
+#pragma once
 
 #include "cpu/gdt.h"
 #include "cpu/tss.h"
@@ -60,5 +59,3 @@ extern size_t num_cpus;
 void detect_cpu(void);
 
 void init_cpu(cpu_init_data_t *data);
-
-#endif // HYDROGEN_CPU_CPU_H

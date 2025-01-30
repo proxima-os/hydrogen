@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_CPU_GDT_H
-#define HYDROGEN_CPU_GDT_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -23,5 +22,3 @@ typedef struct {
 #define GDT_SEL_TSS offsetof(cpu_gdt_t, tss_low)
 
 void init_gdt(cpu_t *cpu);
-
-#endif // HYDROGEN_CPU_GDT_H

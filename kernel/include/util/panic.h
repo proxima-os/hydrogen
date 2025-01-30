@@ -1,13 +1,12 @@
-#ifndef HYDROGEN_UTIL_PANIC_H
-#define HYDROGEN_UTIL_PANIC_H
+#pragma once
 
-#include <stdint.h>
+#ifndef NDEBUG
+#include "compiler.h"
+#endif
 
 _Noreturn void panic(const char *format, ...);
 
 #ifndef NDEBUG
-#include "compiler.h"
-
 #define ASSERT(x)                                                                                                      \
     do {                                                                                                               \
         if (unlikely(!(x))) panic("assertion `%s` failed in %s at %s:%d", #x, __func__, __FILE__, __LINE__);           \
@@ -17,5 +16,3 @@ _Noreturn void panic(const char *format, ...);
     do {                                                                                                               \
     } while (0)
 #endif
-
-#endif // HYDROGEN_UTIL_PANIC_H

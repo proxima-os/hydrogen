@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_MEM_VMM_H
-#define HYDROGEN_MEM_VMM_H
+#pragma once
 
 #include "mem/pmap.h"
 #include "sched/mutex.h"
@@ -65,5 +64,3 @@ vm_region_t *vmm_get(vmm_t *vmm, uintptr_t addr);
 void vmo_ref(vm_object_t *object);
 
 void vmo_deref(vm_object_t *object);
-
-#endif // HYDROGEN_MEM_VMM_H

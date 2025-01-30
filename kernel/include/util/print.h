@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_UTIL_PRINT_H
-#define HYDROGEN_UTIL_PRINT_H
+#pragma once
 
 #include "fs/vfs.h"
 #include <stdarg.h>
@@ -18,5 +17,3 @@ void printk(const char *format, ...);
 size_t vsnprintk(void *buf, size_t size, const char *format, va_list args);
 
 size_t snprintk(void *buf, size_t size, const char *format, ...);
-
-#endif // HYDROGEN_UTIL_PRINT_H

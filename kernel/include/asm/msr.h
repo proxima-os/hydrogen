@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_ASM_MSR_H
-#define HYDROGEN_ASM_MSR_H
+#pragma once
 
 #include <stdint.h>
 
@@ -25,5 +24,3 @@ static inline void wrmsr(uint32_t msr, uint64_t value) {
 
     asm("wrmsr" ::"a"(low), "d"(high), "c"(msr));
 }
-
-#endif // HYDROGEN_ASM_MSR_H

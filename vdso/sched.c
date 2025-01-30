@@ -1,5 +1,5 @@
 #include "hydrogen/sched.h"
-#include "sys/sysvecs.h"
+#include "kernel/sysvecs.h"
 #include "syscall.h"
 
 _Noreturn void hydrogen_exit(void) {

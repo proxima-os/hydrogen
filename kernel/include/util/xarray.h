@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_UTIL_XARRAY_H
-#define HYDROGEN_UTIL_XARRAY_H
+#pragma once
 
 #include <stddef.h>
 
@@ -29,5 +28,3 @@ static inline void *xarray_remove(xarray_t *arr, size_t index) {
     xarray_replace(arr, index, &element);
     return element;
 }
-
-#endif // HYDROGEN_UTIL_XARRAY_H

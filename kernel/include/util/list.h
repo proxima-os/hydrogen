@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_UTIL_LIST_H
-#define HYDROGEN_UTIL_LIST_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -41,5 +40,3 @@ void list_remove(list_t *list, list_node_t *value);
 void list_transfer_tail(list_t *dest, list_t *src);
 
 void list_clear(list_t *list);
-
-#endif // HYDROGEN_UTIL_LIST_H

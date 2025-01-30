@@ -1,5 +1,4 @@
-#ifndef HYRDOGEN_ASM_CPUID_H
-#define HYRDOGEN_ASM_CPUID_H
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -32,5 +31,3 @@ static inline bool try_cpuid2(
     cpuid2(leaf, subleaf, eax, ebx, ecx, edx);
     return true;
 }
-
-#endif // HYRDOGEN_ASM_CPUID_H

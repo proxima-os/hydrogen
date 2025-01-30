@@ -2,6 +2,7 @@
 #include "fs/vfs.h"
 #include "hydrogen/error.h"
 #include "hydrogen/fcntl.h"
+#include "kernel/sysvecs.h"
 #include "mem/vheap.h"
 #include "sched/proc.h"
 #include "sys/syscall.h"

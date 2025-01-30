@@ -1,14 +1,9 @@
-#ifndef HYDROGEN_UTIL_TIME_H
-#define HYDROGEN_UTIL_TIME_H
+#pragma once
 
+#include "kernel/time.h"
 #include "util/spinlock.h"
 #include <stdbool.h>
 #include <stdint.h>
-
-typedef struct {
-    uint64_t multiplier;
-    unsigned shift;
-} timeconv_t;
 
 typedef struct timer_event {
     uint64_t timestamp;                    // read_time value at which the event is triggered
@@ -38,9 +33,3 @@ int64_t get_timestamp(void);
 
 // sets the current posix time in nanoseconds
 void set_timestamp(int64_t time);
-
-static inline uint64_t timeconv_apply(timeconv_t conv, uint64_t value) {
-    return ((__uint128_t)value * conv.multiplier) >> conv.shift;
-}
-
-#endif // HYDROGEN_UTIL_TIME_H

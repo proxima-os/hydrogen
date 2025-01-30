@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_UTIL_IDMAP_H
-#define HYDROGEN_UTIL_IDMAP_H
+#pragma once
 
 #include "util/xarray.h"
 #include <stdbool.h>
@@ -17,5 +16,3 @@ int idmap_alloc(idmap_t *map, void *value);
 
 // Frees the given ID and returns the value it was associated with.
 void *idmap_free(idmap_t *map, int id);
-
-#endif // HYDROGEN_UTIL_IDMAP_H

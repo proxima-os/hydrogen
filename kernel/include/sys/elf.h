@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_SYS_ELF_H
-#define HYDROGEN_SYS_ELF_H
+#pragma once
 
 #include <stdint.h>
 
@@ -69,5 +68,3 @@ typedef struct {
 #define AT_BASE 7
 #define AT_ENTRY 9
 #define AT_SYSINFO_EHDR 33
-
-#endif // HYDROGEN_SYS_ELF_H

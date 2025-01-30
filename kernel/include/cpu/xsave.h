@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_CPU_XSAVE_H
-#define HYDROGEN_CPU_XSAVE_H
+#pragma once
 
 void init_xsave_bsp(void);
 
@@ -17,5 +16,3 @@ void xrestore(void);
 
 // Resets all extended registers to their default values
 void xreset(void);
-
-#endif // HYDROGEN_CPU_XSAVE_H

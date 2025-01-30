@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_ASM_TABLES_H
-#define HYDROGEN_ASM_TABLES_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -26,5 +25,3 @@ static inline void lldt(uint16_t selector) {
 static inline void ltr(uint16_t selector) {
     asm("ltr %0" ::"r"(selector));
 }
-
-#endif // HYDROGEN_ASM_TABLES_H

@@ -1,6 +1,6 @@
 #include "hydrogen/memory.h"
 #include "compiler.h"
-#include "sys/sysvecs.h"
+#include "kernel/sysvecs.h"
 #include "syscall.h"
 #include <cpuid.h>
 #include <stdint.h>

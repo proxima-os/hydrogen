@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_MEM_HEAP_H
-#define HYDROGEN_MEM_HEAP_H
+#pragma once
 
 #include <stddef.h>
 
@@ -9,5 +8,3 @@ void *kalloc(size_t size);
 void *krealloc(void *ptr, size_t old_size, size_t size);
 
 void kfree(void *ptr, size_t size);
-
-#endif // HYDROGEN_MEM_HEAP_H

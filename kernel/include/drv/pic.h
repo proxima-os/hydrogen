@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_DRV_PIC_H
-#define HYDROGEN_DRV_PIC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -25,5 +24,3 @@ void free_irq_vectors(int base, uint32_t count);
 void pic_install_vector(int vector, void (*handler)(void *), void *ctx);
 
 void pic_uninstall_vector(int vector, void (*handler)(void *));
-
-#endif // HYDROGEN_DRV_PIC_H

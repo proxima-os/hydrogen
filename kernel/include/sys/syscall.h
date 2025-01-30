@@ -1,10 +1,8 @@
-#ifndef HYDROGEN_SYS_SYSCALL_H
-#define HYDROGEN_SYS_SYSCALL_H
+#pragma once
 
 #include "fs/vfs.h"
-#include "hydrogen/stat.h"
 #include "hydrogen/vfs.h"
-#include "sys/sysvecs.h"
+#include "kernel/sysvecs.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -66,5 +64,3 @@ syscall_result_t sys_pwrite(int fd, const void *buf, size_t size, uint64_t posit
 
 syscall_result_t sys_execve(int fd, const void *path, size_t path_len, const sys_execve_args_t *args);
 syscall_result_t sys_fexecve(int fd, const sys_execve_args_t *args);
-
-#endif // HYDROGEN_SYS_SYSCALL_H

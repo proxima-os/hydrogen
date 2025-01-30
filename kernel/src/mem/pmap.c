@@ -20,7 +20,6 @@
 #include "util/list.h"
 #include "util/panic.h"
 #include "util/spinlock.h"
-#include <stdatomic.h>
 #include <stdint.h>
 
 /**

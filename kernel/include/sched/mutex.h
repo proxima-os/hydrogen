@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_SCHED_MUTEX_H
-#define HYDROGEN_SCHED_MUTEX_H
+#pragma once
 
 #include "util/list.h"
 #include "util/spinlock.h"
@@ -20,5 +19,3 @@ bool mutex_lock_timeout(mutex_t *mutex, uint64_t timeout);
 bool mutex_try_lock(mutex_t *mutex);
 
 void mutex_unlock(mutex_t *mutex);
-
-#endif // HYDROGEN_SCHED_MUTEX_H

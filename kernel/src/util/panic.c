@@ -6,7 +6,6 @@
 #include "cpu/lapic.h"
 #include "util/print.h"
 #include <stdarg.h>
-#include <stdint.h>
 
 _Noreturn void panic(const char *format, ...) {
     disable_irq();

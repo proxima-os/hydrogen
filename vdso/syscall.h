@@ -1,7 +1,7 @@
 #ifndef VDSO_SYSCALL_H
 #define VDSO_SYSCALL_H
 
-#include "sys/sysvecs.h"
+#include "kernel/sysvecs.h"
 #include <stddef.h>
 
 static inline syscall_result_t syscall0(syscall_vector_t vector) {

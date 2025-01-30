@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_UACPI_LIBC_H
-#define HYDROGEN_UACPI_LIBC_H
+#pragma once
 
 #include "string.h"
 
@@ -9,5 +8,3 @@
 #define uacpi_memset memset
 
 #define uacpi_strcmp strcmp
-
-#endif // HYDROGEN_UACPI_LIBC_H

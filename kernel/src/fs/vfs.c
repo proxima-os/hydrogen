@@ -7,7 +7,6 @@
 #include "hydrogen/stat.h"
 #include "hydrogen/vfs.h"
 #include "mem/vheap.h"
-#include "mem/vmm.h"
 #include "sched/mutex.h"
 #include "sched/proc.h"
 #include "string.h"

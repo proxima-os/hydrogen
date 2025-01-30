@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_ASM_CR_H
-#define HYDROGEN_ASM_CR_H
+#pragma once
 
 #include <stddef.h>
 #include <stdint.h>
@@ -79,5 +78,3 @@ static inline uint64_t read_xcr(uint32_t cr) {
     asm volatile("xgetbv" : "=a"(low), "=d"(high) : "c"(cr));
     return ((uint64_t)high << 32) | low;
 }
-
-#endif // HYDROGEN_ASM_CR_H

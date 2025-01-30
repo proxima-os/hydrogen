@@ -1,5 +1,4 @@
 #include "drv/pci.h"
-#include "asm/mmio.h"
 #include "hydrogen/error.h"
 #include "mem/kvmm.h"
 #include "mem/vheap.h"

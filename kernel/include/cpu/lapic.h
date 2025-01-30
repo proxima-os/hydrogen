@@ -1,5 +1,4 @@
-#ifndef HYDROGEN_CPU_LAPIC_H
-#define HYDROGEN_CPU_LAPIC_H
+#pragma once
 
 #include "cpu/cpu.h"
 #include <stdint.h>
@@ -24,5 +23,3 @@ void lapic_setup_timer(timer_mode_t mode);
 void lapic_arm_timer(uint32_t ticks);
 
 void lapic_send_ipi(cpu_t *cpu, uint8_t vector);
-
-#endif // HYDROGEN_CPU_LAPIC_H

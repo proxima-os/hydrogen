@@ -72,7 +72,13 @@ executable(
         '-mno-red-zone',
     ],
     implicit_include_directories: false,
-    include_directories: [api_inc, priv_inc, uacpi.get_variable('includes')],
+    include_directories: [
+        compiler_include_dirs,
+        api_inc,
+        priv_inc,
+        include_directories('include'),
+        uacpi.get_variable('includes')
+    ],
     install: true,
     install_dir: '/boot',
     install_mode: 'rw-r--r--',
