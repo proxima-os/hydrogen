@@ -4,7 +4,7 @@ PHDRS {
 }
 
 SECTIONS {
-    vdso_info = . - CONSTANT(MAXPAGESIZE);
+    HIDDEN(vdso_info = . - CONSTANT(MAXPAGESIZE));
 
     . = SIZEOF_HEADERS;
     .hash          : { *(.hash) } :text
