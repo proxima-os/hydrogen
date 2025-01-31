@@ -55,3 +55,9 @@ void *memset(void *dest, int value, size_t n) {
 
     return dest;
 }
+
+size_t strlen(const char *s) {
+    size_t i = 0;
+    while (*s++) i++;
+    return i;
+}

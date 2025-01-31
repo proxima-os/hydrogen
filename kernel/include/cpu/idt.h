@@ -36,4 +36,4 @@ void setup_idt(void);
 
 void idt_install(int vector, idt_handler_t handler, void *ctx);
 
-void idt_uninstall(int vector);
+void idt_uninstall(int vector, idt_handler_t handler);

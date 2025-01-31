@@ -4,6 +4,7 @@
 #include "cpu/cpu.h"
 #include "cpu/gdt.h"
 #include "cpu/irqvecs.h"
+#include "util/panic.h"
 #include <stdint.h>
 
 typedef struct {
@@ -49,21 +50,25 @@ void setup_idt(void) {
 USED void idt_dispatch(idt_frame_t *frame) {
     if (cpu_features.smap) asm("clac");
 
-    handlers[frame->vector].handler(frame, handlers[frame->vector].ctx);
+    idt_handler_t handler = handlers[frame->vector].handler;
+    ASSERT(handler != NULL);
+    handler(frame, handlers[frame->vector].ctx);
 }
 
 void idt_install(int vector, idt_handler_t handler, void *ctx) {
     // don't need to use atomics here because the interrupt must not be enabled until after the function returns
+    ASSERT(handlers[vector].handler == NULL);
     handlers[vector].ctx = ctx;
     handlers[vector].handler = handler;
 }
 
-void idt_uninstall(UNUSED int vector) {
+void idt_uninstall(UNUSED int vector, UNUSED idt_handler_t handler) {
     // guarded by NDEBUG because it's only useful for detecting bugs; the interrupt must be disabled before
     // it is allowed to be uninstalled, so if there are no bugs the handler won't get called again anyway.
     // the only reason this is done at all is because it turns a spurious handler call into a (much more noticeable)
     // null pointer dereference
 #ifndef NDEBUG
+    ASSERT(handlers[vector].handler == handler);
     handlers[vector].handler = NULL;
 #endif
 }

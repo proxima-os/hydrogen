@@ -8,6 +8,9 @@ executable(
     'src/cpu/tss.c',
     'src/init/main.c',
     'src/init/main.S',
+    'src/util/logging.c',
+    'src/util/panic.c',
+    'src/util/spinlock.c',
     c_args: [
         '-ffreestanding',
         '-fno-asynchronous-unwind-tables',

@@ -15,5 +15,5 @@ USED _Noreturn void kernel_main(void) {
     init_idt();
     init_cpu(NULL);
 
-    for (;;) arch_cpu_idle();
+    for (;;) cpu_idle();
 }

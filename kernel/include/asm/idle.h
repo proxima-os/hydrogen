@@ -1,5 +1,9 @@
 #pragma once
 
-static inline void arch_cpu_idle(void) {
+static inline void cpu_idle(void) {
     asm("hlt");
+}
+
+static inline void cpu_relax(void) {
+    __builtin_ia32_pause();
 }
