@@ -1,9 +1,16 @@
 executable(
     'hydrogen',
+    'src/cpu/cpu.c',
+    'src/cpu/gdt.c',
+    'src/cpu/gdt.S',
+    'src/cpu/idt.c',
+    'src/cpu/idt.S',
+    'src/cpu/tss.c',
     'src/init/main.c',
     'src/init/main.S',
     c_args: [
         '-ffreestanding',
+        '-fno-asynchronous-unwind-tables',
         '-fno-pie',
         '-fno-stack-check',
         '-fno-stack-protector',
