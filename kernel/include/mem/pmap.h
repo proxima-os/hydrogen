@@ -16,6 +16,8 @@ typedef enum {
     CACHE_WRITE_COMBINE,
 } cache_mode_t;
 
+extern uintptr_t min_kernel_address;
+
 void init_pmap(void);
 void pmap_init_switch(void);
 

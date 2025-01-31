@@ -42,7 +42,7 @@ void *kmalloc(size_t size) {
             struct free_obj *last = obj;
             size = 1ul << order;
 
-            for (size_t i = size; i < PAGE_SIZE; i++) {
+            for (size_t i = size; i < PAGE_SIZE; i += size) {
                 struct free_obj *cur = (void *)obj + i;
                 last->next = cur;
                 last = cur;
@@ -59,7 +59,7 @@ void *kmalloc(size_t size) {
 }
 
 void *krealloc(void *ptr, size_t old_size, size_t new_size) {
-    if (unlikely(old_size == 0)) return kmalloc(new_size);
+    if (unlikely(ptr == NULL) || unlikely(old_size == 0)) return kmalloc(new_size);
     if (unlikely(new_size == 0)) {
         kfree(ptr, old_size);
         return ZERO_PTR;
@@ -77,7 +77,7 @@ void *krealloc(void *ptr, size_t old_size, size_t new_size) {
 }
 
 void kfree(void *ptr, size_t size) {
-    if (unlikely(size == 0)) return;
+    if (unlikely(ptr == NULL) || unlikely(size == 0)) return;
 
     struct free_obj *obj = ptr;
     int order = ORDER(size) - MIN_ORDER;

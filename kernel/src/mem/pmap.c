@@ -35,6 +35,10 @@
 static uint64_t *kernel_pt;
 static spinlock_t kernel_pt_lock;
 
+uintptr_t min_kernel_address;
+
+_Static_assert(PAGE_SHIFT == 12, "pmap cannot handle non-4k pages");
+
 static enum {
     PT_4LEVEL,
     PT_5LEVEL,
@@ -60,6 +64,11 @@ void init_pmap(void) {
         }
     } else {
         pt_style = PT_4LEVEL;
+    }
+
+    switch (pt_style) {
+    case PT_4LEVEL: min_kernel_address = 0xffff800000000000; break;
+    case PT_5LEVEL: min_kernel_address = 0xff00000000000000; break;
     }
 }
 

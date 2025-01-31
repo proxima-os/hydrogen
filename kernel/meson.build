@@ -10,6 +10,7 @@ executable(
     'src/init/main.c',
     'src/init/main.S',
     'src/mem/kmalloc.c',
+    'src/mem/kvmm.c',
     'src/mem/pmap.c',
     'src/mem/pmm.c',
     'src/util/logging.c',

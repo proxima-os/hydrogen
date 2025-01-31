@@ -3,6 +3,7 @@
 #include "hydrogen/error.h"
 #include "kernel/compiler.h"
 #include "limine.h"
+#include "mem/kvmm.h"
 #include "mem/pmap.h"
 #include "sections.h"
 #include "util/panic.h"
@@ -155,6 +156,16 @@ void init_pmm(void) {
     map_segment(&_etext, &_end, PMAP_WRITE);
 
     pmap_init_switch();
+
+    if (hhdm_start < &_start) {
+        kvmm_add_range(min_kernel_address, (uintptr_t)hhdm_start - min_kernel_address);
+        kvmm_add_range((uintptr_t)hhdm_start + pmm_addr_max, &_start - hhdm_start - pmm_addr_max);
+        kvmm_add_range((uintptr_t)&_end, UINTPTR_MAX - (uintptr_t)&_end + 1);
+    } else {
+        kvmm_add_range(min_kernel_address, (uintptr_t)&_start);
+        kvmm_add_range((uintptr_t)&_end, hhdm_start - &_end);
+        kvmm_add_range((uintptr_t)hhdm_start + pmm_addr_max, UINTPTR_MAX - (uintptr_t)hhdm_start - pmm_addr_max + 1);
+    }
 }
 
 void reclaim_loader_pages(void) {
