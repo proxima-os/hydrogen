@@ -243,56 +243,6 @@ static struct vmm_range *get_range_from_alloc(uint64_t hash, uintptr_t start, si
     return range;
 }
 
-hydrogen_error_t kvmm_resize(uintptr_t start, size_t old_size, size_t new_size) {
-    ASSERT((start & PAGE_MASK) == 0);
-    ASSERT((old_size & PAGE_MASK) == 0);
-    ASSERT((new_size & PAGE_MASK) == 0);
-
-    if (unlikely(new_size == 0)) {
-        kvmm_free(start, old_size);
-        return HYDROGEN_SUCCESS;
-    }
-
-    spin_lock_noirq(&kvmm_lock);
-
-    struct vmm_range *range = get_range_from_alloc(make_hash(start), start, old_size);
-    hydrogen_error_t error;
-
-    if (likely(range->size != new_size)) {
-        if (new_size < range->size) {
-            error = merge_or_insert(range, range->next, range->start + new_size, range->size - new_size);
-        } else {
-            struct vmm_range *next = range->next;
-
-            if (likely(next) && next->free && range->start + range->size == next->start) {
-                size_t delta = new_size - range->size;
-                next->start += delta;
-                next->size -= delta;
-
-                if (next->size != 0) {
-                    update_order(next);
-                } else {
-                    kind_remove(next, &free_ranges[next->order]);
-                    range->next = next->next;
-                    if (range->next) range->next->prev = range;
-                    kfree(next, sizeof(*next));
-                }
-
-                error = HYDROGEN_SUCCESS;
-            } else {
-                error = HYDROGEN_OUT_OF_MEMORY;
-            }
-        }
-
-        if (likely(!error)) range->size = new_size;
-    } else {
-        error = HYDROGEN_SUCCESS;
-    }
-
-    spin_unlock_noirq(&kvmm_lock);
-    return error;
-}
-
 void kvmm_free(uintptr_t start, size_t size) {
     ASSERT((start & PAGE_MASK) == 0);
     ASSERT((size & PAGE_MASK) == 0);

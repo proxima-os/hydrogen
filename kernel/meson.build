@@ -13,6 +13,7 @@ executable(
     'src/mem/kvmm.c',
     'src/mem/pmap.c',
     'src/mem/pmm.c',
+    'src/mem/vmalloc.c',
     'src/util/logging.c',
     'src/util/panic.c',
     'src/util/spinlock.c',
