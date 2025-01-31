@@ -1,6 +1,7 @@
 executable(
     'hydrogen',
     'src/cpu/cpu.c',
+    'src/cpu/exc.c',
     'src/cpu/gdt.c',
     'src/cpu/gdt.S',
     'src/cpu/idt.c',

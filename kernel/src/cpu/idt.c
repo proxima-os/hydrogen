@@ -1,4 +1,5 @@
 #include "cpu/idt.h"
+#include "asm/msr.h"
 #include "asm/tables.h"
 #include "compiler.h"
 #include "cpu/cpu.h"
@@ -27,7 +28,7 @@ extern const uintptr_t idt_stubs[256];
 void init_idt(void) {
     for (int i = 0; i < 256; i++) {
         uintptr_t stub = idt_stubs[i];
-        if (!stub) return;
+        if (!stub) continue;
 
         idt[i].offset0 = stub;
         idt[i].offset1 = stub >> 16;
@@ -71,4 +72,25 @@ void idt_uninstall(UNUSED int vector, UNUSED idt_handler_t handler) {
     ASSERT(handlers[vector].handler == handler);
     handlers[vector].handler = NULL;
 #endif
+}
+
+bool idt_paranoid_entry(idt_frame_t *frame) {
+    ASSERT(idt[frame->vector].ist != 0);
+
+    uintptr_t cur_gsbase = rdmsr(MSR_GS_BASE);
+    uintptr_t wanted_gsbase = *(uintptr_t *)(frame + 1);
+
+    if (cur_gsbase != wanted_gsbase) {
+        asm("swapgs" ::: "memory");
+        ASSERT(rdmsr(MSR_GS_BASE) == wanted_gsbase);
+        return true;
+    } else {
+        return false;
+    }
+}
+
+void idt_paranoid_exit(bool ret) {
+    if (ret) {
+        asm("swapgs" ::: "memory");
+    }
 }

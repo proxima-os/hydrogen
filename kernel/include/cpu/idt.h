@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -37,3 +38,8 @@ void setup_idt(void);
 void idt_install(int vector, idt_handler_t handler, void *ctx);
 
 void idt_uninstall(int vector, idt_handler_t handler);
+
+bool idt_paranoid_entry(idt_frame_t *frame);
+
+// `ret` must be the value returned by `idt_paranoid_entry`
+void idt_paranoid_exit(bool ret);

@@ -27,5 +27,5 @@
 #define VEC_IPI_SHOOTDOWN 0xfb
 #define VEC_IPI_YIELD 0xfc
 #define VEC_IPI_PANIC 0xfd
-#define VEC_IPI_APIC_ERR 0xfe
+#define VEC_IRQ_APIC_ERR 0xfe
 #define VEC_IRQ_SPURIOUS 0xff

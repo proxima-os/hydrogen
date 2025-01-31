@@ -1,6 +1,7 @@
 #include "asm/idle.h"
 #include "compiler.h"
 #include "cpu/cpu.h"
+#include "cpu/exc.h"
 #include "cpu/idt.h"
 #include "limine.h"
 #include "sections.h"
@@ -13,6 +14,7 @@ LIMINE_REQ LIMINE_BASE_REVISION(3);
 USED _Noreturn void kernel_main(void) {
     detect_cpu_features();
     init_idt();
+    init_exceptions();
     init_cpu(NULL);
 
     for (;;) cpu_idle();

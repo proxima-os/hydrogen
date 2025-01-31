@@ -81,6 +81,8 @@ void init_cpu(cpu_t *cpu) {
         cpu->tss.ist[0] = (uintptr_t)bsp_exc_stack + sizeof(bsp_exc_stack);
     }
 
+    cpu->self = cpu;
+
     write_cr0((read_cr0() & ~CR0_CLEAR_MASK) | CR0_SET_MASK);
     size_t cr4 = read_cr4() | CR4_OSFXSR | CR4_OSXMMEXCPT;
 

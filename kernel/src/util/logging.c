@@ -4,7 +4,7 @@
 #include "string.h"
 #include "util/spinlock.h"
 
-#define LOG_BUF_SIZE (1ul << 4)
+#define LOG_BUF_SIZE (1ul << HYDROGEN_LOG_BUF_SHIFT)
 #define LOG_BUF_MASK (LOG_BUF_SIZE - 1)
 
 static unsigned char klog_buf[LOG_BUF_SIZE];
@@ -72,7 +72,7 @@ static void print_uint(printk_sink_t sink, void *ctx, uint64_t value, unsigned m
     size_t index = sizeof(buffer);
 
     do {
-        buffer[index] = "0123456789abcdef"[value % base];
+        buffer[--index] = "0123456789abcdef"[value % base];
         value /= base;
     } while (value > 0);
 
