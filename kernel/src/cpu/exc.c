@@ -1,8 +1,8 @@
 #include "cpu/exc.h"
 #include "asm/cr.h"
-#include "compiler.h"
 #include "cpu/idt.h"
 #include "cpu/irqvecs.h"
+#include "kernel/compiler.h"
 #include "util/panic.h"
 
 _Noreturn void handle_fatal_exception(idt_frame_t *frame, UNUSED void *ctx) {

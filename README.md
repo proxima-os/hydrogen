@@ -1,5 +1,5 @@
 # Hydrogen
-A monolithic Unix-like kernel for the Proxima operating system
+The kernel of the Proxima operating system
 
 ## Build instructions
 Make sure all submodules are up-to-date before beginning.

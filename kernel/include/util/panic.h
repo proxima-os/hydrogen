@@ -1,6 +1,6 @@
 #pragma once
 
-#include "compiler.h"
+#include "kernel/compiler.h"
 
 _Noreturn void panic(const char *format, ...);
 

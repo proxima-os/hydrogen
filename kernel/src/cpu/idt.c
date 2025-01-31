@@ -1,10 +1,10 @@
 #include "cpu/idt.h"
 #include "asm/msr.h"
 #include "asm/tables.h"
-#include "compiler.h"
 #include "cpu/cpu.h"
 #include "cpu/gdt.h"
 #include "cpu/irqvecs.h"
+#include "kernel/compiler.h"
 #include "util/panic.h"
 #include <stdint.h>
 

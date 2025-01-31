@@ -85,7 +85,6 @@ idt_stub_common:
     add $136, %rsp
     testl $3, 8(%rsp)
     jz 1f
-    cli
     swapgs
 1:  iretq
 .size idt_stub_common, . - idt_stub_common

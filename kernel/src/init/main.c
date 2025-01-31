@@ -1,10 +1,12 @@
 #include "asm/idle.h"
-#include "compiler.h"
 #include "cpu/cpu.h"
 #include "cpu/exc.h"
 #include "cpu/idt.h"
+#include "kernel/compiler.h"
 #include "limine.h"
+#include "mem/pmm.h"
 #include "sections.h"
+#include "util/logging.h"
 
 __attribute__((used, section(".requests0"))) static LIMINE_REQUESTS_START_MARKER;
 __attribute__((used, section(".requests2"))) static LIMINE_REQUESTS_END_MARKER;
@@ -16,6 +18,14 @@ USED _Noreturn void kernel_main(void) {
     init_idt();
     init_exceptions();
     init_cpu(NULL);
+    init_pmm();
+    reclaim_loader_pages();
+
+    pmm_stats_t stats = pmm_get_stats();
+    printk("mem: %Uk total, %Uk available, %Uk free\n",
+           stats.total << (PAGE_SHIFT - 10),
+           stats.available << (PAGE_SHIFT - 10),
+           stats.free << (PAGE_SHIFT - 10));
 
     for (;;) cpu_idle();
 }

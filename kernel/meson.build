@@ -9,6 +9,7 @@ executable(
     'src/cpu/tss.c',
     'src/init/main.c',
     'src/init/main.S',
+    'src/mem/pmm.c',
     'src/util/logging.c',
     'src/util/panic.c',
     'src/util/spinlock.c',

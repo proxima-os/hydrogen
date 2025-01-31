@@ -1,6 +1,6 @@
 #include "util/logging.h"
 #include "asm/pio.h"
-#include "compiler.h"
+#include "kernel/compiler.h"
 #include "string.h"
 #include "util/spinlock.h"
 
