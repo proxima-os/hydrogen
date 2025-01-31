@@ -11,4 +11,5 @@ project(
 pub_inc = include_directories('include' / 'public')
 priv_inc = include_directories('include' / 'private')
 
+subdir('lib')
 subdir('kernel')
