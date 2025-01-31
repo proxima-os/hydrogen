@@ -1,10 +1,13 @@
 #include "mem/pmm.h"
 #include "cpu/cpu.h"
+#include "hydrogen/error.h"
 #include "kernel/compiler.h"
 #include "limine.h"
+#include "mem/pmap.h"
 #include "sections.h"
 #include "util/panic.h"
 #include "util/spinlock.h"
+#include <stdint.h>
 
 static page_t *free_pages;
 static pmm_stats_t pmm_stats;
@@ -43,9 +46,13 @@ static void free_by_type(uint64_t type) {
         pmm_stats.total += page->free.count;
         pmm_stats.available += page->free.count;
         pmm_stats.free += page->free.count;
-
-        entry->length = 0;
     }
+}
+
+static void map_segment(const void *start, const void *end, int flags) {
+    uint64_t phys = ((uintptr_t)start - addr_req.response->virtual_base) + addr_req.response->physical_base;
+    hydrogen_error_t error = map_kernel_memory((uintptr_t)start, phys, end - start, flags, CACHE_WRITEBACK);
+    if (unlikely(error)) panic("failed to map kernel segment (%d)", error);
 }
 
 void init_pmm(void) {
@@ -95,6 +102,59 @@ void init_pmm(void) {
     }
 
     free_by_type(LIMINE_MEMMAP_USABLE);
+    init_pmap();
+
+    // create hhdm
+    uint64_t map_start = 0;
+    uint64_t map_end = 0;
+
+    for (uint64_t i = 0; i < mmap_req.response->entry_count; i++) {
+        struct limine_memmap_entry *entry = mmap_req.response->entries[i];
+        if (entry->type != LIMINE_MEMMAP_USABLE && entry->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) continue;
+
+        uint64_t start = entry->base;
+        if (start >= pmm_addr_max) break;
+
+        uint64_t end = start + entry->length;
+        if (end == virt_to_phys(page_array)) end += page_array_size;
+        if (end > pmm_addr_max) end = pmm_addr_max;
+        if (start >= end) continue;
+
+        if (map_end < start) {
+            if (map_start != map_end) {
+                hydrogen_error_t error = map_kernel_memory(
+                        (uintptr_t)phys_to_virt(map_start),
+                        map_start,
+                        map_end - map_start,
+                        PMAP_WRITE,
+                        CACHE_WRITEBACK
+                );
+                if (unlikely(error)) panic("failed to create hhdm (%d)", error);
+            }
+
+            map_start = start;
+        }
+
+        map_end = end;
+    }
+
+    if (map_start != map_end) {
+        hydrogen_error_t error = map_kernel_memory(
+                (uintptr_t)phys_to_virt(map_start),
+                map_start,
+                map_end - map_start,
+                PMAP_WRITE,
+                CACHE_WRITEBACK
+        );
+        if (unlikely(error)) panic("failed to create hhdm (%d)", error);
+    }
+
+    // map kernel image
+    map_segment(&_start, &_erodata, 0);
+    map_segment(&_erodata, &_etext, PMAP_EXEC);
+    map_segment(&_etext, &_end, PMAP_WRITE);
+
+    pmap_init_switch();
 }
 
 void reclaim_loader_pages(void) {
@@ -111,52 +171,19 @@ pmm_stats_t pmm_get_stats(void) {
 }
 
 static inline bool do_reserve(size_t count) {
-    bool success = count >= pmm_stats.available;
+    bool success = count <= pmm_stats.available;
     if (likely(success)) pmm_stats.available -= count;
     return success;
 }
 
-PMM_RESERVE {
+bool pmm_reserve(size_t count) {
     spin_lock_noirq(&pmm_lock);
     bool success = do_reserve(count);
     spin_unlock_noirq(&pmm_lock);
-
-#if HYDROGEN_DEBUG_PMM
-    if (likely(success)) {
-        *out = (pmm_reservation_t){.__internal_total = count, .__internal_free = count};
-    }
-#endif
-
     return success;
 }
 
-#if HYDROGEN_DEBUG_PMM
-bool pmm_extend(pmm_reservation_t *reservation, size_t extra) {
-    spin_lock_noirq(&pmm_lock);
-    bool success = do_reserve(extra);
-    spin_unlock_noirq(&pmm_lock);
-
-    if (likely(success)) {
-        spin_lock_noirq(&reservation->lock);
-        reservation->__internal_total += extra;
-        reservation->__internal_free += extra;
-        spin_unlock_noirq(&reservation->lock);
-    }
-
-    return success;
-}
-#endif
-
-PMM_UNRESERVE {
-#if HYDROGEN_DEBUG_PMM
-    spin_lock_noirq(&reservation->lock);
-    ASSERT(count <= reservation->__internal_total);
-    ASSERT(count <= reservation->__internal_free);
-    reservation->__internal_total -= count;
-    reservation->__internal_free -= count;
-    spin_unlock_noirq(&reservation->lock);
-#endif
-
+void pmm_unreserve(size_t count) {
     spin_lock_noirq(&pmm_lock);
     pmm_stats.available += count;
     spin_unlock_noirq(&pmm_lock);
@@ -167,24 +194,13 @@ static inline page_t *do_alloc(void) {
     size_t idx = --page->free.count;
     if (likely(idx == 0)) free_pages = page->free.next;
     pmm_stats.free -= 1;
-    return page;
+    return page + idx;
 }
 
-PMM_ALLOC {
-#if HYDROGEN_DEBUG_PMM
-    spin_lock_noirq(&reservation->lock);
-    ASSERT(reservation->__internal_free >= 1);
-    reservation->__internal_free -= 1;
-    spin_unlock_noirq(&reservation->lock);
-#endif
-
+page_t *pmm_alloc(void) {
     spin_lock_noirq(&pmm_lock);
     page_t *page = do_alloc();
     spin_unlock_noirq(&pmm_lock);
-
-#if HYDROGEN_DEBUG_PMM
-    page->reservation = reservation;
-#endif
     return page;
 }
 
@@ -194,29 +210,17 @@ static void do_free(page_t *page) {
     pmm_stats.free += 1;
 }
 
-PMM_FREE {
-#if HYDROGEN_DEBUG_PMM
-    ASSERT(page->reservation == reservation);
-    page->reservation = NULL;
-#endif
-
+void pmm_free(page_t *page) {
     page->free.count = 1;
     spin_lock_noirq(&pmm_lock);
     do_free(page);
     spin_unlock_noirq(&pmm_lock);
-
-#if HYDROGEN_DEBUG_PMM
-    spin_lock_noirq(&reservation->lock);
-    ASSERT(reservation->__internal_free < reservation->__internal_total);
-    reservation->__internal_free += 1;
-    spin_unlock_noirq(&reservation->lock);
-#endif
 }
 
 page_t *pmm_alloc_now(void) {
     spin_lock_noirq(&pmm_lock);
 
-    if (!do_reserve(1)) {
+    if (unlikely(!do_reserve(1))) {
         spin_unlock_noirq(&pmm_lock);
         return NULL;
     }

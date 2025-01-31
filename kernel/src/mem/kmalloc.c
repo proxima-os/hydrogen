@@ -1,6 +1,7 @@
 #include "mem/kmalloc.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
+#include "mem/pmm.h"
 #include "string.h"
 #include "util/spinlock.h"
 #include <stddef.h>
@@ -25,12 +26,34 @@ void *kmalloc(size_t size) {
 
     int order = ORDER(size);
     if (unlikely(order > PAGE_SHIFT)) return NULL;
-    order -= MIN_ORDER;
 
-    spin_lock_noirq(&locks[order]);
-    struct free_obj *obj = objects[order];
-    if (likely(obj)) objects[order] = obj->next;
-    spin_unlock_noirq(&locks[order]);
+    spin_lock_noirq(&locks[order - MIN_ORDER]);
+    struct free_obj *obj = objects[order - MIN_ORDER];
+    if (likely(obj)) objects[order - MIN_ORDER] = obj->next;
+    spin_unlock_noirq(&locks[order - MIN_ORDER]);
+
+    if (unlikely(!obj)) {
+        page_t *page = pmm_alloc_now();
+        if (unlikely(!page)) return NULL;
+
+        obj = page_to_virt(page);
+
+        if (order != PAGE_SHIFT) {
+            struct free_obj *last = obj;
+            size = 1ul << order;
+
+            for (size_t i = size; i < PAGE_SIZE; i++) {
+                struct free_obj *cur = (void *)obj + i;
+                last->next = cur;
+                last = cur;
+            }
+
+            spin_lock_noirq(&locks[order - MIN_ORDER]);
+            last->next = objects[order - MIN_ORDER];
+            objects[order - MIN_ORDER] = obj->next;
+            spin_unlock_noirq(&locks[order - MIN_ORDER]);
+        }
+    }
 
     return obj;
 }
@@ -59,8 +82,8 @@ void kfree(void *ptr, size_t size) {
     struct free_obj *obj = ptr;
     int order = ORDER(size) - MIN_ORDER;
 
-    spin_lock_noirq(&locks[order]);
-    obj->next = objects[order];
-    objects[order] = obj;
-    spin_unlock_noirq(&locks[order]);
+    spin_lock_noirq(&locks[order - MIN_ORDER]);
+    obj->next = objects[order - MIN_ORDER];
+    objects[order - MIN_ORDER] = obj;
+    spin_unlock_noirq(&locks[order - MIN_ORDER]);
 }
