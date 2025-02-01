@@ -42,5 +42,4 @@ void init_kvmclock(void) {
     timer_cleanup = NULL;
 
     printk("time: kvmclock is available\n");
-    use_short_calibration();
 }

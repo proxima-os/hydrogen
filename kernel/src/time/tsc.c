@@ -19,7 +19,7 @@ static uint64_t ns_to_tsc(uint64_t value) {
 void init_tsc(uint64_t frequency) {
     if (!cpu_features.tsc_invariant) return;
 
-    printk("time: tsc frequency is %U.%6U MHz\n", frequency / 1000000, frequency % 1000000);
+    printk("time: tsc is available (%U.%6U MHz)\n", frequency / 1000000, frequency % 1000000);
 
     tsc2ns_conv = create_timeconv(frequency, NS_PER_SEC);
     ns2tsc_conv = create_timeconv(NS_PER_SEC, frequency);

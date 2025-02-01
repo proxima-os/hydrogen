@@ -31,6 +31,7 @@ USED _Noreturn void kernel_main(void) {
     init_pic();
     enable_irq();
     init_time();
+    init_time_local();
 
     pmm_stats_t stats = pmm_get_stats();
     printk("mem: %Uk total, %Uk available, %Uk free\n",

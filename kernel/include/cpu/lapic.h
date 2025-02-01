@@ -14,4 +14,5 @@ void lapic_arm_timer(lapic_timer_mode_t mode, bool interrupts);
 void lapic_start_timer(uint32_t ticks);
 uint32_t lapic_read_timer(void);
 
+void lapic_eoi(void);
 void send_ipi(int vector, cpu_t *dest);

@@ -1,7 +1,9 @@
 #pragma once
 
 #include "gdt.h"
+#include "time/time.h"
 #include "tss.h"
+#include "util/spinlock.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -53,6 +55,8 @@ typedef struct cpu {
     gdt_t gdt;
     struct cpu *pic_next;
     size_t irqs;
+    timer_event_t *events;
+    spinlock_t events_lock;
 } cpu_t;
 
 #define current_cpu (*(__seg_gs cpu_t *)0)

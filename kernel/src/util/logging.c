@@ -13,7 +13,7 @@ static size_t write_idx;
 
 static spinlock_t klog_lock;
 
-static void flush_data(const void *data, size_t count) {
+static void flush_data(UNUSED const void *data, UNUSED size_t count) {
 #if HYDROGEN_QEMU_DEBUGCON
     outsb(0xe9, data, count);
 #endif

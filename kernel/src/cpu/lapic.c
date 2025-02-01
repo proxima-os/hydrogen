@@ -184,6 +184,10 @@ uint32_t lapic_read_timer(void) {
     return lapic_read32(LAPIC_TIMER_CCR);
 }
 
+void lapic_eoi(void) {
+    lapic_write32(LAPIC_EOI, 0);
+}
+
 void send_ipi(int vector, cpu_t *dest) {
     if (!dest) {
         for (cpu_t *cpu = cpus; cpu != NULL; cpu = cpu->next) {

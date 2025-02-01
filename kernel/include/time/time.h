@@ -1,6 +1,8 @@
 #pragma once
 
 #include "kernel/time.h"
+#include "util/spinlock.h"
+#include <stdbool.h>
 #include <stdint.h>
 
 #define FS_PER_SEC 1000000000000000ul
@@ -15,8 +17,21 @@ extern uint64_t (*read_time_unlocked)(void);
 extern void (*timer_cleanup)(void);
 extern uint64_t (*get_tsc_value)(uint64_t nanoseconds);
 
-void init_time(void);
+typedef struct timer_event {
+    void (*handler)(struct timer_event *);
+    uint64_t time;
+    struct timer_event *prev;
+    struct timer_event *next;
+    struct cpu *cpu;
+    spinlock_t lock;
+    bool queued;
+} timer_event_t;
 
+void init_time(void);
+void init_time_local(void);
 void use_short_calibration(void);
 
 timeconv_t create_timeconv(uint64_t src_freq, uint64_t dst_freq);
+
+void queue_event(timer_event_t *event);
+void cancel_event(timer_event_t *event);
