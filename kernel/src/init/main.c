@@ -7,6 +7,7 @@
 #include "limine.h"
 #include "mem/pmm.h"
 #include "sections.h"
+#include "time/time.h"
 #include "util/logging.h"
 
 __attribute__((used, section(".requests0"))) static LIMINE_REQUESTS_START_MARKER;
@@ -22,6 +23,7 @@ USED _Noreturn void kernel_main(void) {
     init_pmm();
     init_acpi();
     reclaim_loader_pages();
+    init_time();
 
     pmm_stats_t stats = pmm_get_stats();
     printk("mem: %Uk total, %Uk available, %Uk free\n",

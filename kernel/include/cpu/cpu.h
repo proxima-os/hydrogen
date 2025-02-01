@@ -11,9 +11,20 @@ typedef struct {
     uint32_t edx;
 } cpuid_signature_t;
 
+static const cpuid_signature_t HYPERVISOR_SIG_KVM = {
+        0x4b4d564b,
+        0x564b4d56,
+        0x4d,
+};
+
 typedef struct {
     uint64_t paddr_mask;
-    cpuid_signature_t hypervisor;
+    uint32_t max_std_leaf;
+    uint32_t max_ext_leaf;
+    struct {
+        uint32_t max_leaf;
+        cpuid_signature_t vendor;
+    } hypervisor;
     bool x2apic : 1;
     bool tsc_deadline : 1;
     bool xsave : 1;

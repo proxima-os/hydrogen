@@ -13,10 +13,8 @@ void detect_cpu_features(void) {
     uint32_t eax, ebx, ecx, edx;
 
     // get basic cpuid info that's guaranteed to be present
-    uint32_t std_limit;
-    uint32_t ext_limit;
-    cpuid(0, &std_limit, &ebx, &ecx, &edx);
-    cpuid(0x80000000, &ext_limit, &ebx, &ecx, &edx);
+    cpuid(0, &cpu_features.max_std_leaf, &ebx, &ecx, &edx);
+    cpuid(0x80000000, &cpu_features.max_ext_leaf, &ebx, &ecx, &edx);
     cpuid(1, &eax, &ebx, &ecx, &edx);
 
     // parse cpuid[1] feature info
@@ -25,12 +23,11 @@ void detect_cpu_features(void) {
     cpu_features.xsave = ecx & (1u << 26);
 
     if (ecx & (1u << 31)) {
-        uint32_t hyp_limit;
         cpuid(0x40000000,
-              &hyp_limit,
-              &cpu_features.hypervisor.ebx,
-              &cpu_features.hypervisor.ecx,
-              &cpu_features.hypervisor.edx);
+              &cpu_features.hypervisor.max_leaf,
+              &cpu_features.hypervisor.vendor.ebx,
+              &cpu_features.hypervisor.vendor.ecx,
+              &cpu_features.hypervisor.vendor.edx);
     }
 
     cpu_features.de = edx & (1u << 2);
@@ -41,7 +38,7 @@ void detect_cpu_features(void) {
     cpu_features.mca = edx & (1u << 14);
     cpu_features.pat = edx & (1u << 16);
 
-    if (std_limit >= 7) {
+    if (cpu_features.max_std_leaf >= 7) {
         cpuid2(7, 0, &eax, &ebx, &ecx, &edx);
         cpu_features.fsgsbase = ebx & (1u << 0);
         cpu_features.smep = ebx & (1u << 7);
@@ -50,18 +47,18 @@ void detect_cpu_features(void) {
         cpu_features.umip = ecx & (1u << 2);
     }
 
-    if (ext_limit >= 0x80000001) {
+    if (cpu_features.max_ext_leaf >= 0x80000001) {
         cpuid(0x80000001, &eax, &ebx, &ecx, &edx);
         cpu_features.nx = edx & (1u << 20);
         cpu_features.huge_1gb = edx & (1u << 26);
     }
 
-    if (ext_limit >= 0x80000007) {
+    if (cpu_features.max_ext_leaf >= 0x80000007) {
         cpuid(0x80000007, &eax, &ebx, &ecx, &edx);
         cpu_features.tsc_invariant = edx & (1u << 8);
     }
 
-    if (ext_limit >= 0x80000008) {
+    if (cpu_features.max_ext_leaf >= 0x80000008) {
         cpuid(0x80000008, &eax, &ebx, &ecx, &edx);
 
         int shift = eax & 0xff;
