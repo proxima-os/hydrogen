@@ -28,17 +28,17 @@ static inline uint64_t mmio_read64(void *mmio, size_t offset) {
 }
 
 static inline void mmio_write8(void *mmio, size_t offset, uint8_t value) {
-    asm("movb %0, %1" ::"r"(value), "m"(*(volatile uint8_t *)(mmio + offset)));
+    asm volatile("movb %1, %0" : "=m"(*(volatile uint8_t *)(mmio + offset)) : "r"(value));
 }
 
 static inline void mmio_write16(void *mmio, size_t offset, uint16_t value) {
-    asm("movw %0, %1" ::"r"(value), "m"(*(volatile uint16_t *)(mmio + offset)));
+    asm volatile("movw %1, %0" : "=m"(*(volatile uint16_t *)(mmio + offset)) : "r"(value));
 }
 
 static inline void mmio_write32(void *mmio, size_t offset, uint32_t value) {
-    asm("movl %0, %1" ::"r"(value), "m"(*(volatile uint32_t *)(mmio + offset)));
+    asm volatile("movl %1, %0" : "=m"(*(volatile uint32_t *)(mmio + offset)) : "r"(value));
 }
 
 static inline void mmio_write64(void *mmio, size_t offset, uint64_t value) {
-    asm("movq %0, %1" ::"r"(value), "m"(*(volatile uint64_t *)(mmio + offset)));
+    asm volatile("movq %1, %0" : "=m"(*(volatile uint64_t *)(mmio + offset)) : "r"(value));
 }
