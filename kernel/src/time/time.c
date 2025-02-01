@@ -1,5 +1,6 @@
 #include "time/time.h"
 #include "asm/cpuid.h"
+#include "asm/irq.h"
 #include "cpu/cpu.h"
 #include "time/hpet.h"
 #include "time/kvmclock.h"
@@ -71,12 +72,16 @@ static uint64_t determine_cpu_frequencies(void) {
     // Need to calibrate
     if (!read_time_unlocked) panic("no calibration timer available");
 
+    irq_state_t state = save_disable_irq();
+
     calib_measurement_t start, end;
     calib_measure(&start);
 
     do {
         calib_measure(&end);
     } while (calib_elapsed(&start, &end) < calibration_time_ns);
+
+    restore_irq(state);
 
     uint64_t elapsed = end.nanoseconds - start.nanoseconds;
     return get_frequency(end.tsc - start.tsc, elapsed);
