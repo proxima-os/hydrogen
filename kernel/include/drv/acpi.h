@@ -44,7 +44,7 @@ typedef struct {
 #define ACPI_MADT_XAPIC 0
 #define ACPI_MADT_IOAPIC 1
 #define ACPI_MADT_ISO 2
-#define APCI_MADT_NMI 3
+#define ACPI_MADT_NMI 3
 #define ACPI_MADT_XAPIC_NMI 4
 #define ACPI_MADT_X2APIC 9
 #define ACPI_MADT_X2APIC_NMI 10

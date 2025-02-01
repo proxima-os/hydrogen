@@ -9,6 +9,7 @@ executable(
     'src/cpu/tss.c',
     'src/cpu/lapic.c',
     'src/drv/acpi.c',
+    'src/drv/pic.c',
     'src/init/main.c',
     'src/init/main.S',
     'src/mem/kmalloc.c',

@@ -7,11 +7,13 @@
 #include "cpu/idt.h"
 #include "cpu/irqvecs.h"
 #include "drv/acpi.h"
+#include "drv/pic.h"
 #include "hydrogen/error.h"
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
 #include "mem/pmap.h"
 #include "util/panic.h"
+#include "util/spinlock.h"
 #include <stdint.h>
 
 #define LAPIC_ID 0x20
@@ -42,6 +44,7 @@
 
 static void *xapic_regs;
 static uint64_t msr_apic_base;
+static spinlock_t pic_cpus_lock;
 
 static uint32_t lapic_read32(unsigned reg) {
     if (cpu_features.x2apic) return rdmsr(0x800 + (reg >> 4));
@@ -113,6 +116,13 @@ void init_lapic(void) {
 
     current_cpu.apic_id = lapic_read32(LAPIC_ID);
     if (!cpu_features.x2apic) current_cpu.apic_id >>= 24;
+
+    if (current_cpu.apic_id < 256) {
+        irq_state_t state = spin_lock(&pic_cpus_lock);
+        current_cpu.pic_next = pic_cpus;
+        pic_cpus = current_cpu_ptr;
+        spin_unlock(&pic_cpus_lock, state);
+    }
 
     const acpi_madt_t *madt = (const acpi_madt_t *)get_acpi_table("APIC");
     if (unlikely(!madt)) panic("madt table not found");

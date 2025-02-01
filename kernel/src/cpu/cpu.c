@@ -93,6 +93,8 @@ void init_cpu(cpu_t *cpu) {
     if (cpu_features.umip) cr4 |= CR4_UMIP;
 
     write_cr4(cr4);
+    write_cr8(0);
+
     init_gdt(cpu);
     init_tss();
     setup_idt();

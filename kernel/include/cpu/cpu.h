@@ -51,6 +51,8 @@ typedef struct cpu {
     uint32_t id;
     uint32_t apic_id;
     gdt_t gdt;
+    struct cpu *pic_next;
+    size_t irqs;
 } cpu_t;
 
 #define current_cpu (*(__seg_gs cpu_t *)0)
