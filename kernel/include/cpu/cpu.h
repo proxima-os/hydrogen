@@ -47,7 +47,9 @@ typedef struct {
 typedef struct cpu {
     struct tss tss; // this needs to be the first thing in cpu_t, because its offset is used by ASM
     struct cpu *self;
+    struct cpu *next;
     uint32_t id;
+    uint32_t apic_id;
     gdt_t gdt;
 } cpu_t;
 
@@ -55,6 +57,7 @@ typedef struct cpu {
 #define current_cpu_ptr (current_cpu.self)
 
 extern cpu_features_t cpu_features;
+extern cpu_t *cpus;
 
 void detect_cpu_features(void);
 

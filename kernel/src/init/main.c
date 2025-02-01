@@ -2,6 +2,7 @@
 #include "cpu/cpu.h"
 #include "cpu/exc.h"
 #include "cpu/idt.h"
+#include "cpu/lapic.h"
 #include "drv/acpi.h"
 #include "kernel/compiler.h"
 #include "limine.h"
@@ -23,6 +24,8 @@ USED _Noreturn void kernel_main(void) {
     init_pmm();
     init_acpi();
     reclaim_loader_pages();
+    init_lapic_bsp();
+    init_lapic();
     init_time();
 
     pmm_stats_t stats = pmm_get_stats();

@@ -7,6 +7,7 @@ executable(
     'src/cpu/idt.c',
     'src/cpu/idt.S',
     'src/cpu/tss.c',
+    'src/cpu/lapic.c',
     'src/drv/acpi.c',
     'src/init/main.c',
     'src/init/main.S',

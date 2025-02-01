@@ -1,5 +1,6 @@
 #include "cpu/exc.h"
 #include "asm/cr.h"
+#include "asm/idle.h"
 #include "cpu/idt.h"
 #include "cpu/irqvecs.h"
 #include "kernel/compiler.h"
@@ -47,6 +48,10 @@ static _Noreturn void handle_fatal_exception_paranoid(idt_frame_t *frame, void *
     handle_fatal_exception(frame, ctx);
 }
 
+static _Noreturn void handle_ipi_panic(UNUSED idt_frame_t *frame, UNUSED void *ctx) {
+    for (;;) cpu_idle();
+}
+
 void init_exceptions(void) {
     idt_install(VEC_DIVIDE_ERROR, handle_fatal_exception, NULL);
     idt_install(VEC_DEBUG, handle_fatal_exception, NULL);
@@ -67,5 +72,5 @@ void init_exceptions(void) {
     idt_install(VEC_SIMD_ERROR, handle_fatal_exception, NULL);
     idt_install(VEC_VIRTUALIZATION_ERROR, handle_fatal_exception, NULL);
     idt_install(VEC_CONTROL_PROTECTION_ERROR, handle_fatal_exception, NULL);
-    idt_install(VEC_IRQ_APIC_ERR, handle_fatal_exception, NULL);
+    idt_install(VEC_IPI_PANIC, handle_ipi_panic, NULL);
 }

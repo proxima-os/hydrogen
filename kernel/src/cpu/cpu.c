@@ -8,6 +8,7 @@
 #define CR0_SET_MASK (CR0_AM | CR0_NE | CR0_MP)
 
 cpu_features_t cpu_features;
+cpu_t *cpus;
 
 void detect_cpu_features(void) {
     uint32_t eax, ebx, ecx, edx;
@@ -76,6 +77,7 @@ void init_cpu(cpu_t *cpu) {
 
         cpu = &boot_cpu;
         cpu->tss.ist[0] = (uintptr_t)bsp_exc_stack + sizeof(bsp_exc_stack);
+        cpus = cpu;
     }
 
     cpu->self = cpu;

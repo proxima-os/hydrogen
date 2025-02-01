@@ -5,6 +5,9 @@
 #define MSR_KVM_SYSTEM_TIME 0x12
 #define MSR_KVM_SYSTEM_TIME_NEW 0x4b564d01
 
+#define MSR_APIC_BASE 0x1b
+#define MSR_APIC_BASE_EXTD 0x400
+
 #define MSR_GS_BASE 0xc0000101
 
 static inline uint64_t rdmsr(uint32_t msr) {
