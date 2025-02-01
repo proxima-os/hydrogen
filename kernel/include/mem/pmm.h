@@ -24,6 +24,7 @@ extern uint64_t pmm_addr_max;
 
 void init_pmm(void);
 void reclaim_loader_pages(void);
+uint64_t sym_to_phys(const void *symbol);
 
 pmm_stats_t pmm_get_stats(void);
 

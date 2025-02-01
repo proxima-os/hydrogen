@@ -29,6 +29,8 @@ extern const void _erodata;
 extern const void _etext;
 extern const void _end;
 
+static uint64_t kernel_phys;
+
 static void free_by_type(uint64_t type) {
     for (uint64_t i = 0; i < mmap_req.response->entry_count; i++) {
         struct limine_memmap_entry *entry = mmap_req.response->entries[i];
@@ -51,7 +53,7 @@ static void free_by_type(uint64_t type) {
 }
 
 static void map_segment(const void *start, const void *end, int flags) {
-    uint64_t phys = ((uintptr_t)start - addr_req.response->virtual_base) + addr_req.response->physical_base;
+    uint64_t phys = sym_to_phys(start);
     hydrogen_error_t error = map_kernel_memory((uintptr_t)start, phys, end - start, flags, CACHE_WRITEBACK);
     if (unlikely(error)) panic("failed to map kernel segment (%d)", error);
 }
@@ -62,6 +64,7 @@ void init_pmm(void) {
     if (!mmap_req.response) panic("no response to memory map request");
 
     hhdm_start = (void *)hhdm_req.response->offset;
+    kernel_phys = addr_req.response->physical_base + ((uintptr_t)&_start - addr_req.response->virtual_base);
     pmm_addr_max = cpu_features.paddr_mask + 1;
 
     uint64_t hhdm_max;
@@ -172,6 +175,10 @@ void reclaim_loader_pages(void) {
     spin_lock_noirq(&pmm_lock);
     free_by_type(LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE);
     spin_unlock_noirq(&pmm_lock);
+}
+
+uint64_t sym_to_phys(const void *symbol) {
+    return (symbol - &_start) + kernel_phys;
 }
 
 pmm_stats_t pmm_get_stats(void) {
