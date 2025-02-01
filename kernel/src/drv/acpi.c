@@ -7,6 +7,7 @@
 #include "mem/vmalloc.h"
 #include "sections.h"
 #include "string.h"
+#include "util/endian.h"
 #include "util/logging.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -70,7 +71,7 @@ static const rsdp_t *map_rsdp(size_t *len_out) {
     }
 
     if (rsdp->revision >= 2) {
-        size_t length = rsdp->length;
+        size_t length = le32(rsdp->length);
         unmap_phys_mem(ptr, length);
 
         error = map_phys_mem(&ptr, addr, length, 0, CACHE_WRITEBACK);
@@ -117,7 +118,7 @@ void init_acpi(void) {
     if (unlikely(!rsdp)) return;
 
     bool xsdt = rsdp->revision >= 2;
-    uint64_t addr = xsdt ? rsdp->xsdt_address : rsdp->rsdt_address;
+    uint64_t addr = xsdt ? le64(rsdp->xsdt_address) : le32(rsdp->rsdt_address);
     unmap_phys_mem(rsdp, rsdp_len);
 
     const acpi_header_t *header;
@@ -128,16 +129,16 @@ void init_acpi(void) {
     }
     const root_table_t *root_table = (const root_table_t *)header;
 
-    num_tables = (root_table->header.length - sizeof(root_table->header)) / (xsdt ? 8 : 4);
+    num_tables = (le32(root_table->header.length) - sizeof(root_table->header)) / (xsdt ? 8 : 4);
     tables = vmalloc(num_tables * sizeof(*tables));
     if (unlikely(!tables)) {
         printk("acpi: failed to allocate table array\n");
-        unmap_phys_mem(header, header->length);
+        unmap_phys_mem(header, le32(header->length));
         return;
     }
 
     for (size_t i = 0; i < num_tables; i++) {
-        uint64_t addr = xsdt ? root_table->entries64[i] : root_table->entries32[i];
+        uint64_t addr = xsdt ? le64(root_table->entries64[i]) : le32(root_table->entries32[i]);
         hydrogen_error_t error = map_acpi_table(&tables[i], addr);
 
         if (unlikely(error)) {
@@ -146,14 +147,14 @@ void init_acpi(void) {
         }
     }
 
-    unmap_phys_mem(header, header->length);
+    unmap_phys_mem(header, le32(header->length));
 }
 
 hydrogen_error_t map_acpi_table(const acpi_header_t **out, uint64_t addr) {
     void *ptr;
     hydrogen_error_t error = map_phys_mem(&ptr, addr, sizeof(acpi_header_t), 0, CACHE_WRITEBACK);
     if (unlikely(error)) return error;
-    size_t length = ((const acpi_header_t *)ptr)->length;
+    size_t length = le32(((const acpi_header_t *)ptr)->length);
     unmap_phys_mem(ptr, sizeof(acpi_header_t));
 
     error = map_phys_mem(&ptr, addr, length, 0, CACHE_WRITEBACK);
@@ -175,10 +176,10 @@ hydrogen_error_t map_acpi_table(const acpi_header_t **out, uint64_t addr) {
            sizeof(header->oem_id),
            header->oem_table_id,
            sizeof(header->oem_table_id),
-           header->oem_revision,
+           le32(header->oem_revision),
            header->creator_id,
            sizeof(header->creator_id),
-           header->creator_revision);
+           le32(header->creator_revision));
     *out = header;
     return HYDROGEN_SUCCESS;
 }
