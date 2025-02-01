@@ -46,6 +46,13 @@ static uint64_t hpet_read32(void) {
     return value;
 }
 
+static void hpet_cleanup(void) {
+    irq_state_t state = spin_lock(&hpet_lock);
+    unmap_phys_mem(hpet_regs, HPET_REGS_SIZE);
+    hpet_regs = NULL;
+    spin_unlock(&hpet_lock, state);
+}
+
 void init_hpet(void) {
     const acpi_hpet_t *hpet_table = (const acpi_hpet_t *)get_acpi_table("HPET");
     if (unlikely(!hpet_table)) {
@@ -88,5 +95,6 @@ void init_hpet(void) {
         read_time_unlocked = hpet_read32_unlocked;
     }
 
+    timer_cleanup = hpet_cleanup;
     printk("time: hpet is available\n");
 }

@@ -12,6 +12,7 @@ uint64_t (*read_time)(void);
 uint64_t (*read_time_unlocked)(void);
 
 uint64_t (*get_tsc_value)(uint64_t nanoseconds);
+void (*timer_cleanup)(void);
 
 static uint64_t calibration_time_ns = 500000000ul; // 500ms by default
 

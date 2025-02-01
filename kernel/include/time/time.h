@@ -12,6 +12,7 @@
 extern uint64_t (*read_time)(void);
 extern uint64_t (*read_time_unlocked)(void);
 
+extern void (*timer_cleanup)(void);
 extern uint64_t (*get_tsc_value)(uint64_t nanoseconds);
 
 void init_time(void);

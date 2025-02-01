@@ -35,8 +35,11 @@ void init_kvmclock(void) {
     kvmclock_info.version = 1;
     wrmsr(msr, sym_to_phys(&kvmclock_info) | 1);
 
+    if (timer_cleanup) timer_cleanup();
+
     read_time = do_read_kvmclock;
     read_time_unlocked = do_read_kvmclock;
+    timer_cleanup = NULL;
 
     printk("time: kvmclock is available\n");
     use_short_calibration();

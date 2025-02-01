@@ -24,7 +24,10 @@ void init_tsc(uint64_t frequency) {
     tsc2ns_conv = create_timeconv(frequency, NS_PER_SEC);
     ns2tsc_conv = create_timeconv(NS_PER_SEC, frequency);
 
+    if (timer_cleanup) timer_cleanup();
+
     read_time = read_tsc;
     read_time_unlocked = read_tsc;
     get_tsc_value = ns_to_tsc;
+    timer_cleanup = NULL;
 }
