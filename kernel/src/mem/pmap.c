@@ -87,7 +87,7 @@ static bool can_map_direct(unsigned level) {
     return level < 2 || (level == 2 && cpu_features.huge_1gb);
 }
 
-static bool is_kernel_memory(uintptr_t virt) {
+UNUSED static bool is_kernel_memory(uintptr_t virt) {
     return virt & (1ul << 63);
 }
 

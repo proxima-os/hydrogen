@@ -2,6 +2,7 @@
 #include "cpu/cpu.h"
 #include "cpu/exc.h"
 #include "cpu/idt.h"
+#include "drv/acpi.h"
 #include "kernel/compiler.h"
 #include "limine.h"
 #include "mem/pmm.h"
@@ -19,6 +20,7 @@ USED _Noreturn void kernel_main(void) {
     init_exceptions();
     init_cpu(NULL);
     init_pmm();
+    init_acpi();
     reclaim_loader_pages();
 
     pmm_stats_t stats = pmm_get_stats();

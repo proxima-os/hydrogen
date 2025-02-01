@@ -80,7 +80,7 @@ void kfree(void *ptr, size_t size) {
     if (unlikely(ptr == NULL) || unlikely(size == 0)) return;
 
     struct free_obj *obj = ptr;
-    int order = ORDER(size) - MIN_ORDER;
+    int order = ORDER(size);
 
     spin_lock_noirq(&locks[order - MIN_ORDER]);
     obj->next = objects[order - MIN_ORDER];

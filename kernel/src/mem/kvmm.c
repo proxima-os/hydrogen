@@ -1,8 +1,10 @@
 #include "mem/kvmm.h"
+#include "cpu/cpu.h"
 #include "hydrogen/error.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "mem/kmalloc.h"
+#include "mem/pmap.h"
 #include "string.h"
 #include "util/panic.h"
 #include "util/spinlock.h"
@@ -26,9 +28,11 @@ struct vmm_range {
 };
 
 #define MIN_ORDER PAGE_SHIFT
+#define MAX_ORDER 64
 
 static struct vmm_range *ranges;
-static struct vmm_range *free_ranges[64 - MIN_ORDER];
+static struct vmm_range *free_ranges[MAX_ORDER - MIN_ORDER];
+static uint64_t free_bitmap;
 static struct vmm_range *allocations[ALLOC_TABLE_SIZE];
 static spinlock_t kvmm_lock;
 
@@ -62,6 +66,11 @@ static void kind_remove(struct vmm_range *range, struct vmm_range **list) {
     if (range->kind_next) range->kind_next->kind_prev = range->kind_prev;
 }
 
+static void free_remove(struct vmm_range *range, int order) {
+    kind_remove(range, &free_ranges[order]);
+    if (!free_ranges[order]) free_bitmap &= ~(1ul << order);
+}
+
 static void kind_insert(struct vmm_range *range, struct vmm_range **list) {
     range->kind_prev = NULL;
     range->kind_next = *list;
@@ -69,12 +78,17 @@ static void kind_insert(struct vmm_range *range, struct vmm_range **list) {
     *list = range;
 }
 
+static void free_insert(struct vmm_range *range, int order) {
+    kind_insert(range, &free_ranges[order]);
+    free_bitmap |= 1ul << order;
+}
+
 static void update_order(struct vmm_range *range) {
-    int new_order = get_lower_p2(range->order);
+    int new_order = get_lower_p2(range->size);
 
     if (new_order != range->order) {
-        kind_remove(range, &free_ranges[range->order]);
-        kind_insert(range, &free_ranges[new_order]);
+        free_remove(range, range->order);
+        free_insert(range, new_order);
         range->order = new_order;
     }
 }
@@ -105,7 +119,7 @@ static bool try_merge(
         update_order(prev);
         return true;
     } else if (next_merge) {
-        next->start -= start;
+        next->start -= size;
         next->size += size;
         update_order(next);
 
@@ -132,7 +146,7 @@ static hydrogen_error_t merge_or_insert(struct vmm_range *prev, struct vmm_range
         range->free = true;
 
         global_insert(range);
-        kind_insert(range, &free_ranges[range->order]);
+        free_insert(range, range->order);
     }
 
     return HYDROGEN_SUCCESS;
@@ -173,16 +187,17 @@ static uint64_t make_hash(uint64_t x) {
 
 hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
     ASSERT((size & PAGE_MASK) == 0);
-    int order = get_higher_p2(size);
+    int wanted_order = get_higher_p2(size);
 
     spin_lock_noirq(&kvmm_lock);
 
-    struct vmm_range *range = free_ranges[order];
+    int order = __builtin_ffsl(free_bitmap >> wanted_order);
+    struct vmm_range *range;
 
-    if (unlikely(range == NULL)) {
-        if (order != 0 && size != (1ul << order)) {
+    if (unlikely(order == 0)) {
+        if (wanted_order != 0 && size != (1ul << wanted_order)) {
             // The previous free list might have a range that's big enough
-            order -= 1;
+            order = wanted_order - 1;
             range = free_ranges[order];
             while (range != NULL && range->size < size) range = range->next;
 
@@ -194,6 +209,9 @@ hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
             spin_unlock_noirq(&kvmm_lock);
             return HYDROGEN_OUT_OF_MEMORY;
         }
+    } else {
+        order += wanted_order - 1;
+        range = free_ranges[order];
     }
 
     struct vmm_range *alloc;
@@ -218,7 +236,7 @@ hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
     } else {
         alloc = range;
         range->free = false;
-        kind_remove(range, &free_ranges[order]);
+        free_remove(range, order);
     }
 
     kind_insert(alloc, &allocations[make_hash(alloc->start) & ALLOC_TABLE_MASK]);
@@ -228,7 +246,7 @@ hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
     return HYDROGEN_SUCCESS;
 }
 
-static struct vmm_range *get_range_from_alloc(uint64_t hash, uintptr_t start, size_t size) {
+static struct vmm_range *get_range_from_alloc(uint64_t hash, uintptr_t start, UNUSED size_t size) {
     struct vmm_range *range = allocations[hash & ALLOC_TABLE_MASK];
 
     for (;;) {
@@ -259,8 +277,44 @@ void kvmm_free(uintptr_t start, size_t size) {
     if (!try_merge(prev, range, next, start, size)) {
         range->free = true;
         range->order = get_lower_p2(range->size);
-        kind_insert(range, &free_ranges[range->order]);
+        free_insert(range, range->order);
     }
 
     spin_unlock_noirq(&kvmm_lock);
+}
+
+hydrogen_error_t map_phys_mem(void **out, uint64_t addr, size_t size, int flags, cache_mode_t mode) {
+    if (unlikely(size == 0)) return HYDROGEN_SUCCESS;
+
+    uint64_t end = addr + (size - 1);
+    if (unlikely(end < addr)) return HYDROGEN_INVALID_ARGUMENT;
+    if (unlikely(end & ~cpu_features.paddr_mask)) return HYDROGEN_INVALID_ARGUMENT;
+
+    uint64_t offset = addr & PAGE_MASK;
+    addr &= ~PAGE_MASK;
+    end |= PAGE_MASK;
+    size = end - addr + 1;
+
+    uintptr_t vaddr;
+    hydrogen_error_t error = kvmm_alloc(&vaddr, size);
+    if (unlikely(error)) return error;
+
+    error = map_kernel_memory(vaddr, addr, size, flags, mode);
+    if (unlikely(error)) return error;
+
+    *out = (void *)(vaddr | offset);
+    return HYDROGEN_SUCCESS;
+}
+
+void unmap_phys_mem(const void *ptr, size_t size) {
+    if (unlikely(size == 0)) return;
+
+    uintptr_t addr = (uintptr_t)ptr;
+    uintptr_t end = addr + (size - 1);
+    addr &= ~PAGE_MASK;
+    end |= PAGE_MASK;
+    size = end - addr + 1;
+
+    unmap_memory(addr, size);
+    kvmm_free(addr, size);
 }
