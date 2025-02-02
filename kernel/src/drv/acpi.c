@@ -161,7 +161,7 @@ hydrogen_error_t map_acpi_table(const acpi_header_t **out, uint64_t addr) {
         return HYDROGEN_INVALID_FORMAT;
     }
 
-    printk("acpi: %S v%d @ 0x%X-0x%X (%S %S 0x%8x %S 0x%8x)\n",
+    printk("acpi: %S v%2x @ 0x%X-0x%X (%S %S 0x%8x %S 0x%8x)\n",
            header->signature,
            sizeof(header->signature),
            header->revision,
