@@ -9,6 +9,7 @@
 
 cpu_features_t cpu_features;
 cpu_t *cpus;
+size_t num_cpus = 1;
 
 void detect_cpu_features(void) {
     uint32_t eax, ebx, ecx, edx;

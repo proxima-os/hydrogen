@@ -1,7 +1,11 @@
 #include "mem/pmap.h"
 #include "asm/cr.h"
+#include "asm/idle.h"
 #include "asm/tlb.h"
 #include "cpu/cpu.h"
+#include "cpu/idt.h"
+#include "cpu/irqvecs.h"
+#include "cpu/lapic.h"
 #include "hydrogen/error.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -10,12 +14,11 @@
 #include "mem/pmm.h"
 #include "sections.h"
 #include "string.h"
+#include "thread/mutex.h"
 #include "util/panic.h"
-#include "util/spinlock.h"
 #include <stdint.h>
 
 // TODO: Separate address spaces
-// TODO: TLB shootdown
 
 #define PTE_PRESENT 1
 #define PTE_WRITABLE 2
@@ -24,7 +27,7 @@
 #define PTE_DIRTY 0x40
 #define PTE_HUGE 0x80
 #define PTE_GLOBAL 0x100
-#define PTE_ALLOCATED 0x200
+#define PTE_ANON 0x200
 #define PTE_ADDR_MASK 0xffffffffff000
 #define PTE_NX 0x8000000000000000
 
@@ -33,7 +36,7 @@
 #define PT_SIZE 0x1000
 
 static uint64_t *kernel_pt;
-static spinlock_t kernel_pt_lock;
+static mutex_t kernel_pt_lock;
 
 uintptr_t min_kernel_address;
 
@@ -43,6 +46,43 @@ static enum {
     PT_4LEVEL,
     PT_5LEVEL,
 } pt_style;
+
+typedef struct {
+    page_t *free_pending;
+    bool shootdown;
+} tlb_ctx_t;
+
+static mutex_t shootdown_lock;
+static size_t shootdown_count;
+
+static void handle_ipi_shootdown(UNUSED idt_frame_t *frame, UNUSED void *ctx) {
+    if (cpu_features.global_pages) {
+        // toggling cr4.pge flushes all caches, including global entries
+        size_t cr4 = read_cr4();
+        write_cr4(cr4 ^ CR4_PGE);
+        write_cr4(cr4);
+    } else {
+        write_cr3(read_cr3());
+    }
+
+    __atomic_fetch_add(&shootdown_count, 1, __ATOMIC_SEQ_CST);
+}
+
+static void tlb_commit(tlb_ctx_t *ctx) {
+    if (num_cpus != 1 && ctx->shootdown) {
+        mutex_lock(&shootdown_lock);
+
+        __atomic_store_n(&shootdown_count, 0, __ATOMIC_SEQ_CST);
+        send_ipi(VEC_IPI_SHOOTDOWN, NULL);
+        while (__atomic_load_n(&shootdown_count, __ATOMIC_SEQ_CST) != num_cpus - 1) cpu_relax();
+
+        mutex_unlock(&shootdown_lock);
+    }
+
+    for (page_t *page = ctx->free_pending; page != NULL; page = page->anon.tlb_next) {
+        pmm_free(page);
+    }
+}
 
 void init_pmap(void) {
     static LIMINE_REQ struct limine_paging_mode_request pmode_req = {
@@ -70,6 +110,8 @@ void init_pmap(void) {
     case PT_4LEVEL: min_kernel_address = 0xffff800000000000; break;
     case PT_5LEVEL: min_kernel_address = 0xff00000000000000; break;
     }
+
+    idt_install(VEC_IPI_SHOOTDOWN, handle_ipi_shootdown, NULL);
 }
 
 void pmap_init_switch(void) {
@@ -154,13 +196,13 @@ hydrogen_error_t map_kernel_memory(uintptr_t virt, uint64_t phys, size_t size, i
     if (flags & PMAP_WRITE) pte |= PTE_WRITABLE;
     if ((flags & PMAP_EXEC) == 0 && cpu_features.nx) pte |= PTE_NX;
 
-    spin_lock_noirq(&kernel_pt_lock);
+    mutex_lock(&kernel_pt_lock);
     hydrogen_error_t result;
     switch (pt_style) {
     case PT_4LEVEL: result = do_map(kernel_pt, 3, virt, pte, size); break;
     case PT_5LEVEL: result = do_map(kernel_pt, 4, virt, pte, size); break;
     }
-    spin_unlock_noirq(&kernel_pt_lock);
+    mutex_unlock(&kernel_pt_lock);
     return result;
 }
 
@@ -215,21 +257,21 @@ hydrogen_error_t alloc_kernel_memory(uintptr_t virt, size_t size, int flags) {
     ASSERT((virt + size - 1) >= virt);
     ASSERT(is_kernel_memory(virt));
 
-    uint64_t pte = PTE_PRESENT | PTE_ACCESSED | PTE_DIRTY | PTE_ALLOCATED;
+    uint64_t pte = PTE_PRESENT | PTE_ACCESSED | PTE_DIRTY | PTE_ANON;
     if (flags & PMAP_WRITE) pte |= PTE_WRITABLE;
     if ((flags & PMAP_EXEC) == 0 && cpu_features.nx) pte |= PTE_NX;
 
-    spin_lock_noirq(&kernel_pt_lock);
+    mutex_lock(&kernel_pt_lock);
     hydrogen_error_t result;
     switch (pt_style) {
     case PT_4LEVEL: result = do_alloc(kernel_pt, 3, virt, pte, size); break;
     case PT_5LEVEL: result = do_alloc(kernel_pt, 4, virt, pte, size); break;
     }
-    spin_unlock_noirq(&kernel_pt_lock);
+    mutex_unlock(&kernel_pt_lock);
     return result;
 }
 
-static void do_remap(uint64_t *table, unsigned level, uintptr_t virt, size_t size, uint64_t flags) {
+static void do_remap(uint64_t *table, unsigned level, uintptr_t virt, size_t size, uint64_t flags, tlb_ctx_t *ctx) {
     unsigned bits = level * 9 + 12;
     size_t index = (virt >> bits) & 511;
     size_t entry_size = 1ul << bits;
@@ -247,10 +289,13 @@ static void do_remap(uint64_t *table, unsigned level, uintptr_t virt, size_t siz
                 if (likely(entry != new_entry)) {
                     __atomic_store_n(&table[index], new_entry, __ATOMIC_RELAXED);
                     invlpg(virt);
+
+                    if ((entry & PTE_WRITABLE) && !(new_entry & PTE_WRITABLE)) ctx->shootdown = true;
+                    else if (!(entry & PTE_NX) && (new_entry & PTE_NX)) ctx->shootdown = true;
                 }
             } else {
                 ASSERT((entry & PTE_HUGE) == 0);
-                do_remap(phys_to_virt(entry & PTE_ADDR_MASK), level - 1, virt, cur, flags);
+                do_remap(phys_to_virt(entry & PTE_ADDR_MASK), level - 1, virt, cur, flags, ctx);
             }
         }
 
@@ -271,15 +316,18 @@ void remap_memory(uintptr_t virt, size_t size, int flags) {
     if (flags & PMAP_WRITE) pte |= PTE_WRITABLE;
     if ((flags & PMAP_EXEC) == 0 && cpu_features.nx) pte |= PTE_NX;
 
-    spin_lock_noirq(&kernel_pt_lock);
+    tlb_ctx_t ctx = {};
+
+    mutex_lock(&kernel_pt_lock);
     switch (pt_style) {
-    case PT_4LEVEL: do_remap(kernel_pt, 3, virt, size, pte); break;
-    case PT_5LEVEL: do_remap(kernel_pt, 4, virt, size, pte); break;
+    case PT_4LEVEL: do_remap(kernel_pt, 3, virt, size, pte, &ctx); break;
+    case PT_5LEVEL: do_remap(kernel_pt, 4, virt, size, pte, &ctx); break;
     }
-    spin_unlock_noirq(&kernel_pt_lock);
+    tlb_commit(&ctx);
+    mutex_unlock(&kernel_pt_lock);
 }
 
-static void do_unmap(uint64_t *table, unsigned level, uintptr_t virt, size_t size) {
+static void do_unmap(uint64_t *table, unsigned level, uintptr_t virt, size_t size, tlb_ctx_t *ctx) {
     unsigned bits = level * 9 + 12;
     size_t index = (virt >> bits) & 511;
     size_t entry_size = 1ul << bits;
@@ -294,9 +342,19 @@ static void do_unmap(uint64_t *table, unsigned level, uintptr_t virt, size_t siz
             if (level == 0 || (entry & PTE_HUGE) != 0) {
                 __atomic_store_n(&table[index], 0, __ATOMIC_RELAXED);
                 invlpg(virt);
+                ctx->shootdown = true;
+
+                if (entry & PTE_ANON) {
+                    page_t *page = phys_to_page(entry & PTE_ADDR_MASK);
+
+                    if (__atomic_fetch_sub(&page->anon.references, 1, __ATOMIC_ACQ_REL) == 1) {
+                        page->anon.tlb_next = ctx->free_pending;
+                        ctx->free_pending = page;
+                    }
+                }
             } else {
                 ASSERT((entry & PTE_HUGE) == 0);
-                do_unmap(phys_to_virt(entry & PTE_ADDR_MASK), level - 1, virt, cur);
+                do_unmap(phys_to_virt(entry & PTE_ADDR_MASK), level - 1, virt, cur, ctx);
             }
         }
 
@@ -313,10 +371,13 @@ void unmap_memory(uintptr_t virt, size_t size) {
     ASSERT((virt + size - 1) >= virt);
     ASSERT(is_kernel_memory(virt) == is_kernel_memory(virt + size - 1));
 
-    spin_lock_noirq(&kernel_pt_lock);
+    tlb_ctx_t ctx = {};
+
+    mutex_lock(&kernel_pt_lock);
     switch (pt_style) {
-    case PT_4LEVEL: do_unmap(kernel_pt, 3, virt, size); break;
-    case PT_5LEVEL: do_unmap(kernel_pt, 4, virt, size); break;
+    case PT_4LEVEL: do_unmap(kernel_pt, 3, virt, size, &ctx); break;
+    case PT_5LEVEL: do_unmap(kernel_pt, 4, virt, size, &ctx); break;
     }
-    spin_unlock_noirq(&kernel_pt_lock);
+    tlb_commit(&ctx);
+    mutex_unlock(&kernel_pt_lock);
 }

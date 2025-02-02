@@ -37,6 +37,8 @@ static void maybe_preempt(sched_t *sched) {
 }
 
 static void handle_ipi_yield(UNUSED idt_frame_t *frame, UNUSED void *ctx) {
+    lapic_eoi();
+
     sched_t *sched = current_sched_ptr;
     spin_lock_noirq(&sched->queue.lock);
     maybe_preempt(sched);

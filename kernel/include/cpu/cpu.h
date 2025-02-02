@@ -67,6 +67,7 @@ typedef struct cpu {
 
 extern cpu_features_t cpu_features;
 extern cpu_t *cpus;
+extern size_t num_cpus;
 
 void detect_cpu_features(void);
 

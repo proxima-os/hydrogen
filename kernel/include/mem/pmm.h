@@ -10,6 +10,10 @@ typedef union page {
         union page *next;
         size_t count;
     } free;
+    struct {
+        union page *tlb_next; // list of pages to be freed during tlb shootdown
+        size_t references;
+    } anon;
 } page_t;
 
 typedef struct {
