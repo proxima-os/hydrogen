@@ -69,7 +69,7 @@ static void lapic_write64(unsigned reg, uint64_t value) {
     if (cpu_features.x2apic) {
         wrmsr(0x800 + (reg >> 4), value);
     } else {
-        mmio_write32(xapic_regs, reg + 0x10, value);
+        mmio_write32(xapic_regs, reg + 0x10, value >> 32);
         mmio_write32(xapic_regs, reg, value);
     }
 }
