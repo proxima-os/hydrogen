@@ -7,6 +7,7 @@
 #include "cpu/irqvecs.h"
 #include "cpu/lapic.h"
 #include "kernel/time.h"
+#include "thread/sched.h"
 #include "time/hpet.h"
 #include "time/kvmclock.h"
 #include "time/tsc.h"
@@ -23,6 +24,8 @@ void (*timer_cleanup)(void);
 
 static uint64_t calibration_time_ns = 500000000ul; // 500ms by default
 static timeconv_t ns2lapic_conv;
+
+extern void fillfb(uint32_t color);
 
 typedef struct {
     uint64_t nanoseconds;
@@ -137,17 +140,24 @@ static void handle_timer_irq(UNUSED idt_frame_t *frame, UNUSED void *ctx) {
     cpu->events = cur;
     rearm_timer(cur);
 
-    spin_unlock_noirq(&cpu->events_lock);
+    if (first) {
+        sched_disable_preempt();
 
-    while (first != NULL) {
-        timer_event_t *next = first->next;
-        first->handler(first);
+        for (;;) {
+            timer_event_t *next = first->next;
+            first->handler(first);
 
-        if (first != last) first = next;
-        else break;
+            if (first != last) first = next;
+            else break;
+        }
+
+        spin_unlock_noirq(&cpu->events_lock);
+        lapic_eoi();
+        sched_enable_preempt();
+    } else {
+        spin_unlock_noirq(&cpu->events_lock);
+        lapic_eoi();
     }
-
-    lapic_eoi();
 }
 
 void init_time(void) {
@@ -217,6 +227,13 @@ timeconv_t create_timeconv(uint64_t src_freq, uint64_t dst_freq) {
     };
 }
 
+void event_init(timer_event_t *event, void (*handler)(struct timer_event *event)) {
+    event->handler = handler;
+    event->cpu = NULL;
+    event->queued = false;
+    spin_init(&event->lock);
+}
+
 void queue_event(timer_event_t *event) {
     cpu_t *cpu = current_cpu_ptr;
 
@@ -235,6 +252,9 @@ void queue_event(timer_event_t *event) {
         prev = next;
         next = next->next;
     }
+
+    event->prev = prev;
+    event->next = next;
 
     if (next) next->prev = event;
 

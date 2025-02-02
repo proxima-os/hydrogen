@@ -33,5 +33,7 @@ void use_short_calibration(void);
 
 timeconv_t create_timeconv(uint64_t src_freq, uint64_t dst_freq);
 
+void event_init(timer_event_t *event, void (*handler)(struct timer_event *event));
+
 void queue_event(timer_event_t *event);
 void cancel_event(timer_event_t *event);

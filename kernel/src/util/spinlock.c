@@ -5,6 +5,10 @@
 #define SPIN_UNLOCKED 0
 #define SPIN_LOCKED 1
 
+void spin_init(spinlock_t *lock) {
+    lock->state = SPIN_UNLOCKED;
+}
+
 static bool try_lock(spinlock_t *lock) {
     return __atomic_exchange_n(&lock->state, SPIN_LOCKED, __ATOMIC_ACQUIRE) == SPIN_UNLOCKED;
 }

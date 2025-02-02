@@ -34,25 +34,25 @@ static inline uint32_t inl(uint16_t port) {
 }
 
 static inline void outsb(uint16_t port, const void *data, size_t count) {
-    asm("rep outsb" ::"d"(port), "S"(data), "c"(count) : "memory");
+    asm volatile("rep outsb" : "+S"(data), "+c"(count) : "d"(port) : "memory");
 }
 
 static inline void outsw(uint16_t port, const void *data, size_t count) {
-    asm("rep outsw" ::"d"(port), "S"(data), "c"(count) : "memory");
+    asm volatile("rep outsw" : "+S"(data), "+c"(count) : "d"(port) : "memory");
 }
 
 static inline void outsl(uint16_t port, const void *data, size_t count) {
-    asm("rep outsl" ::"d"(port), "S"(data), "c"(count) : "memory");
+    asm volatile("rep outsl" : "+S"(data), "+c"(count) : "d"(port) : "memory");
 }
 
 static inline void insb(uint16_t port, void *data, size_t count) {
-    asm("rep insb" ::"d"(port), "D"(data), "c"(count) : "memory");
+    asm volatile("rep insb" : "+D"(data), "+c"(count) : "d"(port) : "memory");
 }
 
 static inline void insw(uint16_t port, void *data, size_t count) {
-    asm("rep insw" ::"d"(port), "D"(data), "c"(count) : "memory");
+    asm volatile("rep insw" : "+D"(data), "+c"(count) : "d"(port) : "memory");
 }
 
 static inline void insl(uint16_t port, void *data, size_t count) {
-    asm("rep insl" ::"d"(port), "D"(data), "c"(count) : "memory");
+    asm volatile("rep insl" : "+D"(data), "+c"(count) : "d"(port) : "memory");
 }

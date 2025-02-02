@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gdt.h"
+#include "thread/sched.h"
 #include "time/time.h"
 #include "tss.h"
 #include "util/spinlock.h"
@@ -57,10 +58,12 @@ typedef struct cpu {
     size_t irqs;
     timer_event_t *events;
     spinlock_t events_lock;
+    sched_t sched;
 } cpu_t;
 
 #define current_cpu (*(__seg_gs cpu_t *)0)
 #define current_cpu_ptr (current_cpu.self)
+#define current_thread (current_cpu.sched.current)
 
 extern cpu_features_t cpu_features;
 extern cpu_t *cpus;

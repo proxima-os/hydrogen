@@ -6,6 +6,7 @@ typedef enum {
     HYDROGEN_OUT_OF_MEMORY,
     HYDROGEN_INVALID_ARGUMENT,
     HYDROGEN_INVALID_FORMAT,
+    HYDROGEN_TIMED_OUT,
 } hydrogen_error_t;
 
 #endif /* HYDROGEN_ERROR_H */

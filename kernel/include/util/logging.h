@@ -3,6 +3,8 @@
 #include <stdarg.h>
 #include <stddef.h>
 
+void init_fb_log(void);
+
 void klog_write(const void *data, size_t count);
 
 void vprintk(const char *format, va_list args);
