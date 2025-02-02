@@ -1,0 +1,1 @@
+option('qemu_debugcon', type: 'boolean', value: false, description: 'Write kernel logs to the QEMU debug console')

@@ -73,7 +73,6 @@ executable(
     ],
     implicit_include_directories: false,
     include_directories: [
-        compiler_include_dirs,
         api_inc,
         priv_inc,
         include_directories('include'),

@@ -12,27 +12,6 @@ compiler = meson.get_compiler('c')
 objcopy = find_program('objcopy')
 strip = find_program('strip')
 
-# find compiler include dirs
-search_paths = run_command(compiler.cmd_array() + '-print-search-dirs', check: true).stdout().split('\n')
-foreach line : search_paths
-    if line.startswith('install: ')
-        compiler_dir = line.strip('install: ')
-        break
-    elif line.startswith('libraries: =')
-        compiler_dir = line.strip('libraries: =').split(':')[0]
-        break
-    endif
-endforeach
-
-if compiler.get_id() == 'gcc'
-    compiler_include_dirs = include_directories(
-        compiler_dir / 'include-fixed',
-        compiler_dir / 'include'
-    )
-else
-    compiler_include_dirs = include_directories(compiler_dir / 'include')
-endif
-
 api_inc = include_directories('include/public')
 priv_inc = include_directories('include/private')
 
@@ -41,9 +20,12 @@ add_project_arguments(
     '-DUACPI_OVERRIDE_LIBC',
     '-DUACPI_SIZED_FREES',
     '-fno-common',
-    '-nostdinc',
     language: 'c',
 )
+
+if get_option('qemu_debugcon')
+    add_project_arguments('-DHYDROGEN_DEBUGCON=1', language: 'c')
+endif
 
 uacpi = subproject('uacpi')
 

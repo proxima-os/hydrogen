@@ -1,5 +1,6 @@
 #include "util/print.h"
 #include "asm/irq.h"
+#include "asm/pio.h"
 #include "compiler.h"
 #include "fs/vfs.h"
 #include "hydrogen/error.h"
@@ -99,26 +100,32 @@ static void draw_char(unsigned char c, uint64_t x, uint64_t y) {
 }
 
 static void print_char(unsigned char c, UNUSED void *ctx) {
-    uint32_t start_y = term_y;
+#if HYDROGEN_DEBUGCON
+    outb(0xe9, c);
+#endif
 
-    switch (c) {
-    case '\n': term_y += 1; // fall through
-    case '\r': term_x = 0; break;
-    default: draw_char(c, term_x++, term_y); break;
-    }
+    if (framebuffer) {
+        uint32_t start_y = term_y;
 
-    if (term_x >= term_width) {
-        term_x = 0;
-        term_y += 1;
-    }
+        switch (c) {
+        case '\n': term_y += 1; // fall through
+        case '\r': term_x = 0; break;
+        default: draw_char(c, term_x++, term_y); break;
+        }
 
-    if (term_y >= term_height) {
-        term_y = 0; // no scrolling, just wraparound
-    }
+        if (term_x >= term_width) {
+            term_x = 0;
+            term_y += 1;
+        }
 
-    if (term_y != start_y) {
-        for (uint32_t x = 0; x < term_width; x++) {
-            draw_char(' ', x, term_y);
+        if (term_y >= term_height) {
+            term_y = 0; // no scrolling, just wraparound
+        }
+
+        if (term_y != start_y) {
+            for (uint32_t x = 0; x < term_width; x++) {
+                draw_char(' ', x, term_y);
+            }
         }
     }
 }
@@ -255,7 +262,9 @@ static void do_vprintk(const char *format, va_list args, printk_func_t func, voi
 }
 
 void vprintk(const char *format, va_list args) {
+#if !HYDROGEN_DEBUGCON
     if (!framebuffer) return;
+#endif
 
     irq_state_t state = spin_lock(&term_lock);
     do_vprintk(format, args, print_char, NULL);

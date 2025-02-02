@@ -8,7 +8,7 @@ vdso = shared_library(
     'vfs.c',
     c_args: ['-ffreestanding', '-fno-stack-check', '-fno-stack-protector'],
     implicit_include_directories: false,
-    include_directories: [compiler_include_dirs, api_inc, priv_inc],
+    include_directories: [api_inc, priv_inc],
     install: true,
     install_tag: 'devel', # the vDSO is provided in memory by the kernel, the copy on disk is only for linking programs
     link_args: ['-nostdlib', '-T' + linker_script],
