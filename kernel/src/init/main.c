@@ -24,6 +24,8 @@ LIMINE_REQ LIMINE_BASE_REVISION(3);
 
 static void kernel_init(UNUSED void *ctx) {
     init_sched_late();
+    init_smp();
+    reclaim_loader_pages();
 
     pmm_stats_t stats = pmm_get_stats();
     printk("mem: %Uk total, %Uk available, %Uk free\n",
@@ -40,7 +42,6 @@ USED _Noreturn void kernel_main(void) {
     init_pmm();
     init_fb_log();
     init_acpi();
-    reclaim_loader_pages();
     init_lapic_bsp();
     init_lapic();
     init_pic();

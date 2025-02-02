@@ -6,12 +6,21 @@
 #include "cpu/cpu.h"
 #include "cpu/idt.h"
 #include "cpu/irqvecs.h"
+#include "cpu/xsave.h"
 #include "drv/acpi.h"
 #include "drv/pic.h"
 #include "hydrogen/error.h"
 #include "kernel/compiler.h"
+#include "limine.h"
 #include "mem/kvmm.h"
 #include "mem/pmap.h"
+#include "mem/vmalloc.h"
+#include "sections.h"
+#include "string.h"
+#include "thread/sched.h"
+#include "time/time.h"
+#include "util/logging.h"
+#include "util/object.h"
 #include "util/panic.h"
 #include "util/spinlock.h"
 #include <stdint.h>
@@ -197,7 +206,7 @@ void send_ipi(int vector, cpu_t *dest) {
         return;
     }
 
-    uint64_t icr = LAPIC_ICR | vector;
+    uint64_t icr = LAPIC_ICR_ASSERT | vector;
 
     if (cpu_features.x2apic) {
         icr |= (uint64_t)dest->apic_id << 32;
@@ -210,4 +219,114 @@ void send_ipi(int vector, cpu_t *dest) {
         while (lapic_read32(LAPIC_ICR) & LAPIC_ICR_PENDING) cpu_relax();
         restore_irq(state);
     }
+}
+
+/*
+ * SMP initialization occurs in five phases:
+ * 1. The kernel init thread creates and starts the CPU init threads, then goes to sleep.
+ * 2. The CPU init threads create the CPU init data and signal the target CPUs to start the kernel, then goes to sleep.
+ * 3. The target CPUs do all the initialization needed for the scheduler to function, and wake up their CPU init thread.
+ * 4. The CPU init threads migrate themselves onto the target CPUs, and finish initialization.
+ * 5. The last CPU init thread to finish completion wakes up the kernel init thread.
+ */
+
+typedef struct {
+    void *idle_stack;
+    cpu_t cpu;
+    spinlock_t init_lock;
+    thread_t *init_thread;
+} cpu_init_data_t;
+
+static size_t smp_done;
+static thread_t *smp_init_thread;
+static spinlock_t smp_init_lock;
+
+_Noreturn void smp_init_cpu(cpu_init_data_t *data) {
+    static size_t smp_started;
+    data->cpu.id = __atomic_fetch_add(&smp_started, 1, __ATOMIC_RELAXED) + 1;
+
+    init_cpu(&data->cpu);
+    init_lapic();
+    init_time_local();
+    init_sched_early();
+    init_xsave();
+
+    __atomic_fetch_add(&num_cpus, 1, __ATOMIC_SEQ_CST);
+
+    irq_state_t state = spin_lock(&data->init_lock);
+    sched_wake(data->init_thread);
+    spin_unlock(&data->init_lock, state);
+
+    sched_idle();
+}
+
+extern _Noreturn void smp_cpu_thunk(struct limine_mp_info *);
+
+static void ap_init_thread_func(void *ptr) {
+    struct limine_mp_info *info = ptr;
+
+    cpu_init_data_t *data = vmalloc(sizeof(*data));
+    if (unlikely(!data)) panic("failed to allocate cpu init data");
+    memset(data, 0, sizeof(*data));
+
+    data->init_thread = current_thread;
+
+    data->idle_stack = alloc_kernel_stack();
+    if (unlikely(!data->idle_stack)) panic("failed to allocate cpu idle stack");
+
+    void *exc_stack = alloc_kernel_stack();
+    if (unlikely(!exc_stack)) panic("failed to allocate cpu exception stack");
+    data->cpu.tss.ist[0] = (uintptr_t)exc_stack;
+
+    data->cpu.sched.idle.xsave = xsave_alloc();
+    if (unlikely(!data->cpu.sched.idle.xsave)) panic("failed to allocate idle xsave area");
+
+    info->extra_argument = (uintptr_t)data;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+
+    irq_state_t state = spin_lock(&data->init_lock);
+    info->goto_address = smp_cpu_thunk;
+    sched_wait(0, &data->init_lock);
+    spin_unlock(&data->init_lock, state);
+
+    sched_migrate(&data->cpu);
+    init_sched_late();
+
+    if (__atomic_fetch_sub(&smp_done, 1, __ATOMIC_SEQ_CST) == 1) {
+        irq_state_t state = spin_lock(&data->init_lock);
+        if (smp_init_thread) sched_wake(smp_init_thread);
+        spin_unlock(&data->init_lock, state);
+    }
+}
+
+void init_smp(void) {
+    static LIMINE_REQ struct limine_mp_request mp_req = {.id = LIMINE_MP_REQUEST, .flags = LIMINE_MP_X2APIC};
+    if (!mp_req.response) return;
+
+    smp_done = mp_req.response->cpu_count - 1;
+    smp_init_thread = current_thread;
+
+    for (uint64_t i = 0; i < mp_req.response->cpu_count; i++) {
+        struct limine_mp_info *info = mp_req.response->cpus[i];
+        if (info->lapic_id == mp_req.response->bsp_lapic_id) continue;
+
+        // These threads have to be created on the current CPU to avoid a race condition in `sched_create`'s CPU
+        // selection code.
+        thread_t *thread;
+        hydrogen_error_t error = sched_create(&thread, ap_init_thread_func, info, current_cpu_ptr);
+        if (unlikely(error)) panic("failed to create cpu initialization thread (%d)", error);
+        sched_wake(thread);
+        obj_deref(&thread->base);
+    }
+
+    irq_state_t state = spin_lock(&smp_init_lock);
+
+    if (__atomic_load_n(&smp_done, __ATOMIC_SEQ_CST) != 0) {
+        sched_wait(0, &smp_init_lock);
+        smp_init_thread = NULL;
+    }
+
+    spin_unlock(&smp_init_lock, state);
+
+    printk("smp: %U cpus online\n", num_cpus);
 }

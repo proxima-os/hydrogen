@@ -16,3 +16,5 @@ uint32_t lapic_read_timer(void);
 
 void lapic_eoi(void);
 void send_ipi(int vector, cpu_t *dest);
+
+void init_smp(void);

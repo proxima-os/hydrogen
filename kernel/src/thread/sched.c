@@ -37,12 +37,13 @@ static void maybe_preempt(sched_t *sched) {
 }
 
 static void handle_ipi_yield(UNUSED idt_frame_t *frame, UNUSED void *ctx) {
-    lapic_eoi();
-
     sched_t *sched = current_sched_ptr;
+    sched_disable_preempt();
     spin_lock_noirq(&sched->queue.lock);
     maybe_preempt(sched);
     spin_unlock_noirq(&sched->queue.lock);
+    lapic_eoi();
+    sched_enable_preempt();
 }
 
 void init_sched_global(void) {
@@ -114,6 +115,7 @@ static void enqueue(sched_t *sched, thread_t *thread) {
 
 static void do_wake(sched_t *sched, thread_t *thread, wake_reason_t reason) {
     ASSERT(sched == thread->sched);
+    thread->wake_reason = reason;
 
     if (thread->state == THREAD_CREATED) {
         thread->state = THREAD_WAITING;
@@ -122,7 +124,6 @@ static void do_wake(sched_t *sched, thread_t *thread, wake_reason_t reason) {
 
     if (thread->state == THREAD_WAITING) {
         thread->state = THREAD_RUNNING;
-        thread->wake_reason = reason;
         if (reason != WAKE_TIMEOUT) cancel_event(&thread->timeout_event);
 
         enqueue(sched, thread);
@@ -236,7 +237,7 @@ static void do_yield(sched_t *sched) {
 
     xsave();
     sched->current = next;
-    post_switch_func(sched, switch_thread(&current->regs, next->regs));
+    post_switch_func(current->sched, switch_thread(&current->regs, next->regs));
 }
 
 _Noreturn void sched_init_thread(thread_regs_t **prev_regs, thread_func_t func, void *ctx) {
@@ -321,6 +322,7 @@ hydrogen_error_t sched_wait(uint64_t timeout, spinlock_t *lock) {
     do_yield(sched);
 
     spin_unlock(&sched->queue.lock, state);
+    if (lock) spin_lock_noirq(lock);
 
     switch (thread->wake_reason) {
     case WAKE_EXPLICIT: return HYDROGEN_SUCCESS;
