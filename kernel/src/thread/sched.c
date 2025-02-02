@@ -321,6 +321,8 @@ _Noreturn void sched_exit(void) {
     ASSERT(thread != &sched->idle);
 
     spin_lock(&sched->queue.lock);
+
+    ASSERT(sched->preempt == 0);
     thread->state = THREAD_EXITING;
     do_yield(sched);
     __builtin_unreachable();

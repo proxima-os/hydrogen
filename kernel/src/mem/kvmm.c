@@ -6,8 +6,8 @@
 #include "mem/kmalloc.h"
 #include "mem/pmap.h"
 #include "string.h"
+#include "thread/mutex.h"
 #include "util/panic.h"
-#include "util/spinlock.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -34,7 +34,7 @@ static struct vmm_range *ranges;
 static struct vmm_range *free_ranges[MAX_ORDER - MIN_ORDER];
 static uint64_t free_bitmap;
 static struct vmm_range *allocations[ALLOC_TABLE_SIZE];
-static spinlock_t kvmm_lock;
+static mutex_t kvmm_lock;
 
 _Static_assert((ALLOC_TABLE_SIZE & ALLOC_TABLE_MASK) == 0, "Allocation table size must be a power of two");
 
@@ -157,7 +157,7 @@ void kvmm_add_range(uintptr_t start, size_t size) {
     ASSERT((size & PAGE_MASK) == 0);
     if (size == 0) return;
 
-    spin_lock_noirq(&kvmm_lock);
+    mutex_lock(&kvmm_lock);
 
     struct vmm_range *prev = NULL;
     struct vmm_range *next = ranges;
@@ -173,7 +173,7 @@ void kvmm_add_range(uintptr_t start, size_t size) {
     hydrogen_error_t error = merge_or_insert(prev, next, start, size);
     if (unlikely(error)) panic("kvmm_add_range failed (%d)", error);
 
-    spin_unlock_noirq(&kvmm_lock);
+    mutex_unlock(&kvmm_lock);
 }
 
 static uint64_t make_hash(uint64_t x) {
@@ -189,7 +189,7 @@ hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
     ASSERT((size & PAGE_MASK) == 0);
     int wanted_order = get_higher_p2(size);
 
-    spin_lock_noirq(&kvmm_lock);
+    mutex_lock(&kvmm_lock);
 
     int order = __builtin_ffsl(free_bitmap >> wanted_order);
     struct vmm_range *range;
@@ -202,11 +202,11 @@ hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
             while (range != NULL && range->size < size) range = range->next;
 
             if (unlikely(range == NULL)) {
-                spin_unlock_noirq(&kvmm_lock);
+                mutex_unlock(&kvmm_lock);
                 return HYDROGEN_OUT_OF_MEMORY;
             }
         } else {
-            spin_unlock_noirq(&kvmm_lock);
+            mutex_unlock(&kvmm_lock);
             return HYDROGEN_OUT_OF_MEMORY;
         }
     } else {
@@ -219,7 +219,7 @@ hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
     if (range->size != size) {
         alloc = kmalloc(sizeof(*alloc));
         if (unlikely(!alloc)) {
-            spin_unlock_noirq(&kvmm_lock);
+            mutex_unlock(&kvmm_lock);
             return HYDROGEN_OUT_OF_MEMORY;
         }
         memset(alloc, 0, sizeof(*alloc));
@@ -241,7 +241,7 @@ hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
 
     kind_insert(alloc, &allocations[make_hash(alloc->start) & ALLOC_TABLE_MASK]);
 
-    spin_unlock_noirq(&kvmm_lock);
+    mutex_unlock(&kvmm_lock);
     *out = alloc->start;
     return HYDROGEN_SUCCESS;
 }
@@ -265,7 +265,7 @@ void kvmm_free(uintptr_t start, size_t size) {
     ASSERT((start & PAGE_MASK) == 0);
     ASSERT((size & PAGE_MASK) == 0);
 
-    spin_lock_noirq(&kvmm_lock);
+    mutex_lock(&kvmm_lock);
 
     uint64_t hash = make_hash(start);
     struct vmm_range *range = get_range_from_alloc(hash, start, size);
@@ -280,7 +280,7 @@ void kvmm_free(uintptr_t start, size_t size) {
         free_insert(range, range->order);
     }
 
-    spin_unlock_noirq(&kvmm_lock);
+    mutex_unlock(&kvmm_lock);
 }
 
 hydrogen_error_t map_phys_mem(void **out, uint64_t addr, size_t size, int flags, cache_mode_t mode) {

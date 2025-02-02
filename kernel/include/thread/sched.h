@@ -50,6 +50,8 @@ struct thread {
     timer_event_t timeout_event;
     wake_reason_t wake_reason;
     bool preempted;
+    thread_t *priv_prev;
+    thread_t *priv_next;
 };
 
 struct sched {

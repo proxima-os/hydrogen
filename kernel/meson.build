@@ -17,6 +17,7 @@ executable(
     'src/mem/pmap.c',
     'src/mem/pmm.c',
     'src/mem/vmalloc.c',
+    'src/thread/mutex.c',
     'src/thread/sched.c',
     'src/thread/sched.S',
     'src/time/hpet.c',

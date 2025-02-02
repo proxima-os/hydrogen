@@ -6,13 +6,13 @@
 #include "mem/kvmm.h"
 #include "mem/pmap.h"
 #include "sections.h"
+#include "thread/mutex.h"
 #include "util/panic.h"
-#include "util/spinlock.h"
 #include <stdint.h>
 
 static page_t *free_pages;
 static pmm_stats_t pmm_stats;
-static spinlock_t pmm_lock;
+static mutex_t pmm_lock;
 
 _Static_assert(PAGE_SHIFT == 12, "PMM doesn't work with non-4k pages");
 
@@ -172,9 +172,9 @@ void init_pmm(void) {
 }
 
 void reclaim_loader_pages(void) {
-    spin_lock_noirq(&pmm_lock);
+    mutex_lock(&pmm_lock);
     free_by_type(LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE);
-    spin_unlock_noirq(&pmm_lock);
+    mutex_unlock(&pmm_lock);
 }
 
 uint64_t sym_to_phys(const void *symbol) {
@@ -182,9 +182,9 @@ uint64_t sym_to_phys(const void *symbol) {
 }
 
 pmm_stats_t pmm_get_stats(void) {
-    spin_lock_noirq(&pmm_lock);
+    mutex_lock(&pmm_lock);
     pmm_stats_t stats = pmm_stats;
-    spin_unlock_noirq(&pmm_lock);
+    mutex_unlock(&pmm_lock);
     return stats;
 }
 
@@ -195,16 +195,16 @@ static inline bool do_reserve(size_t count) {
 }
 
 bool pmm_reserve(size_t count) {
-    spin_lock_noirq(&pmm_lock);
+    mutex_lock(&pmm_lock);
     bool success = do_reserve(count);
-    spin_unlock_noirq(&pmm_lock);
+    mutex_unlock(&pmm_lock);
     return success;
 }
 
 void pmm_unreserve(size_t count) {
-    spin_lock_noirq(&pmm_lock);
+    mutex_lock(&pmm_lock);
     pmm_stats.available += count;
-    spin_unlock_noirq(&pmm_lock);
+    mutex_unlock(&pmm_lock);
 }
 
 static inline page_t *do_alloc(void) {
@@ -216,9 +216,9 @@ static inline page_t *do_alloc(void) {
 }
 
 page_t *pmm_alloc(void) {
-    spin_lock_noirq(&pmm_lock);
+    mutex_lock(&pmm_lock);
     page_t *page = do_alloc();
-    spin_unlock_noirq(&pmm_lock);
+    mutex_unlock(&pmm_lock);
     return page;
 }
 
@@ -230,29 +230,29 @@ static void do_free(page_t *page) {
 
 void pmm_free(page_t *page) {
     page->free.count = 1;
-    spin_lock_noirq(&pmm_lock);
+    mutex_lock(&pmm_lock);
     do_free(page);
-    spin_unlock_noirq(&pmm_lock);
+    mutex_unlock(&pmm_lock);
 }
 
 page_t *pmm_alloc_now(void) {
-    spin_lock_noirq(&pmm_lock);
+    mutex_lock(&pmm_lock);
 
     if (unlikely(!do_reserve(1))) {
-        spin_unlock_noirq(&pmm_lock);
+        mutex_unlock(&pmm_lock);
         return NULL;
     }
 
     page_t *page = do_alloc();
-    spin_unlock_noirq(&pmm_lock);
+    mutex_unlock(&pmm_lock);
     return page;
 }
 
 void pmm_free_now(page_t *page) {
     page->free.count = 1;
 
-    spin_lock_noirq(&pmm_lock);
+    mutex_lock(&pmm_lock);
     do_free(page);
     pmm_stats.available += 1;
-    spin_unlock_noirq(&pmm_lock);
+    mutex_unlock(&pmm_lock);
 }
