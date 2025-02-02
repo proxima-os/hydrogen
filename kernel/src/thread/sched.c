@@ -5,6 +5,7 @@
 #include "cpu/idt.h"
 #include "cpu/irqvecs.h"
 #include "cpu/lapic.h"
+#include "cpu/xsave.h"
 #include "hydrogen/error.h"
 #include "kernel/compiler.h"
 #include "mem/layout.h"
@@ -56,6 +57,7 @@ void init_sched_early(void) {
 static void reap_thread(thread_t *thread) {
     __atomic_fetch_sub(&thread->sched->threads, 1, __ATOMIC_RELAXED);
     free_kernel_stack(thread->stack);
+    xsave_free(thread->xsave);
     thread->state = THREAD_EXITED;
 }
 
@@ -145,10 +147,18 @@ hydrogen_error_t sched_create(thread_t **out, thread_func_t func, void *ctx, cpu
         return HYDROGEN_OUT_OF_MEMORY;
     }
 
+    void *xsave = xsave_alloc();
+    if (unlikely(!xsave)) {
+        free_kernel_stack(stack);
+        vmfree(thread, sizeof(*thread));
+        return HYDROGEN_OUT_OF_MEMORY;
+    }
+
     obj_init(&thread->base, &thread_ops);
     thread->state = THREAD_CREATED;
     thread->regs = stack - sizeof(thread_regs_t);
     thread->stack = stack;
+    thread->xsave = xsave;
     event_init(&thread->timeout_event, handle_timeout);
 
     thread->regs->rbx = (uintptr_t)func;
@@ -182,6 +192,7 @@ static void post_switch_func(sched_t *sched, thread_regs_t **prev_regs) {
     thread_t *prev = (void *)prev_regs - offsetof(thread_t, regs);
 
     current_cpu.tss.rsp[0] = (uintptr_t)current_thread->stack;
+    xrestore();
 
     if (prev->sched != sched) {
         // finish prev's migration
@@ -221,6 +232,7 @@ static void do_yield(sched_t *sched) {
 
     ASSERT(current != next);
 
+    xsave();
     sched->current = next;
     post_switch_func(sched, switch_thread(&current->regs, next->regs));
 }

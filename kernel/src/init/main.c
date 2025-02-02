@@ -2,6 +2,7 @@
 #include "cpu/exc.h"
 #include "cpu/idt.h"
 #include "cpu/lapic.h"
+#include "cpu/xsave.h"
 #include "drv/acpi.h"
 #include "drv/pic.h"
 #include "hydrogen/error.h"
@@ -47,6 +48,7 @@ USED _Noreturn void kernel_main(void) {
     init_time_local();
     init_sched_global();
     init_sched_early();
+    init_xsave();
 
     thread_t *init_thread;
     hydrogen_error_t error = sched_create(&init_thread, kernel_init, NULL, NULL);

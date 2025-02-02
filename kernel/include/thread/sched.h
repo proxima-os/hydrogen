@@ -47,6 +47,7 @@ struct thread {
     thread_state_t state;
     thread_regs_t *regs;
     void *stack;
+    void *xsave;
     timer_event_t timeout_event;
     wake_reason_t wake_reason;
     bool preempted;
