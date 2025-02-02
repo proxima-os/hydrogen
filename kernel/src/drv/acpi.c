@@ -70,6 +70,8 @@ static const rsdp_t *map_rsdp(size_t *len_out) {
         return NULL;
     }
 
+    size_t real_len;
+
     if (rsdp->revision >= 2) {
         size_t length = le32(rsdp->length);
         unmap_phys_mem(ptr, length);
@@ -86,30 +88,23 @@ static const rsdp_t *map_rsdp(size_t *len_out) {
             return NULL;
         }
 
-        printk("acpi: %S v%d @ 0x%X-0x%X (%S)\n",
-               rsdp->signature,
-               sizeof(rsdp->signature),
-               rsdp->revision,
-               addr,
-               addr + length,
-               rsdp->oem_id,
-               sizeof(rsdp->oem_id));
-
+        rsdp = ptr;
+        real_len = length;
         *len_out = length;
-        return ptr;
     } else {
-        printk("acpi: %S v%d @ 0x%X-0x%X (%S)\n",
-               rsdp->signature,
-               sizeof(rsdp->signature),
-               rsdp->revision,
-               addr,
-               addr + 20,
-               rsdp->oem_id,
-               sizeof(rsdp->oem_id));
-
+        real_len = 20;
         *len_out = 24;
-        return rsdp;
     }
+
+    printk("acpi: %S v%2x @ 0x%X-0x%X (%S)\n",
+           rsdp->signature,
+           sizeof(rsdp->signature),
+           rsdp->revision,
+           addr,
+           addr + real_len,
+           rsdp->oem_id,
+           sizeof(rsdp->oem_id));
+    return rsdp;
 }
 
 void init_acpi(void) {

@@ -19,7 +19,7 @@ hydrogen_error_t mutex_try_lock(mutex_t *mutex) {
 }
 
 void mutex_lock(mutex_t *mutex) {
-    hydrogen_error_t error = mutex_lock_timeout(mutex, 0);
+    UNUSED hydrogen_error_t error = mutex_lock_timeout(mutex, 0);
     ASSERT(error == HYDROGEN_SUCCESS);
 }
 
