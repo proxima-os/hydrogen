@@ -14,12 +14,6 @@ typedef union page {
         size_t count;
     } free;
     struct {
-        union page *prev;
-        union page *next;
-        struct free_obj *objs;
-        size_t free;
-    } heap;
-    struct {
         size_t references;
         union page *shootdown_next;
         bool autounreserve;

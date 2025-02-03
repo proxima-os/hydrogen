@@ -66,6 +66,7 @@ typedef struct {
     list_t queues[SCHED_PRIO_MAX + 1];
     int cur_queue;
     int preempt_level;
+    bool preempt_queued;
     uint64_t queue_map;
     uint64_t switch_time;
     timer_event_t switch_event;

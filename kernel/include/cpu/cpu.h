@@ -2,6 +2,8 @@
 
 #include "cpu/gdt.h"
 #include "cpu/tss.h"
+#include "mem/heap.h"
+#include "mem/pmm.h"
 #include "sched/sched.h"
 #include "util/list.h"
 #include "util/spinlock.h"
@@ -40,6 +42,8 @@ typedef struct cpu {
 
     struct pmap *pmap;
     list_node_t pmap_node;
+
+    heap_cache_t caches[PAGE_SHIFT + 1];
 } cpu_t;
 
 typedef struct {

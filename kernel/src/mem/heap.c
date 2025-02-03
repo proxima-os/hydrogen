@@ -1,7 +1,10 @@
 #include "mem/heap.h"
+#include "asm/irq.h"
 #include "compiler.h"
+#include "cpu/cpu.h"
 #include "mem/pmm.h"
 #include "sched/mutex.h"
+#include "sched/sched.h"
 #include "string.h"
 #include "util/list.h"
 #include <stddef.h>
@@ -15,7 +18,7 @@ struct free_obj {
     struct free_obj *next;
 };
 
-static page_t *heap_pages[PAGE_SHIFT + 1];
+static struct free_obj *objects[PAGE_SHIFT + 1];
 static mutex_t heap_lock[PAGE_SHIFT + 1];
 
 static int size_to_order(size_t size) {
@@ -23,42 +26,21 @@ static int size_to_order(size_t size) {
     return 64 - __builtin_clzl(size - 1);
 }
 
-static void *alloc_order(int order) {
-    if (unlikely(order > PAGE_SHIFT)) {
-        return NULL;
-    } else if (unlikely(order == PAGE_SHIFT)) {
-        page_t *page = alloc_page_now();
-
-        if (likely(page)) {
-            return page_to_virt(page);
-        } else {
-            return NULL;
-        }
-    }
-
+static void *do_alloc(int order) {
     mutex_lock(&heap_lock[order]);
 
-    page_t *page = heap_pages[order];
+    struct free_obj *obj = objects[order];
 
-    if (likely(page)) {
-        struct free_obj *obj = page->heap.objs;
-        page->heap.objs = obj->next;
-
-        if (unlikely(--page->heap.free == 0)) {
-            heap_pages[order] = page->heap.next;
-            if (heap_pages[order]) heap_pages[order]->heap.prev = NULL;
-        }
-
-        mutex_unlock(&heap_lock[order]);
-        return obj;
-    } else {
+    if (unlikely(!obj)) {
         mutex_unlock(&heap_lock[order]);
 
-        page = alloc_page_now();
+        page_t *page = alloc_page_now();
+        if (unlikely(!page)) return NULL;
+        obj = page_to_virt(page);
 
-        if (likely(page != NULL)) {
-            struct free_obj *objs = page_to_virt(page);
-            struct free_obj *last = objs;
+        if (likely(order != PAGE_SHIFT)) {
+            struct free_obj *objs = obj;
+            struct free_obj *last = obj;
             size_t size = 1ul << order;
 
             for (size_t i = size; i < PAGE_SIZE; i += size) {
@@ -67,22 +49,97 @@ static void *alloc_order(int order) {
                 last = obj;
             }
 
-            last->next = NULL;
-            page->heap.prev = NULL;
-            page->heap.objs = objs->next;
-            page->heap.free = (PAGE_SIZE >> order) - 1;
-
             mutex_lock(&heap_lock[order]);
-            page->heap.next = heap_pages[order];
-            if (page->heap.next) page->heap.next->heap.prev = page;
-            heap_pages[order] = page;
+            last->next = objects[order];
+            objects[order] = objs->next;
             mutex_unlock(&heap_lock[order]);
-
-            return objs;
-        } else {
-            return NULL;
         }
+    } else {
+        objects[order] = obj->next;
+        mutex_unlock(&heap_lock[order]);
     }
+
+    return obj;
+}
+
+#define MAGAZINE_SIZE 511
+
+struct magazine {
+    void *ptrs[MAGAZINE_SIZE];
+    struct magazine *next;
+};
+
+static void cache_swap(__seg_gs heap_cache_t *cache) {
+    magazine_t *c = cache->cur;
+    int cc = cache->count;
+    cache->cur = cache->prev;
+    cache->count = cache->prev_count;
+    cache->prev = c;
+    cache->prev_count = cc;
+}
+
+typedef struct {
+    magazine_t *full;
+    magazine_t *empty;
+    mutex_t lock;
+} depot_t;
+
+static depot_t depots[PAGE_SHIFT + 1];
+
+typedef __seg_gs heap_cache_t heap_cache_local_t;
+
+static void *alloc_order(int order) {
+    if (unlikely(order > PAGE_SHIFT)) {
+        return NULL;
+    }
+
+    heap_cache_local_t *cache = &current_cpu.caches[order];
+
+    disable_preempt();
+
+    if (likely(cache->count)) {
+        void *ptr = cache->cur->ptrs[--cache->count];
+        enable_preempt();
+        return ptr;
+    }
+
+    if (likely(cache->prev_count)) {
+        cache_swap(cache);
+        void *ptr = cache->cur->ptrs[--cache->count];
+        enable_preempt();
+        return ptr;
+    }
+
+    irq_state_t state = save_disable_irq();
+    enable_preempt();
+
+    depot_t *depot = &depots[order];
+    mutex_lock(&depot->lock);
+
+    if (likely(depot->full)) {
+        if (likely(cache->prev)) {
+            cache->prev->next = depot->empty;
+            depot->empty = cache->prev;
+        }
+
+        cache->prev = cache->cur;
+        cache->prev_count = cache->count;
+
+        cache->cur = depot->full;
+        depot->full = cache->cur->next;
+
+        cache->count = MAGAZINE_SIZE;
+        void *ptr = cache->cur->ptrs[--cache->count];
+
+        mutex_unlock(&depot->lock);
+        restore_irq(state);
+        return ptr;
+    }
+
+    mutex_unlock(&depot->lock);
+    restore_irq(state);
+
+    return do_alloc(order);
 }
 
 void *kalloc(size_t size) {
@@ -113,32 +170,77 @@ void *krealloc(void *ptr, size_t orig_size, size_t size) {
 void kfree(void *ptr, size_t size) {
     if (unlikely(ptr == NULL || ptr == ZERO_PTR)) return;
 
-    page_t *page = virt_to_page(ptr);
     int order = size_to_order(size);
 
-    if (likely(order != PAGE_SHIFT)) {
-        mutex_lock(&heap_lock[order]);
+    heap_cache_local_t *cache = &current_cpu.caches[order];
 
-        struct free_obj *obj = ptr;
-        obj->next = page->heap.objs;
-        page->heap.objs = obj;
+    disable_preempt();
 
-        if (unlikely(page->heap.free++ == 0)) {
-            page->heap.prev = NULL;
-            page->heap.next = heap_pages[order];
-            if (page->heap.next) page->heap.next->heap.prev = page;
-            heap_pages[order] = page;
-        } else if (unlikely(page->heap.free == (PAGE_SIZE >> order))) {
-            if (page->heap.prev) page->heap.prev->heap.next = page->heap.next;
-            else heap_pages[order] = page->heap.next;
+    if (likely(cache->cur) && likely(cache->count < MAGAZINE_SIZE)) {
+        cache->cur->ptrs[cache->count++] = ptr;
+        enable_preempt();
+        return;
+    }
 
-            if (page->heap.next) page->heap.next->heap.prev = page->heap.prev;
+    if (likely(cache->prev) && likely(cache->prev_count == 0)) {
+        cache_swap(cache);
+        cache->cur->ptrs[cache->count++] = ptr;
+        enable_preempt();
+        return;
+    }
 
-            free_page_now(page);
+    irq_state_t state = save_disable_irq();
+    enable_preempt();
+
+    depot_t *depot = &depots[order];
+    mutex_lock(&depot->lock);
+
+    if (likely(depot->empty)) {
+        if (likely(cache->prev)) {
+            cache->prev->next = depot->full;
+            depot->full = cache->prev;
         }
 
-        mutex_unlock(&heap_lock[order]);
-    } else {
-        free_page_now(page);
+        cache->prev = cache->cur;
+        cache->prev_count = cache->count;
+
+        cache->cur = depot->empty;
+        depot->empty = cache->cur->next;
+
+        cache->count = 0;
+        cache->cur->ptrs[cache->count++] = ptr;
+
+        mutex_unlock(&depot->lock);
+        restore_irq(state);
+        return;
     }
+
+    magazine_t *mag = do_alloc(size_to_order(sizeof(magazine_t)));
+
+    if (likely(mag)) {
+        if (likely(cache->prev)) {
+            cache->prev->next = depot->full;
+            depot->full = cache->prev;
+        }
+
+        cache->prev = cache->cur;
+        cache->prev_count = cache->count;
+
+        cache->cur = mag;
+        cache->count = 1;
+        cache->cur->ptrs[0] = ptr;
+
+        mutex_unlock(&depot->lock);
+        restore_irq(state);
+        return;
+    }
+
+    mutex_unlock(&depot->lock);
+    restore_irq(state);
+
+    struct free_obj *obj = ptr;
+    mutex_lock(&heap_lock[order]);
+    obj->next = objects[order];
+    objects[order] = obj;
+    mutex_unlock(&heap_lock[order]);
 }

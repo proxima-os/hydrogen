@@ -138,7 +138,10 @@ static void do_yield(sched_t *sched, bool preempt) {
         old_task->state = TASK_READY;
     }
 
-    if (sched->preempt_level != 0) return;
+    if (sched->preempt_level != 0) {
+        sched->preempt_queued = true;
+        return;
+    }
 
     uint64_t time = read_time();
     uint64_t diff = time - sched->switch_time;
@@ -314,15 +317,18 @@ void sched_yield(void) {
 }
 
 void disable_preempt(void) {
-    current_cpu.sched.preempt_level += 1;
+    asm volatile("incl %0" : "+m"(current_cpu.sched.preempt_level));
 }
 
 void enable_preempt(void) {
-    if (--current_cpu.sched.preempt_level == 0) {
+    bool zero;
+    asm volatile("decl %0" : "+m"(current_cpu.sched.preempt_level), "=@ccz"(zero));
+    if (zero && current_cpu.sched.preempt_queued) {
         sched_t *sched = &current_cpu_ptr->sched;
-        spin_lock_noirq(&sched->lock);
-        if (current_task->state != TASK_RUNNING) do_yield(sched, false);
-        spin_unlock_noirq(&sched->lock);
+        irq_state_t state = spin_lock(&sched->lock);
+        current_cpu.sched.preempt_queued = false;
+        do_yield(sched, false);
+        spin_unlock(&sched->lock, state);
     }
 }
 
