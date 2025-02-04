@@ -62,7 +62,7 @@ static void *do_alloc(int order) {
     return obj;
 }
 
-#define MAGAZINE_SIZE 511
+#define MAGAZINE_SIZE 31
 
 struct magazine {
     void *ptrs[MAGAZINE_SIZE];

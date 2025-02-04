@@ -139,7 +139,7 @@ void init_acpi_fully(void) {
     task_deref(task);
 
     // Make sure the caches are hot
-    for (int i = 0; i < 10; i++) {
+    /*for (int i = 0; i < 10; i++) {
         uacpi_status ret = uacpi_initialize(0);
         if (uacpi_unlikely_error(ret)) panic("uacpi: failed to initialize: %s", uacpi_status_to_string(ret));
 
@@ -147,7 +147,7 @@ void init_acpi_fully(void) {
         if (uacpi_unlikely_error(ret)) panic("uacpi: failed to load namespace: %s", uacpi_status_to_string(ret));
 
         uacpi_state_reset();
-    }
+    }*/
 
     uacpi_status ret = uacpi_initialize(0);
     if (uacpi_unlikely_error(ret)) panic("uacpi: failed to initialize: %s", uacpi_status_to_string(ret));
