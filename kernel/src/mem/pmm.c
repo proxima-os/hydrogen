@@ -114,7 +114,10 @@ void init_pmm(void) {
 
     for (uint64_t i = 0; i < mmap_req.response->entry_count; i++) {
         struct limine_memmap_entry *entry = mmap_req.response->entries[i];
-        if (entry->type != LIMINE_MEMMAP_USABLE && entry->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) continue;
+        if (entry->type != LIMINE_MEMMAP_USABLE && entry->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE &&
+            entry->type != LIMINE_MEMMAP_EXECUTABLE_AND_MODULES) {
+            continue;
+        }
 
         uint64_t start = entry->base;
         if (start >= pmm_addr_max) break;
@@ -122,6 +125,10 @@ void init_pmm(void) {
         uint64_t end = start + entry->length;
         if (end == virt_to_phys(page_array)) end += page_array_size;
         if (end > pmm_addr_max) end = pmm_addr_max;
+
+        start &= ~PAGE_MASK;
+        end = (end + PAGE_MASK) & ~PAGE_MASK;
+
         if (start >= end) continue;
 
         if (map_end < start) {
