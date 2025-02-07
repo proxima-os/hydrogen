@@ -111,7 +111,7 @@ static void rearm_timer(timer_event_t *event) {
             wrmsr(MSR_TSC_DEADLINE, get_tsc_value(event->time));
         } else {
             uint64_t cur = read_time();
-            uint64_t ticks = cur < event->time ? timeconv_apply(ns2lapic_conv, event->time - cur) + 1 : 0;
+            uint64_t ticks = cur < event->time ? timeconv_apply(ns2lapic_conv, event->time - cur) + 1 : 1;
             if (ticks > UINT32_MAX) ticks = UINT32_MAX;
             lapic_start_timer(ticks);
         }
