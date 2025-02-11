@@ -3,10 +3,10 @@
 #include "compiler.h"
 #include "cpu/cpu.h"
 #include "mem/pmm.h"
-#include "sched/mutex.h"
 #include "sched/sched.h"
 #include "string.h"
 #include "util/list.h"
+#include "util/spinlock.h"
 #include <stddef.h>
 
 #define ZERO_PTR ((void *)_Alignof(max_align_t))
@@ -19,7 +19,7 @@ struct free_obj {
 };
 
 static struct free_obj *objects[PAGE_SHIFT + 1];
-static mutex_t heap_lock[PAGE_SHIFT + 1];
+static spinlock_t heap_lock[PAGE_SHIFT + 1];
 
 static int size_to_order(size_t size) {
     if (size < MIN_ALLOC_SIZE) size = MIN_ALLOC_SIZE;
@@ -27,13 +27,9 @@ static int size_to_order(size_t size) {
 }
 
 static void *do_alloc(int order) {
-    mutex_lock(&heap_lock[order]);
-
     struct free_obj *obj = objects[order];
 
     if (unlikely(!obj)) {
-        mutex_unlock(&heap_lock[order]);
-
         page_t *page = alloc_page_now();
         if (unlikely(!page)) return NULL;
         obj = page_to_virt(page);
@@ -49,14 +45,11 @@ static void *do_alloc(int order) {
                 last = obj;
             }
 
-            mutex_lock(&heap_lock[order]);
             last->next = objects[order];
             objects[order] = objs->next;
-            mutex_unlock(&heap_lock[order]);
         }
     } else {
         objects[order] = obj->next;
-        mutex_unlock(&heap_lock[order]);
     }
 
     return obj;
@@ -81,7 +74,6 @@ static void cache_swap(__seg_gs heap_cache_t *cache) {
 typedef struct {
     magazine_t *full;
     magazine_t *empty;
-    mutex_t lock;
 } depot_t;
 
 static depot_t depots[PAGE_SHIFT + 1];
@@ -110,11 +102,10 @@ static void *alloc_order(int order) {
         return ptr;
     }
 
-    irq_state_t state = save_disable_irq();
     enable_preempt();
 
     depot_t *depot = &depots[order];
-    mutex_lock(&depot->lock);
+    irq_state_t state = spin_lock(&heap_lock[order]);
 
     if (likely(depot->full)) {
         if (likely(cache->prev)) {
@@ -131,15 +122,13 @@ static void *alloc_order(int order) {
         cache->count = MAGAZINE_SIZE;
         void *ptr = cache->cur->ptrs[--cache->count];
 
-        mutex_unlock(&depot->lock);
-        restore_irq(state);
+        spin_unlock(&heap_lock[order], state);
         return ptr;
     }
 
-    mutex_unlock(&depot->lock);
-    restore_irq(state);
-
-    return do_alloc(order);
+    void *ptr = do_alloc(order);
+    spin_unlock(&heap_lock[order], state);
+    return ptr;
 }
 
 void *kalloc(size_t size) {
@@ -167,6 +156,13 @@ void *krealloc(void *ptr, size_t orig_size, size_t size) {
     return ptr2;
 }
 
+static void *alloc_maybe_locked(int prelocked, int order) {
+    if (prelocked != order) spin_lock_noirq(&heap_lock[order]);
+    void *ptr = do_alloc(order);
+    if (prelocked != order) spin_unlock_noirq(&heap_lock[order]);
+    return ptr;
+}
+
 void kfree(void *ptr, size_t size) {
     if (unlikely(ptr == NULL || ptr == ZERO_PTR)) return;
 
@@ -189,11 +185,10 @@ void kfree(void *ptr, size_t size) {
         return;
     }
 
-    irq_state_t state = save_disable_irq();
     enable_preempt();
 
     depot_t *depot = &depots[order];
-    mutex_lock(&depot->lock);
+    irq_state_t state = spin_lock(&heap_lock[order]);
 
     if (likely(depot->empty)) {
         if (likely(cache->prev)) {
@@ -210,12 +205,11 @@ void kfree(void *ptr, size_t size) {
         cache->count = 0;
         cache->cur->ptrs[cache->count++] = ptr;
 
-        mutex_unlock(&depot->lock);
-        restore_irq(state);
+        spin_unlock(&heap_lock[order], state);
         return;
     }
 
-    magazine_t *mag = do_alloc(size_to_order(sizeof(magazine_t)));
+    magazine_t *mag = alloc_maybe_locked(order, size_to_order(sizeof(magazine_t)));
 
     if (likely(mag)) {
         if (likely(cache->prev)) {
@@ -230,17 +224,12 @@ void kfree(void *ptr, size_t size) {
         cache->count = 1;
         cache->cur->ptrs[0] = ptr;
 
-        mutex_unlock(&depot->lock);
-        restore_irq(state);
+        spin_unlock(&heap_lock[order], state);
         return;
     }
 
-    mutex_unlock(&depot->lock);
-    restore_irq(state);
-
     struct free_obj *obj = ptr;
-    mutex_lock(&heap_lock[order]);
     obj->next = objects[order];
     objects[order] = obj;
-    mutex_unlock(&heap_lock[order]);
+    spin_unlock(&heap_lock[order], state);
 }
