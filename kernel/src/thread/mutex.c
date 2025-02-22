@@ -46,7 +46,7 @@ hydrogen_error_t mutex_lock_timeout(mutex_t *mutex, uint64_t timeout) {
         current_thread->priv_prev = NULL;
         current_thread->priv_next = mutex->waiters;
         mutex->waiters = current_thread;
-        if (current_thread->priv_next) current_thread->priv_next->priv_next = current_thread;
+        if (current_thread->priv_next) current_thread->priv_next->priv_prev = current_thread;
 
         error = sched_wait(timeout, &mutex->lock);
 
