@@ -93,7 +93,7 @@ void init_pmm(void) {
 
     for (uint64_t i = mmap_req.response->entry_count; i > 0; i--) {
         struct limine_memmap_entry *entry = mmap_req.response->entries[i - 1];
-        if (entry->type != LIMINE_MEMMAP_USABLE && entry->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) continue;
+        if (entry->type != LIMINE_MEMMAP_USABLE) continue;
         if (entry->base >= pmm_addr_max) continue;
         if (entry->length == 0) continue;
 
