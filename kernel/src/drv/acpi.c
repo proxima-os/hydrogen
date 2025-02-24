@@ -21,7 +21,7 @@ typedef struct {
     uint32_t length;
     uint64_t xsdt_address;
     uint8_t ext_checksum;
-} __attribute__((packed, aligned(4))) rsdp_t;
+} __attribute__((packed)) rsdp_t;
 
 typedef struct {
     acpi_header_t header;
@@ -29,7 +29,7 @@ typedef struct {
         uint32_t entries32[0];
         uint64_t entries64[0];
     };
-} __attribute__((packed, aligned(4))) root_table_t;
+} __attribute__((packed)) root_table_t;
 
 static const acpi_header_t **tables;
 static size_t num_tables;

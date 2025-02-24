@@ -14,7 +14,7 @@ typedef struct {
     uint32_t oem_revision;
     uint8_t creator_id[4];
     uint32_t creator_revision;
-} __attribute__((packed, aligned(4))) acpi_header_t;
+} __attribute__((packed)) acpi_header_t;
 
 typedef struct {
     uint8_t address_space;
@@ -22,7 +22,7 @@ typedef struct {
     uint8_t bit_offset;
     uint8_t reserved;
     uint64_t address;
-} __attribute__((packed, aligned(4))) acpi_gas_t;
+} __attribute__((packed)) acpi_gas_t;
 
 typedef struct {
     acpi_header_t header;
@@ -31,13 +31,13 @@ typedef struct {
     uint8_t seq_num;
     uint16_t min_period;
     uint8_t oem_protection;
-} __attribute__((packed, aligned(4))) acpi_hpet_t;
+} __attribute__((packed)) acpi_hpet_t;
 
 typedef struct {
     acpi_header_t header;
     uint32_t lapic_addr;
     uint32_t flags;
-} __attribute__((packed, aligned(4))) acpi_madt_t;
+} __attribute__((packed)) acpi_madt_t;
 
 #define ACPI_MADT_PCAT_COMPAT 1
 
@@ -102,7 +102,7 @@ typedef struct {
             uint8_t reserved[3];
         } __attribute__((packed)) x2apic_nmi;
     };
-} __attribute__((packed, aligned(4))) acpi_madt_entry_t;
+} __attribute__((packed)) acpi_madt_entry_t;
 
 #define ACPI_MADT_FOREACH(madt, var)                                                                                   \
     for (const acpi_madt_entry_t *var = (const void *)((madt) + 1);                                                    \
