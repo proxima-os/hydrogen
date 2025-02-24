@@ -37,6 +37,10 @@ void init_idt(void) {
         idt[i].flags = 0x8e;
     }
 
+    // These are allowed to be called by userspace.
+    idt[VEC_DEBUG].flags |= 1 << 5;
+    idt[VEC_BREAKPOINT].flags |= 3 << 5;
+
     // These can share a stack because all of them are fatal. If they're nested, the previous one's stack will get
     // overwritten, but that's fine because it won't be returned to anyway.
     idt[VEC_NMI].ist = 1;
