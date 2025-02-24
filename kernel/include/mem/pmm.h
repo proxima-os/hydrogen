@@ -11,6 +11,12 @@ typedef union page {
         size_t count;
     } free;
     struct {
+        union page *prev;
+        union page *next;
+        struct slab_obj *objs;
+        size_t nfree;
+    } slab;
+    struct {
         union page *tlb_next; // list of pages to be freed during tlb shootdown
         size_t references;
     } anon;
