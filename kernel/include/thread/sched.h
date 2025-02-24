@@ -48,6 +48,9 @@ struct thread {
     thread_regs_t *regs;
     void *stack;
     void *xsave;
+    uint16_t ds, es, fs, gs;
+    uintptr_t fsbase;
+    uintptr_t gsbase;
     timer_event_t timeout_event;
     wake_reason_t wake_reason;
     bool preempted;

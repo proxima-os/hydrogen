@@ -197,6 +197,19 @@ static void post_switch_func(sched_t *sched, thread_regs_t **prev_regs) {
     current_cpu.tss.rsp[0] = (uintptr_t)current_thread->stack;
     xrestore();
 
+    if (current_thread->ds != prev->ds) write_ds(current_thread->ds);
+    if (current_thread->es != prev->es) write_es(current_thread->es);
+    if (current_thread->fs != prev->fs) write_fs(current_thread->fs);
+    if (current_thread->gs != prev->gs) write_gs_swapgs_wrapped(current_thread->gs);
+
+    if (current_thread->fs != prev->fs || current_thread->fsbase != prev->fsbase) {
+        wrmsr(MSR_FS_BASE, current_thread->fsbase);
+    }
+
+    if (current_thread->gs != prev->gs || current_thread->gsbase != prev->gsbase) {
+        wrmsr(MSR_KERNEL_GS_BASE, current_thread->gsbase);
+    }
+
     if (prev->sched != sched) {
         // finish prev's migration
         maybe_preempt(prev->sched);
@@ -236,6 +249,13 @@ static void do_yield(sched_t *sched) {
     ASSERT(current != next);
 
     xsave();
+    current->ds = read_ds();
+    current->es = read_es();
+    current->fs = read_fs();
+    current->gs = read_gs();
+    current->fsbase = rdmsr(MSR_FS_BASE);
+    current->gsbase = rdmsr(MSR_KERNEL_GS_BASE);
+
     sched->current = next;
     post_switch_func(current->sched, switch_thread(&current->regs, next->regs));
 }
