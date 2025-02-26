@@ -95,7 +95,6 @@ static void update_order(struct vmm_range *range) {
 
 static bool try_merge(
         struct vmm_range *prev,
-        struct vmm_range *cur,
         struct vmm_range *next,
         uintptr_t start,
         size_t size
@@ -110,10 +109,9 @@ static bool try_merge(
             prev->size += next->size;
             prev->next = next->next;
             if (prev->next) prev->next->prev = prev;
+            global_remove(next);
+            free_remove(next, next->order);
             kfree(next, sizeof(*next));
-            kfree(cur, sizeof(*cur));
-        } else if (cur) {
-            global_remove(cur);
         }
 
         update_order(prev);
@@ -123,10 +121,6 @@ static bool try_merge(
         next->size += size;
         update_order(next);
 
-        if (cur) {
-            global_remove(cur);
-        }
-
         return true;
     } else {
         return false;
@@ -134,7 +128,7 @@ static bool try_merge(
 }
 
 static hydrogen_error_t merge_or_insert(struct vmm_range *prev, struct vmm_range *next, uintptr_t start, size_t size) {
-    if (!try_merge(prev, NULL, next, start, size)) {
+    if (!try_merge(prev, next, start, size)) {
         struct vmm_range *range = kmalloc(sizeof(*range));
         if (unlikely(!range)) return HYDROGEN_SUCCESS;
         memset(range, 0, sizeof(*range));
@@ -274,16 +268,19 @@ void kvmm_free(uintptr_t start, size_t size) {
     struct vmm_range *prev = range->prev;
     struct vmm_range *next = range->next;
 
-    if (!try_merge(prev, range, next, start, size)) {
+    if (!try_merge(prev, next, start, size)) {
         range->free = true;
         range->order = get_lower_p2(range->size);
         free_insert(range, range->order);
+    } else {
+        global_remove(range);
+        kfree(range, sizeof(*range));
     }
 
     mutex_unlock(&kvmm_lock);
 }
 
-hydrogen_error_t map_phys_mem(void **out, uint64_t addr, size_t size, int flags, cache_mode_t mode) {
+hydrogen_error_t map_phys_mem(void **out, uint64_t addr, size_t size, int flags) {
     if (unlikely(size == 0)) return HYDROGEN_SUCCESS;
 
     uint64_t end = addr + (size - 1);
@@ -299,9 +296,10 @@ hydrogen_error_t map_phys_mem(void **out, uint64_t addr, size_t size, int flags,
     hydrogen_error_t error = kvmm_alloc(&vaddr, size);
     if (unlikely(error)) return error;
 
-    error = map_kernel_memory(vaddr, addr, size, flags, mode);
+    error = pmap_prepare(NULL, vaddr, size);
     if (unlikely(error)) return error;
 
+    pmap_map(NULL, vaddr, size, addr, flags);
     *out = (void *)(vaddr | offset);
     return HYDROGEN_SUCCESS;
 }
@@ -315,6 +313,6 @@ void unmap_phys_mem(const void *ptr, size_t size) {
     end |= PAGE_MASK;
     size = end - addr + 1;
 
-    unmap_memory(addr, size);
+    pmap_unmap(NULL, addr, size);
     kvmm_free(addr, size);
 }

@@ -1,10 +1,10 @@
 #include "util/logging.h"
 #include "asm/pio.h"
 #include "hydrogen/error.h"
+#include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "limine.h"
 #include "mem/kvmm.h"
-#include "mem/pmap.h"
 #include "mem/pmm.h"
 #include "sections.h"
 #include "string.h"
@@ -63,7 +63,12 @@ void init_fb_log(void) {
     if (term_width) {
         size_t size = term_pitch * term_height;
         void *ptr;
-        hydrogen_error_t error = map_phys_mem(&ptr, phys, size, PMAP_WRITE, CACHE_WRITE_COMBINE);
+        hydrogen_error_t error = map_phys_mem(
+                &ptr,
+                phys,
+                size,
+                HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE | HYDROGEN_MEM_WRITE_COMBINE
+        );
         if (unlikely(error)) printk("logging: failed to map framebuffer at 0x%X-0x%X (%d)\n", phys, phys + size, error);
         else framebuffer = ptr;
     }

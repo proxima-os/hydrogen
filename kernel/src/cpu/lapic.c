@@ -10,10 +10,10 @@
 #include "drv/acpi.h"
 #include "drv/pic.h"
 #include "hydrogen/error.h"
+#include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "limine.h"
 #include "mem/kvmm.h"
-#include "mem/pmap.h"
 #include "mem/vmalloc.h"
 #include "sections.h"
 #include "string.h"
@@ -96,8 +96,7 @@ void init_lapic_bsp(void) {
                 &xapic_regs,
                 msr_apic_base & (cpu_features.paddr_mask & ~0xfff),
                 0x1000,
-                PMAP_WRITE,
-                CACHE_NONE
+                HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE | HYDROGEN_MEM_NO_CACHE
         );
         if (unlikely(error)) panic("failed to map xapic registers (%d)", error);
     }
@@ -293,6 +292,7 @@ static void ap_init_thread_func(void *ptr) {
     init_sched_late();
 
     if (__atomic_fetch_sub(&smp_done, 1, __ATOMIC_SEQ_CST) == 1) {
+        // disabling preemption is unnecessary here since the current thread is guaranteed to be on a different cpu
         irq_state_t state = spin_lock(&data->init_lock);
         if (smp_init_thread) sched_wake(smp_init_thread);
         spin_unlock(&data->init_lock, state);

@@ -65,7 +65,6 @@ void init_exceptions(void) {
     idt_install(VEC_INVALID_SEGMENT, handle_fatal_exception, NULL);
     idt_install(VEC_STACK_FAULT, handle_fatal_exception, NULL);
     idt_install(VEC_GENERAL_FAULT, handle_fatal_exception, NULL);
-    idt_install(VEC_PAGE_FAULT, handle_fatal_exception, NULL);
     idt_install(VEC_FPU_ERROR, handle_fatal_exception, NULL);
     idt_install(VEC_ALIGNMENT_ERROR, handle_fatal_exception, NULL);
     idt_install(VEC_MACHINE_CHECK, handle_fatal_exception_paranoid, NULL);

@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef struct address_space address_space_t;
 typedef struct cpu cpu_t;
 typedef struct sched sched_t;
 typedef struct thread thread_t;
@@ -56,6 +57,7 @@ struct thread {
     bool preempted;
     thread_t *priv_prev;
     thread_t *priv_next;
+    address_space_t *address_space;
 };
 
 struct sched {

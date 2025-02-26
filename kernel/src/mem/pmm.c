@@ -1,6 +1,6 @@
 #include "mem/pmm.h"
 #include "cpu/cpu.h"
-#include "hydrogen/error.h"
+#include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "limine.h"
 #include "mem/kvmm.h"
@@ -52,10 +52,9 @@ static void free_by_type(uint64_t type) {
     }
 }
 
-static void map_segment(const void *start, const void *end, int flags) {
+static void map_segment(const void *start, const void *end, hydrogen_mem_flags_t flags) {
     uint64_t phys = sym_to_phys(start);
-    hydrogen_error_t error = map_kernel_memory((uintptr_t)start, phys, end - start, flags, CACHE_WRITEBACK);
-    if (unlikely(error)) panic("failed to map kernel segment (%d)", error);
+    pmap_init_map((uintptr_t)start, end - start, phys, flags);
 }
 
 void init_pmm(void) {
@@ -137,14 +136,12 @@ void init_pmm(void) {
 
         if (map_end < start) {
             if (map_start != map_end) {
-                hydrogen_error_t error = map_kernel_memory(
+                pmap_init_map(
                         (uintptr_t)phys_to_virt(map_start),
-                        map_start,
                         map_end - map_start,
-                        PMAP_WRITE,
-                        CACHE_WRITEBACK
+                        map_start,
+                        HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE
                 );
-                if (unlikely(error)) panic("failed to create hhdm (%d)", error);
             }
 
             map_start = start;
@@ -154,20 +151,18 @@ void init_pmm(void) {
     }
 
     if (map_start != map_end) {
-        hydrogen_error_t error = map_kernel_memory(
+        pmap_init_map(
                 (uintptr_t)phys_to_virt(map_start),
-                map_start,
                 map_end - map_start,
-                PMAP_WRITE,
-                CACHE_WRITEBACK
+                map_start,
+                HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE
         );
-        if (unlikely(error)) panic("failed to create hhdm (%d)", error);
     }
 
     // map kernel image
-    map_segment(&_start, &_erodata, 0);
-    map_segment(&_erodata, &_etext, PMAP_EXEC);
-    map_segment(&_etext, &_end, PMAP_WRITE);
+    map_segment(&_start, &_erodata, HYDROGEN_MEM_READ);
+    map_segment(&_erodata, &_etext, HYDROGEN_MEM_READ | HYDROGEN_MEM_EXEC);
+    map_segment(&_etext, &_end, HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE);
 
     pmap_init_switch();
 

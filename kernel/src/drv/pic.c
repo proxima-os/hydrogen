@@ -3,6 +3,7 @@
 #include "asm/pio.h"
 #include "drv/acpi.h"
 #include "hydrogen/error.h"
+#include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
 #include "mem/vmalloc.h"
@@ -75,7 +76,12 @@ void init_pic(void) {
             apic->next = ioapics;
             apic->gsi_base = entry->ioapic.gsi_base;
 
-            hydrogen_error_t error = map_phys_mem(&apic->regs, entry->ioapic.address, 0x14, PMAP_WRITE, CACHE_NONE);
+            hydrogen_error_t error = map_phys_mem(
+                    &apic->regs,
+                    entry->ioapic.address,
+                    0x14,
+                    HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE | HYDROGEN_MEM_NO_CACHE
+            );
             if (unlikely(error)) panic("failed to map i/o apic registers");
 
             apic->num_irqs = ((ioapic_read(apic, IOAPICVER) >> 16) & 0xff) + 1;

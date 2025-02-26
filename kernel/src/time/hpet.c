@@ -2,6 +2,7 @@
 #include "asm/irq.h"
 #include "asm/mmio.h"
 #include "drv/acpi.h"
+#include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "kernel/time.h"
 #include "mem/kvmm.h"
@@ -60,7 +61,12 @@ void init_hpet(void) {
         return;
     }
 
-    hydrogen_error_t error = map_phys_mem(&hpet_regs, hpet_table->base.address, HPET_REGS_SIZE, PMAP_WRITE, CACHE_NONE);
+    hydrogen_error_t error = map_phys_mem(
+            &hpet_regs,
+            hpet_table->base.address,
+            HPET_REGS_SIZE,
+            HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE | HYDROGEN_MEM_NO_CACHE
+    );
     if (unlikely(error)) {
         printk("hpet: failed to map registers at 0x%X (%d)", hpet_table->base.address, error);
         return;

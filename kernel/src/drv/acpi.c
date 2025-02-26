@@ -1,9 +1,9 @@
 #include "drv/acpi.h"
 #include "hydrogen/error.h"
+#include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "limine.h"
 #include "mem/kvmm.h"
-#include "mem/pmap.h"
 #include "mem/vmalloc.h"
 #include "sections.h"
 #include "string.h"
@@ -51,7 +51,7 @@ static const rsdp_t *map_rsdp(size_t *len_out) {
     uint64_t addr = rsdp_req.response->address;
 
     void *ptr;
-    hydrogen_error_t error = map_phys_mem(&ptr, addr, 24, 0, CACHE_WRITEBACK);
+    hydrogen_error_t error = map_phys_mem(&ptr, addr, 24, HYDROGEN_MEM_READ);
     if (unlikely(error)) {
         printk("acpi: failed to map rsdp header at 0x%X (%d)\n", rsdp_req.response->address, error);
         return NULL;
@@ -76,7 +76,7 @@ static const rsdp_t *map_rsdp(size_t *len_out) {
         size_t length = le32(rsdp->length);
         unmap_phys_mem(ptr, length);
 
-        error = map_phys_mem(&ptr, addr, length, 0, CACHE_WRITEBACK);
+        error = map_phys_mem(&ptr, addr, length, HYDROGEN_MEM_READ);
         if (unlikely(error)) {
             printk("acpi: failed to map rsdp at 0x%X-0x%X (%d)\n", addr, addr + length, error);
             return NULL;
@@ -147,12 +147,12 @@ void init_acpi(void) {
 
 hydrogen_error_t map_acpi_table(const acpi_header_t **out, uint64_t addr) {
     void *ptr;
-    hydrogen_error_t error = map_phys_mem(&ptr, addr, sizeof(acpi_header_t), 0, CACHE_WRITEBACK);
+    hydrogen_error_t error = map_phys_mem(&ptr, addr, sizeof(acpi_header_t), HYDROGEN_MEM_READ);
     if (unlikely(error)) return error;
     size_t length = le32(((const acpi_header_t *)ptr)->length);
     unmap_phys_mem(ptr, sizeof(acpi_header_t));
 
-    error = map_phys_mem(&ptr, addr, length, 0, CACHE_WRITEBACK);
+    error = map_phys_mem(&ptr, addr, length, HYDROGEN_MEM_READ);
     if (unlikely(error)) return error;
     const acpi_header_t *header = ptr;
 

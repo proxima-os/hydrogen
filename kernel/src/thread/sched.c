@@ -1,6 +1,8 @@
 #include "thread/sched.h"
 #include "asm/idle.h"
 #include "asm/irq.h"
+#include "asm/msr.h"
+#include "asm/segreg.h"
 #include "cpu/cpu.h"
 #include "cpu/idt.h"
 #include "cpu/irqvecs.h"
@@ -9,7 +11,10 @@
 #include "hydrogen/error.h"
 #include "kernel/compiler.h"
 #include "mem/layout.h"
+#include "mem/pmap.h"
 #include "mem/vmalloc.h"
+#include "mem/vmm.h"
+#include "string.h"
 #include "time/time.h"
 #include "util/object.h"
 #include "util/panic.h"
@@ -157,11 +162,13 @@ hydrogen_error_t sched_create(thread_t **out, thread_func_t func, void *ctx, cpu
         return HYDROGEN_OUT_OF_MEMORY;
     }
 
+    memset(thread, 0, sizeof(*thread));
     obj_init(&thread->base, &thread_ops);
     thread->state = THREAD_CREATED;
     thread->regs = stack - sizeof(thread_regs_t);
     thread->stack = stack;
     thread->xsave = xsave;
+    thread->address_space = NULL;
     event_init(&thread->timeout_event, handle_timeout);
 
     thread->regs->rbx = (uintptr_t)func;
@@ -196,6 +203,7 @@ static void post_switch_func(sched_t *sched, thread_regs_t **prev_regs) {
 
     current_cpu.tss.rsp[0] = (uintptr_t)current_thread->stack;
     xrestore();
+    pmap_switch(current_thread->address_space ? &current_thread->address_space->pmap : NULL);
 
     if (current_thread->ds != prev->ds) write_ds(current_thread->ds);
     if (current_thread->es != prev->es) write_es(current_thread->es);
@@ -214,12 +222,6 @@ static void post_switch_func(sched_t *sched, thread_regs_t **prev_regs) {
         // finish prev's migration
         maybe_preempt(prev->sched);
         spin_unlock_noirq(&prev->sched->queue.lock);
-    }
-
-    if (prev->state == THREAD_EXITING) {
-        prev->next = sched->reap_queue;
-        sched->reap_queue = prev;
-        do_wake(sched, sched->reaper, WAKE_EXPLICIT);
     }
 }
 
@@ -360,6 +362,12 @@ _Noreturn void sched_exit(void) {
 
     ASSERT(sched->preempt == 0);
     thread->state = THREAD_EXITING;
+
+    thread->next = sched->reap_queue;
+    sched->reap_queue = thread;
+
+    // The do_wake call here might yield, but that's fine since we don't need it to return.
+    do_wake(sched, sched->reaper, WAKE_EXPLICIT);
     do_yield(sched);
     __builtin_unreachable();
 }

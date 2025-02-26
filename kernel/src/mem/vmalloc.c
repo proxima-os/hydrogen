@@ -1,5 +1,6 @@
 #include "mem/vmalloc.h"
 #include "hydrogen/error.h"
+#include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "mem/kmalloc.h"
@@ -28,13 +29,14 @@ void *vmalloc(size_t size) {
         return NULL;
     }
 
-    error = alloc_kernel_memory(addr, size, PMAP_WRITE);
+    error = pmap_prepare(NULL, addr, size);
     if (unlikely(error)) {
         kvmm_free(addr, size);
         pmm_unreserve(pages);
         return NULL;
     }
 
+    pmap_alloc(addr, size, HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE);
     return (void *)addr;
 }
 
@@ -44,7 +46,7 @@ void vmfree(void *ptr, size_t size) {
     size = (size + PAGE_MASK) & ~PAGE_MASK;
     size_t pages = size >> PAGE_SHIFT;
 
-    unmap_memory((uintptr_t)ptr, size);
+    pmap_unmap(NULL, (uintptr_t)ptr, size);
     kvmm_free((uintptr_t)ptr, size);
     pmm_unreserve(pages);
 }

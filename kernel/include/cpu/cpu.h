@@ -1,6 +1,7 @@
 #pragma once
 
 #include "gdt.h"
+#include "mem/pmap.h"
 #include "thread/sched.h"
 #include "time/time.h"
 #include "tss.h"
@@ -59,6 +60,10 @@ typedef struct cpu {
     timer_event_t *events;
     spinlock_t events_lock;
     sched_t sched;
+
+    pmap_t *pmap;
+    struct cpu *pmap_prev;
+    struct cpu *pmap_next;
 } cpu_t;
 
 #define current_cpu (*(__seg_gs cpu_t *)0)

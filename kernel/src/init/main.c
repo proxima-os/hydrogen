@@ -10,6 +10,7 @@
 #include "limine.h"
 #include "mem/pmm.h"
 #include "sections.h"
+#include "sys/usermem.h"
 #include "thread/sched.h"
 #include "time/time.h"
 #include "util/logging.h"
@@ -40,6 +41,7 @@ USED _Noreturn void kernel_main(void) {
     init_exceptions();
     init_cpu(NULL);
     init_pmm();
+    init_usermem();
     init_fb_log();
     init_acpi();
     init_lapic_bsp();
