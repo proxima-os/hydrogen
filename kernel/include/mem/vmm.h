@@ -54,8 +54,6 @@ struct address_space {
 
 void vm_switch(address_space_t *space);
 
-hydrogen_error_t vm_unmap(address_space_t *space, uintptr_t addr, size_t size);
-
 void vm_obj_init(vm_object_t *obj, const vm_object_ops_t *ops);
 
 // `space` must be locked
