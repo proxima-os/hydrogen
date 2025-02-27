@@ -50,7 +50,7 @@ static void create_init_info(hydrogen_init_info_t *info) {
 
     // Create handle for physical memory
     pmem_vm_obj_init(&ram_object, 0, cpu_features.paddr_mask + 1);
-    error = create_handle(&ram_object.base.base, (uint64_t)-1 & ~HYDROGEN_MEMORY_RIGHT_PRIVATE, &info->ram_handle);
+    error = create_handle(&ram_object.base.base, (uint64_t)-1, &info->ram_handle);
     if (unlikely(error)) panic("failed to create ram handle (%d)", error);
 
     // Create handle for I/O access
@@ -103,15 +103,19 @@ static uintptr_t map_init_image(hydrogen_init_info_t *info) {
         elf_segment_t *segment = module->address + header->phoff + i * header->phentsize;
         if (segment->type != PT_LOAD) continue;
 
-        uintptr_t start = segment->vaddr & ~PAGE_MASK;
-        uintptr_t end = (segment->vaddr + segment->memsz + PAGE_MASK) & ~PAGE_MASK;
+        uintptr_t pgoff = segment->vaddr & PAGE_MASK;
+
+        uintptr_t start = segment->vaddr - pgoff;
         uintptr_t addr = start + slide;
-        size_t size = end - start;
+        size_t size = (segment->memsz + pgoff + PAGE_MASK) & ~PAGE_MASK;
         size_t offset = virt_to_phys(module->address) + (segment->offset & ~PAGE_MASK);
 
         hydrogen_mem_flags_t flags = HYDROGEN_MEM_EXACT | HYDROGEN_MEM_OVERWRITE | HYDROGEN_MEM_SHARED;
         if (segment->flags & PF_R) flags |= HYDROGEN_MEM_READ;
-        if (segment->flags & PF_W) flags |= HYDROGEN_MEM_WRITE;
+        if (segment->flags & PF_W) {
+            flags |= HYDROGEN_MEM_WRITE;
+            flags &= ~HYDROGEN_MEM_SHARED;
+        }
         if (segment->flags & PF_X) flags |= HYDROGEN_MEM_EXEC;
 
         if (segment->filesz) {
@@ -119,10 +123,16 @@ static uintptr_t map_init_image(hydrogen_init_info_t *info) {
                 panic("init image segment vaddr and offset do not have the same page offset");
             }
 
-            size_t cur = (segment->filesz + PAGE_MASK) & ~PAGE_MASK;
+            size_t real = segment->filesz + pgoff;
+            size_t cur = (real + PAGE_MASK) & ~PAGE_MASK;
 
             error = hydrogen_vm_map(NULL, &addr, cur, flags, info->ram_handle, offset);
             if (unlikely(error)) panic("failed to map init image segment (%d)", error);
+
+            if (cur != real && (segment->flags & PF_W) != 0) {
+                error = memset_user((void *)(addr + real), 0, cur - real);
+                if (unlikely(error)) panic("failed to clear init image segment tail (%d)", error);
+            }
 
             addr += cur;
             size -= cur;

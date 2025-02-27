@@ -295,7 +295,7 @@ static void do_cow_copy(address_space_t *space, uint64_t ent, uint64_t *ptr, uin
         dst->anon.references = 1;
 
         // Using memcpy_user here because the target page might not be in HHDM.
-        UNUSED hydrogen_error_t error = memcpy_user(page_to_virt(dst), (const void *)addr, PAGE_SIZE);
+        UNUSED hydrogen_error_t error = memcpy_user(page_to_virt(dst), (const void *)(addr & ~PAGE_MASK), PAGE_SIZE);
         ASSERT(!error); // The read-only mapping is currently present, so any page fault taken here is a bug.
 
         ent &= ~(PTE_ADDR_MASK | PTE_CACHE_BITS);

@@ -1,5 +1,7 @@
 #include "mem/obj/pmem.h"
 #include "hydrogen/error.h"
+#include "hydrogen/memory.h"
+#include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "mem/pmap.h"
 #include "mem/vmalloc.h"
@@ -14,24 +16,30 @@ static void pmem_vm_obj_free(object_t *ptr) {
 }
 
 static void pmem_vm_obj_post_map(vm_object_t *ptr, vm_region_t *region) {
-    pmem_vm_object_t *self = (pmem_vm_object_t *)ptr;
-    if (region->offset >= self->size) return;
+    if (region->flags & HYDROGEN_MEM_SHARED) {
+        pmem_vm_object_t *self = (pmem_vm_object_t *)ptr;
+        if (region->offset >= self->size) return;
 
-    uint64_t map_phys = self->addr + region->offset;
-    uint64_t map_size = self->size - region->offset;
-    uint64_t reg_size = region->tail - region->head + 1;
-    if (map_size > reg_size) map_size = reg_size;
+        uint64_t map_phys = self->addr + region->offset;
+        uint64_t map_size = self->size - region->offset;
+        uint64_t reg_size = region->tail - region->head + 1;
+        if (map_size > reg_size) map_size = reg_size;
 
-    pmap_map(&region->space->pmap, region->head, map_size, map_phys, region->flags);
+        pmap_map(&region->space->pmap, region->head, map_size, map_phys, region->flags);
+    }
 }
 
 static hydrogen_error_t pmem_vm_obj_get_phys(
-        UNUSED vm_object_t *ptr,
-        UNUSED uint64_t *out,
+        vm_object_t *ptr,
+        uint64_t *out,
         UNUSED vm_region_t *region,
-        UNUSED size_t offset
+        size_t offset
 ) {
-    return HYDROGEN_NOT_FOUND;
+    pmem_vm_object_t *self = (pmem_vm_object_t *)ptr;
+    if (unlikely(offset >= self->size)) return HYDROGEN_NOT_FOUND;
+
+    *out = self->addr + offset;
+    return HYDROGEN_SUCCESS;
 }
 
 const vm_object_ops_t pmem_vm_object_ops = {
