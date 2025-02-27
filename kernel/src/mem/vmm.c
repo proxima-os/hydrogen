@@ -176,7 +176,7 @@ static void tree_add(address_space_t *space, vm_region_t *region) {
             parent->balance -= 1;
 
             if (parent->balance == -2) {
-                if (region->balance < 0) {
+                if (region->balance > 0) {
                     parent = rotate_left_right(space, parent, region);
                 } else {
                     parent = rotate_right(space, parent, region);
@@ -186,7 +186,7 @@ static void tree_add(address_space_t *space, vm_region_t *region) {
             parent->balance += 1;
 
             if (parent->balance == 2) {
-                if (region->balance > 0) {
+                if (region->balance < 0) {
                     parent = rotate_right_left(space, parent, region);
                 } else {
                     parent = rotate_left(space, parent, region);
