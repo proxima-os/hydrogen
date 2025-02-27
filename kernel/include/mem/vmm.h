@@ -29,6 +29,7 @@ struct vm_object {
 };
 
 struct vm_region {
+    address_space_t *space;
     vm_region_t *parent;
     vm_region_t *left;
     vm_region_t *right;

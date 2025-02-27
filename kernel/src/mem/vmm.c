@@ -406,6 +406,7 @@ hydrogen_error_t clone_region(vm_region_t **out, address_space_t *space, vm_regi
     if (unlikely(!dst)) return HYDROGEN_OUT_OF_MEMORY;
     memset(dst, 0, sizeof(*dst));
 
+    dst->space = space;
     dst->head = src->head;
     dst->tail = src->tail;
     dst->flags = src->flags;
@@ -624,6 +625,7 @@ static hydrogen_error_t remove_overlapping_regions(
             if (unlikely(!nreg)) return HYDROGEN_OUT_OF_MEMORY;
             memset(nreg, 0, sizeof(*nreg));
 
+            nreg->space = space;
             nreg->head = tail + 1;
             nreg->tail = cur->tail;
             nreg->flags = cur->flags;
@@ -748,6 +750,7 @@ static hydrogen_error_t do_map(
     if (unlikely(!region)) return HYDROGEN_OUT_OF_MEMORY;
     memset(region, 0, sizeof(*region));
 
+    region->space = space;
     region->head = head;
     region->tail = tail;
     region->flags = flags & VM_REGION_FLAG_MASK;
@@ -1005,12 +1008,14 @@ static hydrogen_error_t do_remap(
             ASSERT(cur->prev == prev);
             ASSERT(cur->next == next);
 
+            regions[0].space = space;
             regions[0].head = head;
             regions[0].tail = tail;
             regions[0].flags = cur->flags;
             regions[0].object = cur->object;
             regions[0].offset = cur->offset + (head - cur->head);
 
+            regions[1].space = space;
             regions[1].head = tail + 1;
             regions[1].tail = cur->tail;
             regions[1].flags = cur->flags;
@@ -1041,6 +1046,7 @@ static hydrogen_error_t do_remap(
             region = regions++;
             extra_regions--;
 
+            region->space = space;
             region->head = head;
             region->tail = cur->tail;
             region->flags = cur->flags;
@@ -1063,6 +1069,7 @@ static hydrogen_error_t do_remap(
             cur = regions++;
             extra_regions--;
 
+            cur->space = space;
             cur->head = tail + 1;
             cur->tail = region->tail;
             cur->flags = region->flags;
