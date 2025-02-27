@@ -382,7 +382,9 @@ static void handle_page_fault(idt_frame_t *frame, void *ctx) {
         mutex_unlock(&space->lock);
         signal_user_fault(addr, frame, HYDROGEN_PAGE_FAULT);
         return;
-    } else if (!(frame->error_code & PF_ERROR_USER) && addr >= min_kernel_address) {
+    } else if (!(frame->error_code & PF_ERROR_USER)) {
+        if (addr < min_kernel_address) handle_fatal_exception(frame, ctx);
+
         size_t top_idx = (addr >> pt_top_shift) & 511;
         mutex_lock(&kernel_pt_lock);
 
