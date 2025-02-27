@@ -673,7 +673,7 @@ static hydrogen_error_t remove_overlapping_regions(
         } else if (cur->tail > tail) {
             // Needs to be truncated and moved
             ASSERT(cur->next == next);
-            process_unmap(space, cur, tail + 1, cur->tail);
+            process_unmap(space, cur, cur->head, tail);
 
             tree_mov(space, cur, tail + 1);
 
