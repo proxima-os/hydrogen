@@ -60,7 +60,7 @@ hydrogen_error_t hydrogen_vm_create(hydrogen_handle_t *vm);
  * \param[out] vm The newly created address space.
  * \param[in] src The address space to clone. If `NULL`, use the current address space.
  */
-hydrogen_error_t hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t *src);
+hydrogen_error_t hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t src);
 
 /**
  * Create a new memory mapping.

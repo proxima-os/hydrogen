@@ -7,6 +7,7 @@
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "mem/kmalloc.h"
+#include "mem/obj/pmem.h"
 #include "mem/pmap.h"
 #include "mem/pmm.h"
 #include "mem/vmalloc.h"
@@ -381,8 +382,8 @@ static bool is_address_space(object_t *obj) {
     return obj->ops == &address_space_ops;
 }
 
-static bool is_vm_object(UNUSED object_t *obj) {
-    return false; // TODO
+static bool is_vm_object(object_t *obj) {
+    return obj->ops == &pmem_vm_object_ops.base;
 }
 
 static hydrogen_error_t get_vm(hydrogen_handle_t handle, address_space_t **out, uint64_t rights) {
@@ -494,7 +495,7 @@ static void clone_pmap(address_space_t *dst, address_space_t *src) {
     }
 }
 
-hydrogen_error_t hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t *srch) {
+hydrogen_error_t hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t srch) {
     address_space_t *src;
     hydrogen_error_t error = get_vm(srch, &src, HYDROGEN_VM_RIGHT_CLONE);
     if (unlikely(error)) return error;
