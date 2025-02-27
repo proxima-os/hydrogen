@@ -13,7 +13,7 @@ _Noreturn void handle_fatal_exception(idt_frame_t *frame, UNUSED void *ctx) {
           "r8 =0x%16X r9 =0x%16X r10=0x%16X r11=0x%16X\n"
           "r12=0x%16X r13=0x%16X r14=0x%16X r15=0x%16X\n"
           "rfl=0x%16X cr2=0x%16X cr3=0x%16X err=0x%16X\n"
-          "cr0=0x%X cr4=0x%X cr8=0x%X cs=%4X ss=%4X",
+          "cr0=0x%X cr4=0x%X cr8=0x%X cs=0x%4X ss=0x%4X",
           frame->vector,
           frame->rip,
           frame->rax,
