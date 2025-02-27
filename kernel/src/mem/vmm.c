@@ -530,7 +530,7 @@ static vm_region_t *get_next(address_space_t *space, vm_region_t *prev) {
 
 static bool need_manual_reserve(hydrogen_mem_flags_t flags, vm_object_t *obj) {
     if (!(flags & VM_PERM_MASK)) return false;
-    if ((flags & (HYDROGEN_MEM_SHARED | HYDROGEN_MEM_WRITE)) == HYDROGEN_MEM_WRITE) return true;
+    if (!(flags & HYDROGEN_MEM_SHARED)) return true;
 
     return obj == NULL;
 }
