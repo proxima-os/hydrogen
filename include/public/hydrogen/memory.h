@@ -1,6 +1,10 @@
 #ifndef HYDROGEN_MEMORY_H
 #define HYDROGEN_MEMORY_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * Omitting a protection flag does not guarantee that the corresponding access type is not allowed. Specifically,
  * if any protection flag is given, `HYDROGEN_MEM_READ` and/or `HYDROGEN_MEM_EXEC` may be implied.
@@ -17,5 +21,9 @@ typedef enum {
     HYDROGEN_MEM_EXACT = 1 << 6,         /* Fail if the mapping cannot be placed at the specified address. */
     HYDROGEN_MEM_OVERWRITE = 1 << 7,     /* If combined with HYDROGEN_MEM_EXACT, remove existing mappings. */
 } hydrogen_mem_flags_t;
+
+#ifdef __cplusplus
+};
+#endif
 
 #endif /* HYDROGEN_MEMORY_H */
