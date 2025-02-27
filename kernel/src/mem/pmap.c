@@ -208,7 +208,7 @@ static void signal_user_fault(UNUSED uintptr_t addr, idt_frame_t *frame, hydroge
 
 static hydrogen_error_t get_obj_phys(uint64_t *out, vm_region_t *region, uintptr_t addr) {
     vm_object_t *object = (vm_object_t *)region->object.object;
-    size_t offset = region->offset + (addr - region->head);
+    size_t offset = region->offset + ((addr & ~PAGE_MASK) - region->head);
 
     return ((const vm_object_ops_t *)object->base.ops)->get_phys(object, out, region, offset);
 }
