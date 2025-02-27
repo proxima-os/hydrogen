@@ -2,6 +2,7 @@
 
 #include "hydrogen/error.h"
 #include "time/time.h"
+#include "util/handle.h"
 #include "util/object.h"
 #include "util/spinlock.h"
 #include <stddef.h>
@@ -58,6 +59,7 @@ struct thread {
     thread_t *priv_prev;
     thread_t *priv_next;
     address_space_t *address_space;
+    namespace_t *namespace;
 };
 
 struct sched {

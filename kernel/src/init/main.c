@@ -13,6 +13,7 @@
 #include "sys/usermem.h"
 #include "thread/sched.h"
 #include "time/time.h"
+#include "util/handle.h"
 #include "util/logging.h"
 #include "util/object.h"
 #include "util/panic.h"
@@ -27,6 +28,9 @@ static void kernel_init(UNUSED void *ctx) {
     init_sched_late();
     init_smp();
     reclaim_loader_pages();
+
+    hydrogen_error_t error = create_namespace_raw(&current_thread->namespace);
+    if (unlikely(error)) panic("failed to create init namespace (%d)", error);
 
     pmm_stats_t stats = pmm_get_stats();
     printk("mem: %Uk total, %Uk available, %Uk free\n",

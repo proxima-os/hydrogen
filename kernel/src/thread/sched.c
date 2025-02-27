@@ -71,6 +71,10 @@ static void reap_thread(thread_t *thread) {
         obj_deref(&thread->address_space->base);
     }
 
+    if (thread->namespace) {
+        obj_deref(&thread->namespace->base);
+    }
+
     thread->state = THREAD_EXITED;
 }
 

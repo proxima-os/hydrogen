@@ -29,6 +29,7 @@ executable(
     'src/time/kvmclock.c',
     'src/time/time.c',
     'src/time/tsc.c',
+    'src/util/handle.c',
     'src/util/logging.c',
     'src/util/object.c',
     'src/util/panic.c',

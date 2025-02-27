@@ -1,10 +1,11 @@
 #pragma once
 
 #include "hydrogen/error.h"
-#include "thread/sched.h"
 #include "util/spinlock.h"
 #include <stdbool.h>
 #include <stdint.h>
+
+typedef struct thread thread_t;
 
 typedef struct {
     char state;
