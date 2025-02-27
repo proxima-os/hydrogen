@@ -109,16 +109,16 @@ static uintptr_t map_init_image(hydrogen_init_info_t *info) {
         size_t size = end - start;
         size_t offset = virt_to_phys(module->address) + (segment->offset & ~PAGE_MASK);
 
-        if ((segment->vaddr & PAGE_MASK) != (segment->offset & PAGE_MASK)) {
-            panic("init image segment vaddr and offset do not have the same page offset");
-        }
-
         hydrogen_mem_flags_t flags = HYDROGEN_MEM_EXACT | HYDROGEN_MEM_OVERWRITE | HYDROGEN_MEM_SHARED;
         if (segment->flags & PF_R) flags |= HYDROGEN_MEM_READ;
         if (segment->flags & PF_W) flags |= HYDROGEN_MEM_WRITE;
         if (segment->flags & PF_X) flags |= HYDROGEN_MEM_EXEC;
 
         if (segment->filesz) {
+            if ((segment->vaddr & PAGE_MASK) != (segment->offset & PAGE_MASK)) {
+                panic("init image segment vaddr and offset do not have the same page offset");
+            }
+
             size_t cur = (segment->filesz + PAGE_MASK) & ~PAGE_MASK;
 
             error = hydrogen_vm_map(NULL, &addr, cur, flags, info->ram_handle, offset);
@@ -129,7 +129,7 @@ static uintptr_t map_init_image(hydrogen_init_info_t *info) {
         }
 
         if (size) {
-            error = hydrogen_vm_map(NULL, &addr, size, flags, NULL, 0);
+            error = hydrogen_vm_map(NULL, &addr, size, flags & ~HYDROGEN_MEM_SHARED, NULL, 0);
             if (unlikely(error)) panic("failed to map init image segment (%d)", error);
         }
     }
