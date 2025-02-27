@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kernel/compiler.h"
+#include "kernel/time.h"
 #include <stdint.h>
 
 typedef struct {
@@ -36,7 +37,7 @@ static inline uint64_t kvmclock_read(kvmclock_info_t *info) {
         version = new_version;
     }
 
-    uint64_t time = __builtin_ia32_rdtsc() - tsc_timestamp;
+    uint64_t time = read_tsc_value() - tsc_timestamp;
 
     if (shift >= 0) time <<= shift;
     else time >>= -shift;

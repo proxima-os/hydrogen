@@ -35,7 +35,7 @@ typedef struct {
 
 __attribute__((noinline)) static void calib_measure(calib_measurement_t *out) {
     out->nanoseconds = read_time_unlocked();
-    out->tsc = __builtin_ia32_rdtsc();
+    out->tsc = read_tsc_value();
     out->lapic = UINT32_MAX - lapic_read_timer();
 }
 

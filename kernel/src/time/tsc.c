@@ -9,7 +9,7 @@ static timeconv_t tsc2ns_conv;
 static timeconv_t ns2tsc_conv;
 
 static uint64_t read_tsc(void) {
-    return timeconv_apply(tsc2ns_conv, __builtin_ia32_rdtsc());
+    return timeconv_apply(vdso_info.time.tsc, read_tsc_value());
 }
 
 static uint64_t ns_to_tsc(uint64_t value) {
