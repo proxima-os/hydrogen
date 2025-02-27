@@ -4,6 +4,7 @@
 #include "hydrogen/memory.h"
 #include "mem/pmap.h"
 #include "thread/mutex.h"
+#include "util/handle.h"
 #include "util/object.h"
 #include <stdint.h>
 
@@ -37,7 +38,7 @@ struct vm_region {
     uintptr_t tail;
     int balance;
     hydrogen_mem_flags_t flags;
-    vm_object_t *object;
+    handle_data_t object;
     size_t offset; // For object mappings
 };
 
@@ -51,19 +52,8 @@ struct address_space {
     size_t num_reserved; // the number of pages that are reserved for this address space
 };
 
-hydrogen_error_t vm_create(address_space_t **out);
-hydrogen_error_t vm_clone(address_space_t **out, address_space_t *src);
 void vm_switch(address_space_t *space);
 
-hydrogen_error_t vm_map(
-        address_space_t *space,
-        uintptr_t *addr,
-        size_t size,
-        hydrogen_mem_flags_t flags,
-        vm_object_t *obj,
-        size_t offset
-);
-hydrogen_error_t vm_remap(address_space_t *space, uintptr_t addr, size_t size, hydrogen_mem_flags_t flags);
 hydrogen_error_t vm_unmap(address_space_t *space, uintptr_t addr, size_t size);
 
 void vm_obj_init(vm_object_t *obj, const vm_object_ops_t *ops);

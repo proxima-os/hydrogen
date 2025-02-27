@@ -207,8 +207,10 @@ static void signal_user_fault(UNUSED uintptr_t addr, idt_frame_t *frame, hydroge
 }
 
 static hydrogen_error_t get_obj_phys(uint64_t *out, vm_region_t *region, uintptr_t addr) {
+    vm_object_t *object = (vm_object_t *)region->object.object;
     size_t offset = region->offset + (addr - region->head);
-    return ((const vm_object_ops_t *)region->object->base.ops)->get_phys(region->object, out, region, offset);
+
+    return ((const vm_object_ops_t *)object->base.ops)->get_phys(object, out, region, offset);
 }
 
 static uint64_t flags_to_pte(hydrogen_mem_flags_t flags) {
@@ -234,7 +236,7 @@ static uint64_t flags_to_map_pte(hydrogen_mem_flags_t flags) {
 static hydrogen_error_t try_create_mapping(vm_region_t *region, uintptr_t addr, uint64_t *ptr) {
     uint64_t entry = flags_to_map_pte(region->flags) | PTE_USER;
 
-    if (region->object) {
+    if (region->object.object) {
         uint64_t phys;
         hydrogen_error_t error = get_obj_phys(&phys, region, addr);
         if (unlikely(error)) return error;
