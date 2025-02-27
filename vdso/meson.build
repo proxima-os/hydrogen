@@ -4,8 +4,6 @@ vdso = shared_library(
     'io.c',
     'log.c',
     'memory.c',
-    'start.c',
-    'start.S',
     'thread.c',
     'time.c',
     c_args: ['-ffreestanding', '-fno-stack-check', '-fno-stack-protector'],

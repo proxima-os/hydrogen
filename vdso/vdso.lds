@@ -1,5 +1,3 @@
-ENTRY(_start)
-
 VERSION {
     {
     global:
