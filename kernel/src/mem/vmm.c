@@ -688,7 +688,7 @@ static hydrogen_error_t remove_overlapping_regions(
             vm_region_t *n = cur->next;
 
             tree_del(space, cur);
-            list_del(space, cur->prev, cur);
+            list_del(space, cur->prev, n);
 
             if (cur->object.object) obj_deref(cur->object.object);
             vmfree(cur, sizeof(*cur));
