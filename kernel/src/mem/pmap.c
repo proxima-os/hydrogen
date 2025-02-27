@@ -468,6 +468,7 @@ hydrogen_error_t pmap_create(pmap_t *out) {
 static void destroy_table(uint64_t *table, size_t max, int level) {
     for (size_t i = 0; i < max; i++) {
         uint64_t entry = table[i];
+        if (!entry) continue;
 
         if (level != 0 && (entry & PTE_HUGE) == 0) {
             destroy_table(phys_to_virt(entry & PTE_ADDR_MASK), 512, level - 1);
