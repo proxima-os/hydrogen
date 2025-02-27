@@ -54,7 +54,7 @@ static _Noreturn void handle_ipi_panic(UNUSED idt_frame_t *frame, UNUSED void *c
 
 void init_exceptions(void) {
     idt_install(VEC_DIVIDE_ERROR, handle_fatal_exception, NULL);
-    idt_install(VEC_DEBUG, handle_fatal_exception, NULL);
+    idt_install(VEC_DEBUG, handle_fatal_exception_paranoid, NULL);
     idt_install(VEC_NMI, handle_fatal_exception_paranoid, NULL);
     idt_install(VEC_BREAKPOINT, handle_fatal_exception, NULL);
     idt_install(VEC_OVERFLOW, handle_fatal_exception, NULL);

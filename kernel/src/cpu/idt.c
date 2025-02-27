@@ -43,6 +43,7 @@ void init_idt(void) {
 
     // These can share a stack because all of them are fatal. If they're nested, the previous one's stack will get
     // overwritten, but that's fine because it won't be returned to anyway.
+    idt[VEC_DEBUG].ist = 1;
     idt[VEC_NMI].ist = 1;
     idt[VEC_DOUBLE_FAULT].ist = 1;
     idt[VEC_MACHINE_CHECK].ist = 1;
