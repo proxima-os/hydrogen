@@ -177,7 +177,7 @@ hydrogen_error_t hydrogen_handle_create(
     }
 
     if (!is_namespace(data.object)) {
-        error = do_create(ns, data.object, rights, handle);
+        error = do_create(ns, data.object, rights & data.rights, handle);
     } else {
         error = HYDROGEN_INVALID_ARGUMENT;
     }
