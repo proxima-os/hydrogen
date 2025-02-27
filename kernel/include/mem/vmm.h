@@ -53,6 +53,7 @@ struct address_space {
 
 hydrogen_error_t vm_create(address_space_t **out);
 hydrogen_error_t vm_clone(address_space_t **out, address_space_t *src);
+void vm_switch(address_space_t *space);
 
 hydrogen_error_t vm_map(
         address_space_t *space,

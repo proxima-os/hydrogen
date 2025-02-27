@@ -66,6 +66,11 @@ static void reap_thread(thread_t *thread) {
     __atomic_fetch_sub(&thread->sched->threads, 1, __ATOMIC_RELAXED);
     free_kernel_stack(thread->stack);
     xsave_free(thread->xsave);
+
+    if (thread->address_space) {
+        obj_deref(&thread->address_space->base);
+    }
+
     thread->state = THREAD_EXITED;
 }
 

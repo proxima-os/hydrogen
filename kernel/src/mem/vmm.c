@@ -1,4 +1,6 @@
 #include "mem/vmm.h"
+#include "asm/irq.h"
+#include "cpu/cpu.h"
 #include "hydrogen/error.h"
 #include "hydrogen/memory.h"
 #include "kernel/compiler.h"
@@ -485,6 +487,18 @@ hydrogen_error_t vm_clone(address_space_t **out, address_space_t *src) {
 
     *out = dst;
     return HYDROGEN_SUCCESS;
+}
+
+void vm_switch(address_space_t *space) {
+    address_space_t *old = current_thread->address_space;
+    current_thread->address_space = space;
+
+    irq_state_t state = save_disable_irq();
+    pmap_switch(space ? &space->pmap : NULL);
+    restore_irq(state);
+
+    if (space) obj_ref(&space->base);
+    if (old) obj_deref(&old->base);
 }
 
 static void get_nonoverlap_bounds(
