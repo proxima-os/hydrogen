@@ -310,6 +310,8 @@ static void tree_mov(address_space_t *space, vm_region_t *region, uintptr_t new_
         tree_del(space, region);
         region->head = new_head;
         tree_add(space, region);
+    } else {
+        region->head = new_head;
     }
 }
 
