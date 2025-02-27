@@ -58,7 +58,7 @@ static hydrogen_error_t do_create(namespace_t *ns, object_t *obj, uint64_t right
     size_t i = ns->alloc_start;
 
     while (i < ns->capacity) {
-        if (ns->data[i].object) goto success;
+        if (!ns->data[i].object) goto success;
         i += 1;
     }
 
