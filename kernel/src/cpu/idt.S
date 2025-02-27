@@ -67,6 +67,7 @@ idt_stub_common:
 
     .cfi_endproc
 
+    cli
     mov 0x00(%rsp), %rax
     mov 0x08(%rsp), %rbx
     mov 0x10(%rsp), %rcx
