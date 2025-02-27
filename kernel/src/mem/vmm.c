@@ -251,6 +251,7 @@ retry: {
         if (region->right) region->right->parent = region;
         region->balance = orig_balance;
 
+        *field = successor;
         goto retry;
     }
 

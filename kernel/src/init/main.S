@@ -14,7 +14,6 @@ _entry:
     .cfi_undefined rip
     .cfi_undefined rsp
 
-    popfq # Limine puts a 0 on the stack, use it to reset rflags
     lea .Lstack_top(%rip), %rsp
     call kernel_main
     ud2
