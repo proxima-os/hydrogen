@@ -21,6 +21,7 @@ if get_option('qemu_debugcon')
     add_project_arguments('-DHYDROGEN_QEMU_DEBUGCON=1', language: 'c')
 endif
 
+subdir('include/public')
 subdir('lib')
 subdir('vdso')
 subdir('kernel')
