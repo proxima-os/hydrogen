@@ -52,6 +52,7 @@ executable(
     ],
     install: true,
     install_dir: '/boot',
+    install_mode: 'rw-r--r--',
     link_args: ['-nostdlib', '-static', '-T' + (meson.current_source_dir() / 'kernel.lds')],
     link_depends: files('kernel.lds'),
     sources: lib_sources,
