@@ -812,12 +812,12 @@ static uintptr_t get_head(vm_region_t *region) {
     return region ? region->head : max_user_address;
 }
 
-hydrogen_error_t hydrogen_vm_map(
+hydrogen_error_t vm_map(
         hydrogen_handle_t vm,
         uintptr_t *addr,
         size_t size,
         hydrogen_mem_flags_t flags,
-        hydrogen_handle_t object,
+        handle_data_t *obj,
         size_t offset
 ) {
     if (size == 0) return HYDROGEN_INVALID_ARGUMENT;
@@ -830,12 +830,11 @@ hydrogen_error_t hydrogen_vm_map(
         return HYDROGEN_INVALID_ARGUMENT;
     }
 
-    if (!object) {
+    if (!obj->object) {
         if (flags & (VM_CACHE_MODE_MASK | HYDROGEN_MEM_SHARED)) return HYDROGEN_INVALID_ARGUMENT;
     }
 
     address_space_t *space;
-    handle_data_t obj;
 
     {
         uint64_t rights = HYDROGEN_VM_RIGHT_MAP;
@@ -844,22 +843,11 @@ hydrogen_error_t hydrogen_vm_map(
         if (unlikely(error)) return error;
     }
 
-    if (object) {
-        hydrogen_error_t error = resolve(object, &obj, is_vm_object, flags_to_rights(flags));
-        if (unlikely(error)) {
-            if (vm) obj_deref(&space->base);
-            return error;
-        }
-    } else {
-        obj = (handle_data_t){};
-    }
-
     mutex_lock(&space->lock);
 
-    hydrogen_error_t error = do_map_exact(space, wanted, size, flags, &obj, offset);
+    hydrogen_error_t error = do_map_exact(space, wanted, size, flags, obj, offset);
     if (!error || (flags & HYDROGEN_MEM_EXACT)) {
         mutex_unlock(&space->lock);
-        if (object) obj_deref(obj.object);
         if (vm) obj_deref(&space->base);
         return error;
     }
@@ -873,7 +861,6 @@ hydrogen_error_t hydrogen_vm_map(
 
         if (!next) {
             mutex_unlock(&space->lock);
-            if (object) obj_deref(obj.object);
             if (vm) obj_deref(&space->base);
             return HYDROGEN_OUT_OF_MEMORY;
         }
@@ -885,12 +872,33 @@ hydrogen_error_t hydrogen_vm_map(
     uintptr_t head = get_tail(prev) + 1;
     uintptr_t tail = head + (size - 1);
 
-    error = do_map(space, head, tail, flags, &obj, offset, prev, next);
+    error = do_map(space, head, tail, flags, obj, offset, prev, next);
     mutex_unlock(&space->lock);
-    if (object) obj_deref(obj.object);
     if (vm) obj_deref(&space->base);
 
     if (likely(!error)) *addr = head;
+    return error;
+}
+
+hydrogen_error_t hydrogen_vm_map(
+        hydrogen_handle_t vm,
+        uintptr_t *addr,
+        size_t size,
+        hydrogen_mem_flags_t flags,
+        hydrogen_handle_t object,
+        size_t offset
+) {
+    handle_data_t obj;
+
+    if (object) {
+        hydrogen_error_t error = resolve(object, &obj, is_vm_object, flags_to_rights(flags));
+        if (unlikely(error)) return error;
+    } else {
+        obj = (handle_data_t){};
+    }
+
+    hydrogen_error_t error = vm_map(vm, addr, size, flags, &obj, offset);
+    if (object) obj_deref(obj.object);
     return error;
 }
 
