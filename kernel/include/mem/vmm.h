@@ -20,7 +20,7 @@ typedef struct address_space address_space_t;
 typedef struct {
     object_ops_t base;
     // WARNING: Do not rely on `region` staying valid after this call returns!
-    hydrogen_error_t (*on_map)(vm_object_t *self, vm_region_t *region);
+    void (*post_map)(vm_object_t *self, vm_region_t *region);
     hydrogen_error_t (*get_phys)(vm_object_t *self, uint64_t *out, vm_region_t *region, size_t offset);
 } vm_object_ops_t;
 

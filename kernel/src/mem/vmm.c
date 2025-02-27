@@ -754,17 +754,6 @@ static hydrogen_error_t do_map(
     region->object = *obj;
     region->offset = offset;
 
-    if (obj->object) {
-        vm_object_t *object = (vm_object_t *)obj->object;
-
-        error = ((const vm_object_ops_t *)object->base.ops)->on_map(object, region);
-        if (unlikely(error)) {
-            vmfree(region, sizeof(*region));
-            if (reserve) pmm_unreserve(pages);
-            return error;
-        }
-    }
-
     error = remove_overlapping_regions(space, &prev, &next, head, tail);
     if (unlikely(error)) {
         vmfree(region, sizeof(*region));
@@ -777,6 +766,11 @@ static hydrogen_error_t do_map(
 
     space->num_mapped += pages;
     if (reserve) space->num_reserved += pages;
+
+    if (obj->object) {
+        vm_object_t *object = (vm_object_t *)obj->object;
+        ((const vm_object_ops_t *)object->base.ops)->post_map(object, region);
+    }
 
     return HYDROGEN_SUCCESS;
 }
