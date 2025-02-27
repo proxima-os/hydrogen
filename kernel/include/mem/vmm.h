@@ -53,15 +53,6 @@ struct address_space {
     size_t num_reserved; // the number of pages that are reserved for this address space
 };
 
-hydrogen_error_t vm_map(
-        hydrogen_handle_t vm,
-        uintptr_t *addr,
-        size_t size,
-        hydrogen_mem_flags_t flags,
-        handle_data_t *object,
-        size_t offset
-);
-
 void vm_switch(address_space_t *space);
 
 void vm_obj_init(vm_object_t *obj, const vm_object_ops_t *ops);
