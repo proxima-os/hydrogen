@@ -1,7 +1,10 @@
 #pragma once
 
+#include "util/object.h"
 #include <stdarg.h>
 #include <stddef.h>
+
+extern object_t klog_object;
 
 void init_fb_log(void);
 

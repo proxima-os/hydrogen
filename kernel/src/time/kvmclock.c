@@ -3,16 +3,15 @@
 #include "asm/msr.h"
 #include "cpu/cpu.h"
 #include "kernel/kvmclock.h"
+#include "kernel/vdso.h"
 #include "mem/pmm.h"
 #include "string.h"
 #include "time/time.h"
 #include "util/logging.h"
 #include <stdint.h>
 
-static kvmclock_info_t kvmclock_info;
-
 static uint64_t do_read_kvmclock(void) {
-    return kvmclock_read(&kvmclock_info);
+    return kvmclock_read(&vdso_info.time.kvmclock);
 }
 
 void init_kvmclock(void) {
@@ -32,8 +31,8 @@ void init_kvmclock(void) {
         return;
     }
 
-    kvmclock_info.version = 1;
-    wrmsr(msr, sym_to_phys(&kvmclock_info) | 1);
+    vdso_info.time.kvmclock.version = 1;
+    wrmsr(msr, sym_to_phys(&vdso_info.time.kvmclock) | 1);
 
     if (timer_cleanup) timer_cleanup();
 
@@ -41,5 +40,6 @@ void init_kvmclock(void) {
     read_time_unlocked = do_read_kvmclock;
     timer_cleanup = NULL;
 
+    vdso_info.time.style = VDSO_TIME_KVMCLOCK;
     printk("time: kvmclock is available\n");
 }

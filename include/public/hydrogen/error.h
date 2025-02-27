@@ -20,6 +20,9 @@ typedef enum {
     HYDROGEN_ALREADY_EXISTS,   /**< Already exists. */
     HYDROGEN_INVALID_HANDLE,   /**< Invalid handle. */
     HYDROGEN_NO_PERMISSION,    /**< The operation is not allowed on the specified handle. */
+    HYDROGEN_NOT_FOUND,        /**< Does not exist. */
+    HYDROGEN_INVALID_SYSCALL,  /**< Invalid system call. */
+    HYDROGEN_INVALID_POINTER,  /**< Invalid pointer. */
 } hydrogen_error_t;
 
 #ifdef __cplusplus

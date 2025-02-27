@@ -1,3 +1,16 @@
+stripped_vdso = custom_target(
+    'stripped-vdso',
+    command: [strip, '@INPUT@', '-o@OUTPUT@'],
+    input: vdso,
+    output: 'stripped-vdso.so',
+)
+vdso_object = custom_target(
+    'vdso-object',
+    command: [objcopy, '@INPUT@', '@OUTPUT@', '-Ibinary', '-Oelf64-x86-64', '--rename-section=.data=.vdso'],
+    input: stripped_vdso,
+    output: 'vdso.o',
+)
+
 executable(
     'hydrogen',
     'src/cpu/cpu.c',
@@ -14,14 +27,18 @@ executable(
     'src/drv/pic.c',
     'src/init/main.c',
     'src/init/main.S',
+    'src/mem/obj/pmem.c',
     'src/mem/kmalloc.c',
     'src/mem/kvmm.c',
     'src/mem/pmap.c',
     'src/mem/pmm.c',
     'src/mem/vmalloc.c',
     'src/mem/vmm.c',
+    'src/sys/syscall.c',
+    'src/sys/syscall.S',
     'src/sys/usermem.c',
     'src/sys/usermem.S',
+    'src/sys/vdso.c',
     'src/thread/mutex.c',
     'src/thread/sched.c',
     'src/thread/sched.S',
@@ -30,6 +47,7 @@ executable(
     'src/time/time.c',
     'src/time/tsc.c',
     'src/util/handle.c',
+    'src/util/io.c',
     'src/util/logging.c',
     'src/util/object.c',
     'src/util/panic.c',
@@ -55,5 +73,6 @@ executable(
     install_mode: 'rw-r--r--',
     link_args: ['-nostdlib', '-static', '-T' + (meson.current_source_dir() / 'kernel.lds')],
     link_depends: files('kernel.lds'),
+    objects: vdso_object,
     sources: lib_sources,
 )

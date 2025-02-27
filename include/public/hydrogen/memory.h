@@ -31,10 +31,11 @@ typedef enum {
     HYDROGEN_MEM_OVERWRITE = 1 << 7,     /**< If combined with #HYDROGEN_MEM_EXACT, remove existing mappings. */
 } hydrogen_mem_flags_t;
 
-#define HYDROGEN_MEMORY_RIGHT_READ (1ull << 0)  /**< Allow this object to be explicitly mapped for reading. */
-#define HYDROGEN_MEMORY_RIGHT_WRITE (1ull << 1) /**< Allow this object to be mapped for shared writing. */
-#define HYDROGEN_MEMORY_RIGHT_EXEC (1ull << 2)  /**< Allow this object to be explicitly mapped for execution. */
-#define HYDROGEN_MEMORY_RIGHT_CACHE (1ull << 3) /**< Allow this object to be mapped with a non-default cache mode. */
+#define HYDROGEN_MEMORY_RIGHT_READ (1ull << 0)    /**< Allow this object to be explicitly mapped for reading. */
+#define HYDROGEN_MEMORY_RIGHT_WRITE (1ull << 1)   /**< Allow this object to be mapped for shared writing. */
+#define HYDROGEN_MEMORY_RIGHT_EXEC (1ull << 2)    /**< Allow this object to be explicitly mapped for execution. */
+#define HYDROGEN_MEMORY_RIGHT_CACHE (1ull << 3)   /**< Allow this object to be mapped with a non-default cache mode. */
+#define HYDROGEN_MEMORY_RIGHT_PRIVATE (1ull << 4) /**< Allow private mappings to be backed by this object. */
 
 #define HYDROGEN_VM_RIGHT_MAP (1ull << 0)   /**< Allow new mappings to be created in this address space. */
 #define HYDROGEN_VM_RIGHT_REMAP (1ull << 1) /**< Allow mapping permissions to be changed in this address space. */
@@ -84,6 +85,17 @@ hydrogen_error_t hydrogen_vm_map(
         hydrogen_handle_t object,
         size_t offset
 );
+
+/**
+ * Map the vDSO.
+ *
+ * This call fails if the vDSO has already been mapped in the given address space, or if the address space has ever
+ * been used to create a thread.
+ *
+ * \param[in] vm The address space to map the vDSO in. If `NULL`, use the current address space.
+ * \param[out] addr The base address of the vDSO image.
+ */
+hydrogen_error_t hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr);
 
 /**
  * Change the permissions of existing mappings.

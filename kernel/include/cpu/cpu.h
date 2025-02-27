@@ -49,7 +49,8 @@ typedef struct {
 } cpu_features_t;
 
 typedef struct cpu {
-    struct tss tss; // this needs to be the first thing in cpu_t, because its offset is used by ASM
+    uintptr_t syscall_entry_tmp; // must be the 1st thing in cpu_t, because its offset is used by ASM
+    struct tss tss;              // must be the 2nd thing in cpu_t, because its offset is used by ASM
     struct cpu *self;
     struct cpu *next;
     uint32_t id;

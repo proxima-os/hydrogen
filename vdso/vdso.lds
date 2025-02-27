@@ -1,0 +1,46 @@
+ENTRY(_start)
+
+VERSION {
+    {
+    global:
+        hydrogen_get_time;
+        hydrogen_namespace_create;
+        hydrogen_handle_create;
+        hydrogen_handle_close;
+        hydrogen_page_size;
+        hydrogen_vm_create;
+        hydrogen_vm_clone;
+        hydrogen_vm_map;
+        hydrogen_vm_remap;
+        hydrogen_vm_unmap;
+    local: *;
+    };
+}
+
+PHDRS {
+    text    PT_LOAD FILEHDR PHDRS FLAGS(5);
+    dynamic PT_DYNAMIC FLAGS(4);
+}
+
+SECTIONS {
+    HIDDEN(vdso_info = . - CONSTANT(MAXPAGESIZE));
+
+    . = SIZEOF_HEADERS;
+    .hash          : { *(.hash) } :text
+    .gnu.hash      : { *(.gnu.hash) }
+    .dynsym        : { *(.dynsym) }
+    .dynstr        : { *(.dynstr) }
+    .gnu.version   : { *(.gnu.version) }
+    .gnu.version_d : { *(.gnu.version_d) }
+    .gnu.version_r : { *(.gnu.version_r) }
+    .dynamic       : { *(.dynamic) } :text :dynamic
+    .rodata        : { *(.rodata .rodata.*) } :text
+    .rela          : { *(.rela .rela.*) }
+    .text          : { *(.text .text.*) }
+    .data          : { *(.bss .bss.* .data .data.* .got .got.*) }
+
+    ASSERT(SIZEOF(.data) == 0, "vdso contains writable data section")
+    ASSERT(SIZEOF(.rela) == 0, "vdso contains relocations")
+
+    /DISCARD/ : { *(.eh_frame* .note*) }
+}

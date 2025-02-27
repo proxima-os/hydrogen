@@ -7,6 +7,7 @@
 #include "cpu/irqvecs.h"
 #include "cpu/lapic.h"
 #include "kernel/time.h"
+#include "kernel/vdso.h"
 #include "thread/sched.h"
 #include "time/hpet.h"
 #include "time/kvmclock.h"
@@ -163,6 +164,8 @@ static void handle_timer_irq(UNUSED idt_frame_t *frame, UNUSED void *ctx) {
 void init_time(void) {
     if (!cpu_features.tsc_invariant) use_short_calibration();
 
+    vdso_info.time.style = VDSO_TIME_SYSCALL;
+
     // Initialize timers in order; the less desirable ones go first
     init_hpet();
     init_kvmclock();
@@ -288,4 +291,8 @@ void cancel_event(timer_event_t *event) {
     }
 
     spin_unlock(&event->lock, state);
+}
+
+uint64_t hydrogen_get_time(void) {
+    return read_time();
 }

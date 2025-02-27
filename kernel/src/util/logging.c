@@ -1,6 +1,7 @@
 #include "util/logging.h"
 #include "asm/pio.h"
 #include "hydrogen/error.h"
+#include "hydrogen/log.h"
 #include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "limine.h"
@@ -8,10 +9,18 @@
 #include "mem/pmm.h"
 #include "sections.h"
 #include "string.h"
+#include "sys/syscall.h"
+#include "sys/usermem.h"
+#include "util/handle.h"
+#include "util/object.h"
 #include "util/spinlock.h"
+#include <stdint.h>
 
 #define LOG_BUF_SIZE (1ul << HYDROGEN_LOG_BUF_SHIFT)
 #define LOG_BUF_MASK (LOG_BUF_SIZE - 1)
+
+// this does not need ops as it will never be freed
+object_t klog_object = {.references = 1};
 
 static unsigned char klog_buf[LOG_BUF_SIZE];
 static size_t flush_idx;
@@ -323,6 +332,37 @@ size_t snprintk(void *buffer, size_t size, const char *format, ...) {
     size_t n = vsnprintk(buffer, size, format, args);
     va_end(args);
     return n;
+}
+
+static bool is_log_object(object_t *obj) {
+    return obj == &klog_object;
+}
+
+hydrogen_error_t hydrogen_log_write(hydrogen_handle_t log, const void *data, size_t size) {
+    uint8_t buffer[1024];
+
+    if (unlikely(size == 0)) return HYDROGEN_INVALID_ARGUMENT;
+
+    hydrogen_error_t error = verify_user_pointer(data, size);
+    if (unlikely(error)) return error;
+
+    error = resolve(log, NULL, is_log_object, HYDROGEN_LOG_RIGHT_WRITE);
+    if (unlikely(error)) return error;
+
+    while (size > 0) {
+        size_t cur = sizeof(buffer);
+        if (cur > size) cur = size;
+
+        hydrogen_error_t error = memcpy_user(buffer, data, cur);
+        if (unlikely(error)) return error;
+
+        klog_write(buffer, cur);
+
+        data += cur;
+        size -= cur;
+    }
+
+    return error;
 }
 
 // From

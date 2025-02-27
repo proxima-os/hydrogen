@@ -8,6 +8,9 @@ project(
     version: '0.1.0',
 )
 
+objcopy = find_program('objcopy')
+strip = find_program('strip')
+
 pub_inc = include_directories('include' / 'public')
 priv_inc = include_directories('include' / 'private')
 
@@ -19,4 +22,5 @@ if get_option('qemu_debugcon')
 endif
 
 subdir('lib')
+subdir('vdso')
 subdir('kernel')

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cpu/idt.h"
 #include "hydrogen/error.h"
 #include "time/time.h"
 #include "util/handle.h"
@@ -60,6 +61,7 @@ struct thread {
     thread_t *priv_next;
     address_space_t *address_space;
     namespace_t *namespace;
+    idt_frame_t *user_regs;
 };
 
 struct sched {
@@ -99,9 +101,6 @@ void sched_wake(thread_t *thread);
 // `timeout` is the value of `read_time()` at which the wait should time out. 0 is infinity.
 // if `lock` is non-NULL, it is unlocked in a way that prevents lost wakeups. it must be re-locked manually.
 hydrogen_error_t sched_wait(uint64_t timeout, spinlock_t *lock);
-
-// `THREAD_RUNNING` -> `THREAD_EXITING`
-_Noreturn void sched_exit(void);
 
 void *alloc_kernel_stack(void);
 void free_kernel_stack(void *stack);

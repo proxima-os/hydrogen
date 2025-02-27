@@ -56,6 +56,12 @@ void setup_idt(void) {
 USED void idt_dispatch(idt_frame_t *frame) {
     if (cpu_features.smap) asm("clac");
 
+    if (frame->cs & 3) {
+        // This is always safe. Paranoid entry points sometimes delay their swapgs, but that only happens
+        // if the interrupted CPL is 0.
+        current_thread->user_regs = frame;
+    }
+
     idt_handler_t handler = handlers[frame->vector].handler;
     ASSERT(handler != NULL);
     handler(frame, handlers[frame->vector].ctx);

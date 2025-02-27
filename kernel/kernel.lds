@@ -22,6 +22,18 @@ SECTIONS {
     . = ALIGN(CONSTANT(MAXPAGESIZE));
     _etext = .;
     .data : { *(.data .data.*) } :data
+
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+    .vdso : {
+        __vdso_start = .;
+        vdso_info = .;
+        . += CONSTANT(MAXPAGESIZE);
+        vdso_image = .;
+        KEEP(*(.vdso))
+        . = ALIGN(CONSTANT(MAXPAGESIZE));
+        __vdso_end = .;
+    } :data
+
     .bss : { *(.bss .bss.*) } :data
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));

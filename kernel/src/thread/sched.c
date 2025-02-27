@@ -9,6 +9,7 @@
 #include "cpu/lapic.h"
 #include "cpu/xsave.h"
 #include "hydrogen/error.h"
+#include "hydrogen/thread.h"
 #include "kernel/compiler.h"
 #include "mem/layout.h"
 #include "mem/pmap.h"
@@ -278,7 +279,7 @@ _Noreturn void sched_init_thread(thread_regs_t **prev_regs, thread_func_t func, 
     enable_irq();
 
     func(ctx);
-    sched_exit();
+    hydrogen_thread_exit();
 }
 
 void sched_yield(void) {
@@ -362,7 +363,7 @@ hydrogen_error_t sched_wait(uint64_t timeout, spinlock_t *lock) {
     }
 }
 
-_Noreturn void sched_exit(void) {
+__attribute__((__noreturn__)) void hydrogen_thread_exit(void) {
     sched_t *sched = current_sched_ptr;
     thread_t *thread = sched->current;
     ASSERT(thread != &sched->idle);

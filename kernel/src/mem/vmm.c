@@ -12,6 +12,7 @@
 #include "mem/pmm.h"
 #include "mem/vmalloc.h"
 #include "string.h"
+#include "sys/vdso.h"
 #include "thread/mutex.h"
 #include "util/handle.h"
 #include "util/object.h"
@@ -386,7 +387,7 @@ static bool is_vm_object(object_t *obj) {
     return obj->ops == &pmem_vm_object_ops.base;
 }
 
-static hydrogen_error_t get_vm(hydrogen_handle_t handle, address_space_t **out, uint64_t rights) {
+hydrogen_error_t get_vm(hydrogen_handle_t handle, address_space_t **out, uint64_t rights) {
     if (handle) {
         handle_data_t data;
         hydrogen_error_t error = resolve(handle, &data, is_address_space, rights);
@@ -541,6 +542,11 @@ void vm_switch(address_space_t *space) {
     address_space_t *old = current_thread->address_space;
     current_thread->address_space = space;
 
+    mutex_lock(&space->lock);
+    // The vDSO is not allowed to be mapped after the address space has already been used for anything.
+    if (!space->vdso_addr) space->vdso_addr = UINTPTR_MAX - vdso_size;
+    mutex_unlock(&space->lock);
+
     irq_state_t state = save_disable_irq();
     pmap_switch(space ? &space->pmap : NULL);
     restore_irq(state);
@@ -609,6 +615,20 @@ static hydrogen_error_t remove_overlapping_regions(
     vm_region_t *next = *next_inout;
 
     vm_region_t *cur = get_next(space, prev);
+
+    // Do this in a separate iteration, otherwise cleanup becomes very complicated
+    while (cur != next) {
+        ASSERT(cur);
+        ASSERT(cur->head <= tail && cur->tail >= head);
+
+        if (cur->object.object == vdso_handle.object) {
+            return HYDROGEN_NO_PERMISSION;
+        }
+
+        cur = cur->next;
+    }
+
+    cur = get_next(space, prev);
 
     while (cur != next) {
         ASSERT(cur);
@@ -785,6 +805,7 @@ static uint64_t flags_to_rights(hydrogen_mem_flags_t flags) {
     if ((flags & SHARED_WRITE) == SHARED_WRITE) rights |= HYDROGEN_MEMORY_RIGHT_WRITE;
     if (flags & HYDROGEN_MEM_EXEC) rights |= HYDROGEN_MEMORY_RIGHT_EXEC;
     if (flags & VM_CACHE_MODE_MASK) rights |= HYDROGEN_MEMORY_RIGHT_CACHE;
+    if (!(flags & HYDROGEN_MEM_SHARED)) rights |= HYDROGEN_MEMORY_RIGHT_PRIVATE;
     return rights;
 }
 
@@ -814,6 +835,38 @@ static uintptr_t get_tail(vm_region_t *region) {
 
 static uintptr_t get_head(vm_region_t *region) {
     return region ? region->head : max_user_address;
+}
+
+static hydrogen_error_t find_map_location(
+        address_space_t *space,
+        size_t size,
+        vm_region_t **prev_out,
+        vm_region_t **next_out,
+        uintptr_t *head_out,
+        uintptr_t *tail_out
+) {
+    vm_region_t *prev = NULL;
+    vm_region_t *next = space->regions;
+
+    for (;;) {
+        size_t avail = get_head(next) - get_tail(prev) + 1;
+        if (avail >= size) break;
+
+        if (!next) return HYDROGEN_OUT_OF_MEMORY;
+
+        prev = next;
+        next = next->next;
+    }
+
+    uintptr_t head = get_tail(prev) + 1;
+    uintptr_t tail = head + (size - 1);
+
+    *prev_out = prev;
+    *next_out = next;
+    *head_out = head;
+    *tail_out = tail;
+
+    return HYDROGEN_SUCCESS;
 }
 
 hydrogen_error_t hydrogen_vm_map(
@@ -868,33 +921,61 @@ hydrogen_error_t hydrogen_vm_map(
         return error;
     }
 
-    vm_region_t *prev = NULL;
-    vm_region_t *next = space->regions;
+    vm_region_t *prev, *next;
+    uintptr_t head, tail;
+    error = find_map_location(space, size, &prev, &next, &head, &tail);
 
-    for (;;) {
-        size_t avail = get_head(next) - get_tail(prev) + 1;
-        if (avail >= size) break;
+    if (likely(!error)) {
+        error = do_map(space, head, tail, flags, &obj, offset, prev, next);
 
-        if (!next) {
-            mutex_unlock(&space->lock);
-            if (object) obj_deref(obj.object);
-            if (vm) obj_deref(&space->base);
-            return HYDROGEN_OUT_OF_MEMORY;
+        if (likely(!error)) {
+            *addr = head;
         }
-
-        prev = next;
-        next = next->next;
     }
 
-    uintptr_t head = get_tail(prev) + 1;
-    uintptr_t tail = head + (size - 1);
-
-    error = do_map(space, head, tail, flags, &obj, offset, prev, next);
     mutex_unlock(&space->lock);
     if (object) obj_deref(obj.object);
     if (vm) obj_deref(&space->base);
+    return error;
+}
 
-    if (likely(!error)) *addr = head;
+hydrogen_error_t hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr) {
+    address_space_t *space;
+    hydrogen_error_t error = get_vm(vm, &space, HYDROGEN_VM_RIGHT_MAP);
+    if (unlikely(error)) return error;
+
+    mutex_lock(&space->lock);
+
+    if (space->vdso_addr) {
+        mutex_unlock(&space->lock);
+        if (vm) obj_deref(&space->base);
+        return HYDROGEN_ALREADY_EXISTS;
+    }
+
+    vm_region_t *prev, *next;
+    uintptr_t head, tail;
+    error = find_map_location(space, vdso_size, &prev, &next, &head, &tail);
+
+    if (likely(!error)) {
+        error = do_map(
+                space,
+                head,
+                tail,
+                HYDROGEN_MEM_SHARED | HYDROGEN_MEM_EXEC | HYDROGEN_MEM_READ,
+                &vdso_handle,
+                0,
+                prev,
+                next
+        );
+
+        if (likely(!error)) {
+            *addr = head + PAGE_SIZE;
+            space->vdso_addr = head;
+        }
+    }
+
+    mutex_unlock(&space->lock);
+    if (vm) obj_deref(&space->base);
     return error;
 }
 
@@ -919,6 +1000,11 @@ static hydrogen_error_t do_remap(
         if (new_flags == cur->flags) {
             cur = cur->next;
             continue;
+        }
+
+        if (cur->object.object == vdso_handle.object) {
+            if (extra_reserve) pmm_unreserve(extra_reserve);
+            return HYDROGEN_NO_PERMISSION;
         }
 
         uintptr_t rhead = cur->head;

@@ -17,6 +17,7 @@
 #include "mem/vmalloc.h"
 #include "sections.h"
 #include "string.h"
+#include "sys/syscall.h"
 #include "thread/sched.h"
 #include "time/time.h"
 #include "util/logging.h"
@@ -249,6 +250,7 @@ _Noreturn void smp_init_cpu(cpu_init_data_t *data) {
     init_time_local();
     init_sched_early();
     init_xsave();
+    init_syscall_cpu();
 
     __atomic_fetch_add(&num_cpus, 1, __ATOMIC_SEQ_CST);
 
