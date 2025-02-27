@@ -359,6 +359,8 @@ static void handle_page_fault(idt_frame_t *frame, void *ctx) {
     uint64_t *table = phys_to_virt(read_cr3());
 
     if (is_user_fault(frame->rip, addr, frame->error_code)) {
+        enable_irq();
+
         address_space_t *space = current_thread->address_space;
         ASSERT(space != NULL);
         ASSERT(&space->pmap == current_cpu.pmap);
