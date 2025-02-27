@@ -116,19 +116,21 @@ hydrogen_error_t basic_resolve(hydrogen_handle_t handle, handle_data_t *out) {
 }
 
 hydrogen_error_t resolve(hydrogen_handle_t handle, handle_data_t *out, bool (*pred)(object_t *obj), uint64_t rights) {
-    hydrogen_error_t error = basic_resolve(handle, out);
+    handle_data_t data;
+    hydrogen_error_t error = basic_resolve(handle, &data);
     if (unlikely(error)) return error;
 
-    if (!pred(out->object)) {
-        obj_deref(out->object);
+    if (!pred(data.object)) {
+        obj_deref(data.object);
         return HYDROGEN_INVALID_HANDLE;
     }
 
-    if ((out->rights & rights) != rights) {
-        obj_deref(out->object);
+    if ((data.rights & rights) != rights) {
+        obj_deref(data.object);
         return HYDROGEN_NO_PERMISSION;
     }
 
+    if (out) *out = data;
     return HYDROGEN_SUCCESS;
 }
 
