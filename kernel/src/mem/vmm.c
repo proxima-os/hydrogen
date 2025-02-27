@@ -686,7 +686,7 @@ static bool can_merge(vm_region_t *r1, vm_region_t *r2) {
     if (r1->flags != r2->flags) return false;
     if (r1->object.object != r2->object.object) return false;
     if (r1->object.rights != r2->object.rights) return false;
-    if (r1->offset + (r2->head - r1->head) != r2->offset) return false;
+    if (r1->object.object && r1->offset + (r2->head - r1->head) != r2->offset) return false;
 
     return true;
 }
