@@ -1,3 +1,4 @@
+#include "init/main.h"
 #include "cpu/cpu.h"
 #include "cpu/exc.h"
 #include "cpu/idt.h"
@@ -40,21 +41,24 @@ static LIMINE_REQ struct limine_module_request module_req = {.id = LIMINE_MODULE
 
 static pmem_vm_object_t ram_object;
 
-static void create_init_info(hydrogen_init_info_t *info) {
-    info->major = HYDROGEN_INIT_INFO_MAJOR_VERSION;
-    info->minor = HYDROGEN_INIT_INFO_MINOR_VERSION;
+hydrogen_init_info_t init_info = {
+        .major = HYDROGEN_INIT_INFO_MAJOR_VERSION,
+        .minor = HYDROGEN_INIT_INFO_MINOR_VERSION,
+        .rsdp = -1,
+};
 
+static void create_init_info(void) {
     // Create handle for kernel log
-    hydrogen_error_t error = create_handle(&klog_object, -1, &info->log_handle);
+    hydrogen_error_t error = create_handle(&klog_object, -1, &init_info.log_handle);
     if (unlikely(error)) panic("failed to create kernel log handle (%d)", error);
 
     // Create handle for physical memory
     pmem_vm_obj_init(&ram_object, 0, cpu_features.paddr_mask + 1);
-    error = create_handle(&ram_object.base.base, (uint64_t)-1, &info->ram_handle);
+    error = create_handle(&ram_object.base.base, (uint64_t)-1, &init_info.ram_handle);
     if (unlikely(error)) panic("failed to create ram handle (%d)", error);
 
     // Create handle for I/O access
-    error = create_handle(&io_object, -1, &info->io_handle);
+    error = create_handle(&io_object, -1, &init_info.io_handle);
     if (unlikely(error)) panic("failed to create i/o handle (%d)", error);
 }
 
@@ -168,16 +172,16 @@ static void kernel_init(UNUSED void *ctx) {
     hydrogen_error_t error = create_namespace_raw(&current_thread->namespace);
     if (unlikely(error)) panic("failed to create init namespace (%d)", error);
 
-    uintptr_t vdso_addr;
-
     // Create an address space for this thread
     {
         hydrogen_handle_t handle;
         error = hydrogen_vm_create(&handle);
         if (unlikely(error)) panic("failed to create init address space (%d)", error);
 
+        uintptr_t vdso_addr;
         error = hydrogen_vm_map_vdso(handle, &vdso_addr);
         if (unlikely(error)) panic("failed to map init thread vdso (%d)", error);
+        init_info.vdso_base = (const void *)vdso_addr;
 
         error = get_vm(handle, &current_thread->address_space, VM_SWITCH_RIGHTS);
         if (unlikely(error)) panic("failed to resolve init address space (%d)", error);
@@ -203,8 +207,7 @@ static void kernel_init(UNUSED void *ctx) {
     if (unlikely(error)) panic("failed to map init thread stack (%d)", error);
     uintptr_t stack_top = map_addr + INIT_STACK_SIZE;
 
-    hydrogen_init_info_t init_info = {.vdso_base = (const void *)vdso_addr};
-    create_init_info(&init_info);
+    create_init_info();
     stack_top -= sizeof(init_info);
     stack_top &= ~15;
     error = memcpy_user((void *)stack_top, &init_info, sizeof(init_info));

@@ -25,6 +25,7 @@ typedef struct {
     hydrogen_handle_t log_handle; /**< Handle to the kernel log. */
     hydrogen_handle_t ram_handle; /**< Handle to physical memory. */
     hydrogen_handle_t io_handle;  /**< Handle representing permission to enable I/O port access. */
+    uint64_t rsdp;                /**< Physical address of the ACPI RSDP. -1 if not available. */
 } hydrogen_init_info_t;
 
 #ifdef __cplusplus

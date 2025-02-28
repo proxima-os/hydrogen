@@ -1,6 +1,7 @@
 #include "drv/acpi.h"
 #include "hydrogen/error.h"
 #include "hydrogen/memory.h"
+#include "init/main.h"
 #include "kernel/compiler.h"
 #include "limine.h"
 #include "mem/kvmm.h"
@@ -49,6 +50,7 @@ static const rsdp_t *map_rsdp(size_t *len_out) {
     static LIMINE_REQ struct limine_rsdp_request rsdp_req = {.id = LIMINE_RSDP_REQUEST};
     if (!rsdp_req.response) return NULL;
     uint64_t addr = rsdp_req.response->address;
+    init_info.rsdp = addr;
 
     void *ptr;
     hydrogen_error_t error = map_phys_mem(&ptr, addr, 24, HYDROGEN_MEM_READ);
