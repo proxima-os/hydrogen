@@ -76,15 +76,15 @@ static hydrogen_error_t do_syscall(size_t *ret, size_t a0, size_t a1, size_t a2,
 }
 
 __attribute__((used)) void syscall_dispatch(idt_frame_t *frame) {
-    frame->vector = -1;
     frame->cs = SEL_UCODE;
     frame->ss = SEL_UDATA;
     current_thread->user_regs = frame;
     enable_irq();
 
     if (!is_in_vdso(frame->rip)) {
-        // TODO: Properly signal illegal system calls
-        handle_fatal_exception(frame, NULL);
+        uintptr_t info[2] = {};
+        handle_user_exception(HYDROGEN_INVALID_ARGUMENT, "system call from outside vdso", frame, info);
+        return;
     }
 
     frame->rdx = do_syscall(&frame->rax, frame->rdi, frame->rsi, frame->rdx, frame->r10, frame->r8, frame->r9);

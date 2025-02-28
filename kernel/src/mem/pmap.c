@@ -193,7 +193,7 @@ static bool is_usermem_func(uintptr_t pc) {
     return usermem_funcs.start <= pc && pc < usermem_funcs.end;
 }
 
-static void signal_user_fault(UNUSED uintptr_t addr, idt_frame_t *frame, hydrogen_error_t error) {
+static void signal_user_fault(uintptr_t addr, idt_frame_t *frame, hydrogen_error_t error) {
     if (is_usermem_func(frame->rip)) {
         // See usermem.S
         frame->rax = error;
@@ -202,8 +202,8 @@ static void signal_user_fault(UNUSED uintptr_t addr, idt_frame_t *frame, hydroge
         return;
     }
 
-    // TODO: Properly signal faults
-    handle_fatal_exception(frame, NULL);
+    uintptr_t info[2] = {addr, frame->error_code};
+    handle_user_exception(error, "page fault", frame, info);
 }
 
 static hydrogen_error_t get_obj_phys(uint64_t *out, vm_region_t *region, uintptr_t addr) {
