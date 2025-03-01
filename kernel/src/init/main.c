@@ -148,7 +148,7 @@ static uintptr_t map_init_image(hydrogen_init_info_t *info) {
         }
     }
 
-    size_t size = strlen(module->cmdline) + 1;
+    size_t size = strlen(module->string) + 1;
     size_t pgsize = (size + PAGE_MASK) & ~PAGE_MASK;
 
     uintptr_t cmd_addr = 0;
@@ -156,7 +156,7 @@ static uintptr_t map_init_image(hydrogen_init_info_t *info) {
     if (unlikely(error)) panic("failed to map init command line (%d)", error);
     info->command_line = (char *)cmd_addr;
 
-    error = memcpy_user(info->command_line, module->cmdline, size);
+    error = memcpy_user(info->command_line, module->string, size);
     if (unlikely(error)) panic("failed to copy init command line to user memory (%d)", error);
 
     return header->entry + slide;

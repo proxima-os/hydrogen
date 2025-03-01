@@ -14,7 +14,7 @@ strip = find_program('strip')
 pub_inc = include_directories('include' / 'public')
 priv_inc = include_directories('include' / 'private')
 
-add_project_arguments('-DLIMINE_API_REVISION=2', language: 'c')
+add_project_arguments('-DLIMINE_API_REVISION=3', language: 'c')
 add_project_arguments('-DHYDROGEN_LOG_BUF_SHIFT=' + get_option('log_buf_shift').to_string(), language: 'c')
 
 if get_option('qemu_debugcon')
