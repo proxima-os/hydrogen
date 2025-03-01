@@ -38,12 +38,12 @@ SECTIONS {
     .gnu.version_r : { *(.gnu.version_r) }
     .dynamic       : { *(.dynamic) } :text :dynamic
     .rodata        : { *(.rodata .rodata.*) } :text
-    .rela          : { *(.rela .rela.*) }
+    .rel           : { *(.rel .rel.* .rela .rela.*) }
     .text          : { *(.text .text.*) }
     .data          : { *(.bss .bss.* .data .data.* .got .got.*) }
 
     ASSERT(SIZEOF(.data) == 0, "vdso contains writable data section")
-    ASSERT(SIZEOF(.rela) == 0, "vdso contains relocations")
+    ASSERT(SIZEOF(.rel) == 0, "vdso contains relocations")
 
     /DISCARD/ : { *(.eh_frame* .note*) }
 }
