@@ -7,7 +7,7 @@
 #define unlikely(x) (__builtin_expect(!!(x), 0))
 
 #ifndef NDEBUG
-#define HYDROGEN_ASSERTIONS 1
+ #define HYDROGEN_ASSERTIONS 1
 #else
-#define HYDROGEN_ASSERTIONS 0
+ #define HYDROGEN_ASSERTIONS 0
 #endif

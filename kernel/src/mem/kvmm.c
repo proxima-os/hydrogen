@@ -93,12 +93,7 @@ static void update_order(struct vmm_range *range) {
     }
 }
 
-static bool try_merge(
-        struct vmm_range *prev,
-        struct vmm_range *next,
-        uintptr_t start,
-        size_t size
-) {
+static bool try_merge(struct vmm_range *prev, struct vmm_range *next, uintptr_t start, size_t size) {
     bool prev_merge = prev != NULL && prev->free && prev->start + prev->size == start;
     bool next_merge = next != NULL && next->free && start + size == next->start;
 

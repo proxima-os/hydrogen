@@ -12,7 +12,7 @@ static inline void enable_irq(void) {
 
 static inline irq_state_t save_disable_irq(void) {
     irq_state_t state;
-    asm volatile("pushfq; popq %0" : "=r" (state));
+    asm volatile("pushfq; popq %0" : "=r"(state));
     disable_irq();
     return state;
 }

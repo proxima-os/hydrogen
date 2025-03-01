@@ -27,12 +27,12 @@ hydrogen_error_t hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t src)
 }
 
 hydrogen_error_t hydrogen_vm_map(
-    hydrogen_handle_t vm,
-    uintptr_t *addr,
-    size_t size,
-    hydrogen_mem_flags_t flags,
-    hydrogen_handle_t object,
-    size_t offset
+        hydrogen_handle_t vm,
+        uintptr_t *addr,
+        size_t size,
+        hydrogen_mem_flags_t flags,
+        hydrogen_handle_t object,
+        size_t offset
 ) {
     uintptr_t ret;
     hydrogen_error_t error;

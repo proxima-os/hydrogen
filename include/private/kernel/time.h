@@ -9,7 +9,7 @@ typedef struct {
 
 static inline uint64_t read_tsc_value(void) {
     uint32_t low, high;
-    asm volatile("lfence; rdtsc" : "=a" (low), "=d" (high));
+    asm volatile("lfence; rdtsc" : "=a"(low), "=d"(high));
     return ((uint64_t)high << 32) | low;
 }
 
