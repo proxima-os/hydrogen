@@ -292,7 +292,7 @@ static void write_arg(char *text, size_t len, void *ptr) {
     ctx->argc += 1;
 }
 
-static void write_auxv(struct stack_ctx *ctx, intptr_t tag, uintptr_t value) {
+static void write_auxv(struct stack_ctx *ctx, uintptr_t tag, uintptr_t value) {
     elf_auxv_t auxv = {tag, value};
     write_data(ctx, &auxv, sizeof(auxv));
 }

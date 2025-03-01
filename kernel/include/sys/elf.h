@@ -47,7 +47,7 @@ typedef struct {
 #define PF_R 4
 
 typedef struct {
-    intptr_t tag;
+    uintptr_t tag;
     uintptr_t value;
 } elf_auxv_t;
 

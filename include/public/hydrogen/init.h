@@ -11,7 +11,7 @@ extern "C" {
 #define HYDROGEN_INIT_INFO_MAJOR_VERSION 0 /**< The current init info major version. */
 #define HYDROGEN_INIT_INFO_MINOR_VERSION 0 /**< The current init info minor version. */
 
-#define HYDROGEN_AT_INIT_INFO -1
+#define HYDROGEN_AT_INIT_INFO 0x80000000ul
 
 /**
  * Information passed to the init process by the kernel upon boot.
