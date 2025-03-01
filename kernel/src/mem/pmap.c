@@ -515,7 +515,6 @@ void pmap_switch(pmap_t *target) {
 
     if (target) {
         write_cr3(virt_to_phys(target->root));
-        current_cpu.pmap = target;
 
         spin_lock_noirq(&target->cpus_lock);
 
@@ -528,6 +527,8 @@ void pmap_switch(pmap_t *target) {
     } else {
         write_cr3(virt_to_phys(kernel_pt));
     }
+
+    current_cpu.pmap = target;
 }
 
 static bool can_map_direct(unsigned level) {
