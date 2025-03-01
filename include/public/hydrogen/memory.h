@@ -41,6 +41,8 @@ typedef enum {
 #define HYDROGEN_VM_RIGHT_REMAP (1ull << 1) /**< Allow mapping permissions to be changed in this address space. */
 #define HYDROGEN_VM_RIGHT_UNMAP (1ull << 2) /**< Allow mappings to be removed in this address space. */
 #define HYDROGEN_VM_RIGHT_CLONE (1ull << 3) /**< Allow a new address space to be created by cloning this one. */
+#define HYDROGEN_VM_RIGHT_WRITE (1ull << 4) /**< Allow data to be written to this address space. */
+#define HYDROGEN_VM_RIGHT_READ (1ull << 5)  /**< Allow data to be read from this address space. */
 
 /**
  * The system page size.
@@ -118,6 +120,39 @@ hydrogen_error_t hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t 
  * \param[in] size The size of the region to unmap.
  */
 hydrogen_error_t hydrogen_vm_unmap(hydrogen_handle_t vm, uintptr_t addr, size_t size);
+
+/**
+ * Write memory to a remote address space.
+ * Some error conditions can cause partial writes.
+ *
+ * \param[in] vm The address space to write to. Must not be the current address space.
+ * \param[in] dest The virtual address in the target address space to write to.
+ * \param[in] src The data to write.
+ * \param[in] size The number of bytes to write. Must not be zero.
+ */
+hydrogen_error_t hydrogen_vm_write(hydrogen_handle_t vm, uintptr_t dest, const void *src, size_t size);
+
+/**
+ * Fill memory in a remote address space.
+ * Some error conditions can cause partial writes.
+ *
+ * \param[in] vm The address space to write to. Must not be the current address space.
+ * \param[in] dest The virtual address in the target address space to write to.
+ * \param[in] value The value to write to each byte.
+ * \param[in] size The number of bytes to write. Must not be zero.
+ */
+hydrogen_error_t hydrogen_vm_fill(hydrogen_handle_t vm, uintptr_t dest, uint8_t value, size_t size);
+
+/**
+ * Read memory from a remote address space.
+ * Some error conditions can cause partial reads.
+ *
+ * \param[in] vm The address space to read from. Must not be the current address space.
+ * \param[in] dest The buffer to read the data into.
+ * \param[in] src The virtual address in the target address space to read from.
+ * \param[in] size The number of bytes to read. Must not be zero.
+ */
+hydrogen_error_t hydrogen_vm_read(hydrogen_handle_t vm, void *dest, uintptr_t src, size_t size);
 
 #ifdef __cplusplus
 };

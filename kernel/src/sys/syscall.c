@@ -69,6 +69,9 @@ static hydrogen_error_t do_syscall(size_t *ret, size_t a0, size_t a1, size_t a2,
         return err;
     case SYSCALL_VM_REMAP: return hydrogen_vm_remap((hydrogen_handle_t)a0, a1, a2, a3);
     case SYSCALL_VM_UNMAP: return hydrogen_vm_unmap((hydrogen_handle_t)a0, a1, a2);
+    case SYSCALL_VM_WRITE: return hydrogen_vm_write((hydrogen_handle_t)a0, a1, (const void *)a2, a3);
+    case SYSCALL_VM_FILL: return hydrogen_vm_fill((hydrogen_handle_t)a0, a1, a2, a3);
+    case SYSCALL_VM_READ: return hydrogen_vm_read((hydrogen_handle_t)a0, (void *)a1, a2, a3);
     case SYSCALL_IO_ENABLE: return hydrogen_io_enable((hydrogen_handle_t)a0);
     case SYSCALL_IO_DISABLE: hydrogen_io_disable(); return HYDROGEN_SUCCESS;
     default: return HYDROGEN_INVALID_SYSCALL;

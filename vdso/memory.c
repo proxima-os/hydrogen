@@ -62,3 +62,24 @@ hydrogen_error_t hydrogen_vm_unmap(hydrogen_handle_t vm, uintptr_t addr, size_t 
     SYSCALL3(SYSCALL_VM_UNMAP, vm, addr, size);
     return error;
 }
+
+hydrogen_error_t hydrogen_vm_write(hydrogen_handle_t vm, uintptr_t dest, const void *src, size_t size) {
+    UNUSED int ret;
+    hydrogen_error_t error;
+    SYSCALL4(SYSCALL_VM_WRITE, vm, dest, src, size);
+    return error;
+}
+
+hydrogen_error_t hydrogen_vm_fill(hydrogen_handle_t vm, uintptr_t dest, uint8_t value, size_t size) {
+    UNUSED int ret;
+    hydrogen_error_t error;
+    SYSCALL4(SYSCALL_VM_FILL, vm, dest, value, size);
+    return error;
+}
+
+hydrogen_error_t hydrogen_vm_read(hydrogen_handle_t vm, void *dest, uintptr_t src, size_t size) {
+    UNUSED int ret;
+    hydrogen_error_t error;
+    SYSCALL4(SYSCALL_VM_READ, vm, dest, src, size);
+    return error;
+}

@@ -12,6 +12,8 @@
 #include "mem/pmm.h"
 #include "mem/vmalloc.h"
 #include "string.h"
+#include "sys/syscall.h"
+#include "sys/usermem.h"
 #include "sys/vdso.h"
 #include "thread/mutex.h"
 #include "util/handle.h"
@@ -1250,4 +1252,151 @@ vm_region_t *vm_get_region(address_space_t *space, uintptr_t address) {
     }
 
     return cur;
+}
+
+hydrogen_error_t hydrogen_vm_write(hydrogen_handle_t vm, uintptr_t dest, const void *src, size_t size) {
+    if (unlikely(size == 0)) return HYDROGEN_INVALID_ARGUMENT;
+
+    hydrogen_error_t error = verify_user_pointer(src, size);
+    if (unlikely(error)) return error;
+
+    error = verify_user_pointer((const void *)dest, size);
+    if (unlikely(error)) return error;
+
+    address_space_t *space;
+
+    {
+        handle_data_t data;
+        error = resolve(vm, &data, is_address_space, HYDROGEN_VM_RIGHT_WRITE);
+        if (unlikely(error)) return error;
+        space = (address_space_t *)data.object;
+        if (space == current_thread->address_space) {
+            obj_deref(&space->base);
+            return HYDROGEN_INVALID_ARGUMENT;
+        }
+    }
+
+    address_space_t *orig_space = current_thread->address_space;
+    unsigned char buffer[1024];
+
+    do {
+        size_t cur = sizeof(buffer);
+        if (cur > size) cur = size;
+
+        error = memcpy_user(buffer, src, cur);
+        if (unlikely(error)) break;
+
+        irq_state_t state = save_disable_irq();
+        current_thread->address_space = space;
+        pmap_switch(&space->pmap);
+        restore_irq(state);
+
+        error = memcpy_user((void *)dest, buffer, cur);
+
+        state = save_disable_irq();
+        current_thread->address_space = orig_space;
+        pmap_switch(orig_space ? &orig_space->pmap : NULL);
+        restore_irq(state);
+
+        if (unlikely(error)) break;
+
+        dest += cur;
+        src += cur;
+        size -= cur;
+    } while (size > 0);
+
+    obj_deref(&space->base);
+    return error;
+}
+
+hydrogen_error_t hydrogen_vm_fill(hydrogen_handle_t vm, uintptr_t dest, uint8_t value, size_t size) {
+    if (unlikely(size == 0)) return HYDROGEN_INVALID_ARGUMENT;
+
+    hydrogen_error_t error = verify_user_pointer((const void *)dest, size);
+    if (unlikely(error)) return error;
+
+    address_space_t *space;
+
+    {
+        handle_data_t data;
+        error = resolve(vm, &data, is_address_space, HYDROGEN_VM_RIGHT_WRITE);
+        if (unlikely(error)) return error;
+        space = (address_space_t *)data.object;
+        if (space == current_thread->address_space) {
+            obj_deref(&space->base);
+            return HYDROGEN_INVALID_ARGUMENT;
+        }
+    }
+
+    address_space_t *orig_space = current_thread->address_space;
+
+    irq_state_t state = save_disable_irq();
+    current_thread->address_space = space;
+    pmap_switch(&space->pmap);
+    restore_irq(state);
+
+    error = memset_user((void *)dest, value, size);
+
+    state = save_disable_irq();
+    current_thread->address_space = orig_space;
+    pmap_switch(orig_space ? &orig_space->pmap : NULL);
+    restore_irq(state);
+
+    obj_deref(&space->base);
+    return error;
+}
+
+hydrogen_error_t hydrogen_vm_read(hydrogen_handle_t vm, void *dest, uintptr_t src, size_t size) {
+    if (unlikely(size == 0)) return HYDROGEN_INVALID_ARGUMENT;
+
+    hydrogen_error_t error = verify_user_pointer(dest, size);
+    if (unlikely(error)) return error;
+
+    error = verify_user_pointer((const void *)src, size);
+    if (unlikely(error)) return error;
+
+    address_space_t *space;
+
+    {
+        handle_data_t data;
+        error = resolve(vm, &data, is_address_space, HYDROGEN_VM_RIGHT_READ);
+        if (unlikely(error)) return error;
+        space = (address_space_t *)data.object;
+        if (space == current_thread->address_space) {
+            obj_deref(&space->base);
+            return HYDROGEN_INVALID_ARGUMENT;
+        }
+    }
+
+    address_space_t *orig_space = current_thread->address_space;
+    unsigned char buffer[1024];
+
+    do {
+        size_t cur = sizeof(buffer);
+        if (cur > size) cur = size;
+
+        irq_state_t state = save_disable_irq();
+        current_thread->address_space = space;
+        pmap_switch(&space->pmap);
+        restore_irq(state);
+
+        error = memcpy_user(buffer, (const void *)src, cur);
+
+        state = save_disable_irq();
+        current_thread->address_space = orig_space;
+        pmap_switch(orig_space ? &orig_space->pmap : NULL);
+        restore_irq(state);
+
+        if (unlikely(error)) break;
+
+        error = memcpy_user(dest, buffer, cur);
+        if (unlikely(error)) break;
+
+        dest += cur;
+        src += cur;
+        size -= cur;
+    } while (size > 0);
+
+    obj_deref(&space->base);
+    return error;
 }
