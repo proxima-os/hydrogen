@@ -25,6 +25,7 @@ executable(
     'src/cpu/xsave.c',
     'src/drv/acpi.c',
     'src/drv/pic.c',
+    'src/init/init.c',
     'src/init/main.c',
     'src/init/main.S',
     'src/mem/obj/pmem.c',
