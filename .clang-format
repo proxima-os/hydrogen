@@ -13,8 +13,6 @@ BinPackParameters: false
 ColumnLimit: 120
 ContinuationIndentWidth: 8
 IndentWidth: 4
-IndentPPDirectives: BeforeHash
 InsertNewlineAtEOF: true
 PenaltyBreakAssignment: 100000
 PenaltyReturnTypeOnItsOwnLine: 100000
-PPIndentWidth: 1
