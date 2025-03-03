@@ -789,7 +789,7 @@ static void do_remap(uint64_t *table, int level, uintptr_t addr, size_t size, ui
         uint64_t old_entry = __atomic_load_n(&table[index], __ATOMIC_RELAXED);
 
         if (old_entry != 0) {
-            if (level == 0 || (old_entry & PTE_HUGE) != 0) {
+            if (level == 0 || ((old_entry & PTE_HUGE) != 0 && !(addr & entry_mask) && size >= entry_size)) {
                 uint64_t new_entry = get_new_entry(old_entry, pte, level);
 
                 if (old_entry != new_entry) {
@@ -801,7 +801,29 @@ static void do_remap(uint64_t *table, int level, uintptr_t addr, size_t size, ui
                     }
                 }
             } else {
-                uint64_t *child = phys_to_virt(old_entry & PTE_ADDR_MASK);
+                uint64_t *child;
+
+                if (!(old_entry & PTE_HUGE)) {
+                    child = phys_to_virt(old_entry & PTE_ADDR_MASK);
+                } else {
+                    child = kmalloc(PT_SIZE);
+                    uint64_t entry = old_entry;
+
+                    if (level == 1) {
+                        entry &= ~PTE_HUGE;
+                        entry |= (entry & 0x1000) >> 5;
+                    }
+
+                    for (size_t i = 0; i < 512; i++) {
+                        child[i] = entry;
+                        entry += entry_size;
+                    }
+
+                    __atomic_store_n(&table[index], virt_to_phys(child) | TABLE_FLAGS, __ATOMIC_RELAXED);
+                    tlb_add(tlb, addr);
+                    tlb->global = true;
+                }
+
                 do_remap(child, level - 1, addr, cur, pte, tlb);
             }
         }
@@ -847,7 +869,7 @@ static void do_unmap(uint64_t *table, int level, uintptr_t addr, size_t size, tl
         uint64_t old_entry = __atomic_load_n(&table[index], __ATOMIC_RELAXED);
 
         if (old_entry != 0) {
-            if (level == 0 || (old_entry & PTE_HUGE) != 0) {
+            if (level == 0 || ((old_entry & PTE_HUGE) != 0 && !(addr & entry_mask) && size >= entry_size)) {
                 __atomic_store_n(&table[index], 0, __ATOMIC_RELAXED);
                 tlb_add(tlb, addr);
                 tlb->global = true;
@@ -861,7 +883,29 @@ static void do_unmap(uint64_t *table, int level, uintptr_t addr, size_t size, tl
                     }
                 }
             } else {
-                uint64_t *child = phys_to_virt(old_entry & PTE_ADDR_MASK);
+                uint64_t *child;
+
+                if (!(old_entry & PTE_HUGE)) {
+                    child = phys_to_virt(old_entry & PTE_ADDR_MASK);
+                } else {
+                    child = kmalloc(PT_SIZE);
+                    uint64_t entry = old_entry;
+
+                    if (level == 1) {
+                        entry &= ~PTE_HUGE;
+                        entry |= (entry & 0x1000) >> 5;
+                    }
+
+                    for (size_t i = 0; i < 512; i++) {
+                        child[i] = entry;
+                        entry += entry_size;
+                    }
+
+                    __atomic_store_n(&table[index], virt_to_phys(child) | TABLE_FLAGS, __ATOMIC_RELAXED);
+                    tlb_add(tlb, addr);
+                    tlb->global = true;
+                }
+
                 do_unmap(child, level - 1, addr, cur, tlb);
             }
         }
