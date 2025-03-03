@@ -50,8 +50,7 @@ struct address_space {
     pmap_t pmap;
     vm_region_t *regtree;
     vm_region_t *regions;
-    size_t num_mapped;   // the number of pages that are mapped in this address space
-    size_t num_reserved; // the number of pages that are reserved for this address space
+    size_t num_mapped;  // the number of pages that are mapped in this address space
     uintptr_t vdso_addr;
 };
 

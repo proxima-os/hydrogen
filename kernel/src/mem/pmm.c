@@ -47,14 +47,12 @@ static void free_by_type(uint64_t type) {
         free_pages = page;
 
         pmm_stats.total += page->free.count;
-        pmm_stats.available += page->free.count;
-        pmm_stats.free += page->free.count;
     }
 }
 
 static void map_segment(const void *start, const void *end, hydrogen_mem_flags_t flags) {
     uint64_t phys = sym_to_phys(start);
-    pmap_init_map((uintptr_t)start, end - start, phys, flags);
+    pmap_map(NULL, (uintptr_t)start, end - start, phys, flags);
 }
 
 void init_pmm(void) {
@@ -136,7 +134,8 @@ void init_pmm(void) {
 
         if (map_end < start) {
             if (map_start != map_end) {
-                pmap_init_map(
+                pmap_map(
+                        NULL,
                         (uintptr_t)phys_to_virt(map_start),
                         map_end - map_start,
                         map_start,
@@ -151,7 +150,8 @@ void init_pmm(void) {
     }
 
     if (map_start != map_end) {
-        pmap_init_map(
+        pmap_map(
+                NULL,
                 (uintptr_t)phys_to_virt(map_start),
                 map_end - map_start,
                 map_start,
@@ -194,71 +194,33 @@ pmm_stats_t pmm_get_stats(void) {
     return stats;
 }
 
-static inline bool do_reserve(size_t count) {
-    bool success = count <= pmm_stats.available;
-    if (likely(success)) pmm_stats.available -= count;
-    return success;
-}
-
-bool pmm_reserve(size_t count) {
+page_t *pmm_alloc(bool cache) {
     mutex_lock(&pmm_lock);
-    bool success = do_reserve(count);
-    mutex_unlock(&pmm_lock);
-    return success;
-}
 
-void pmm_unreserve(size_t count) {
-    mutex_lock(&pmm_lock);
-    pmm_stats.available += count;
-    mutex_unlock(&pmm_lock);
-}
-
-static inline page_t *do_alloc(void) {
     page_t *page = free_pages;
+
+    // TODO: If there are any cache pages, wait for them to be freed
+    if (unlikely(!page)) panic("out of memory");
+
     size_t idx = --page->free.count;
     if (likely(idx == 0)) free_pages = page->free.next;
-    pmm_stats.free -= 1;
+
+    if (cache) pmm_stats.cache += 1;
+    else pmm_stats.alloc += 1;
+
+    mutex_unlock(&pmm_lock);
     return page + idx;
 }
 
-page_t *pmm_alloc(void) {
+void pmm_free(page_t *page, bool cache) {
+    page->free.count = 1;
     mutex_lock(&pmm_lock);
-    page_t *page = do_alloc();
-    mutex_unlock(&pmm_lock);
-    return page;
-}
 
-static void do_free(page_t *page) {
     page->free.next = free_pages;
     free_pages = page;
-    pmm_stats.free += 1;
-}
 
-void pmm_free(page_t *page) {
-    page->free.count = 1;
-    mutex_lock(&pmm_lock);
-    do_free(page);
-    mutex_unlock(&pmm_lock);
-}
+    if (cache) pmm_stats.cache -= 1;
+    else pmm_stats.alloc -= 1;
 
-page_t *pmm_alloc_now(void) {
-    mutex_lock(&pmm_lock);
-
-    if (unlikely(!do_reserve(1))) {
-        mutex_unlock(&pmm_lock);
-        return NULL;
-    }
-
-    page_t *page = do_alloc();
-    mutex_unlock(&pmm_lock);
-    return page;
-}
-
-void pmm_free_now(page_t *page) {
-    page->free.count = 1;
-
-    mutex_lock(&pmm_lock);
-    do_free(page);
-    pmm_stats.available += 1;
     mutex_unlock(&pmm_lock);
 }

@@ -24,8 +24,8 @@ typedef union page {
 
 typedef struct {
     size_t total;
-    size_t available;
-    size_t free;
+    size_t alloc;
+    size_t cache;
 } pmm_stats_t;
 
 extern void *hhdm_start;
@@ -38,16 +38,8 @@ uint64_t sym_to_phys(const void *symbol);
 
 pmm_stats_t pmm_get_stats(void);
 
-bool pmm_reserve(size_t count);
-void pmm_unreserve(size_t count);
-
-// these are guaranteed to succeed
-page_t *pmm_alloc(void);
-void pmm_free(page_t *page);
-
-// returns null on failure
-page_t *pmm_alloc_now(void);
-void pmm_free_now(page_t *page);
+page_t *pmm_alloc(bool cache);
+void pmm_free(page_t *page, bool cache);
 
 static inline uint64_t page_to_phys(page_t *page) {
     return (page - page_array) << PAGE_SHIFT;

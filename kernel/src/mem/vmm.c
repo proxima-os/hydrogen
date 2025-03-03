@@ -9,7 +9,6 @@
 #include "mem/kmalloc.h"
 #include "mem/obj/pmem.h"
 #include "mem/pmap.h"
-#include "mem/pmm.h"
 #include "mem/vmalloc.h"
 #include "string.h"
 #include "sys/syscall.h"
@@ -339,7 +338,6 @@ static void address_space_free(object_t *ptr) {
     address_space_t *space = (address_space_t *)ptr;
 
     pmap_destroy(&space->pmap);
-    pmm_unreserve(space->num_reserved);
 
     vm_region_t *cur = space->regions;
 
@@ -349,7 +347,7 @@ static void address_space_free(object_t *ptr) {
         }
 
         vm_region_t *next = cur->next;
-        vmfree(cur, sizeof(*cur));
+        kfree(cur, sizeof(*cur));
         cur = next;
     }
 
@@ -359,16 +357,11 @@ static void address_space_free(object_t *ptr) {
 static const object_ops_t address_space_ops = {.free = address_space_free};
 
 static hydrogen_error_t do_create(address_space_t **out) {
-    address_space_t *space = kmalloc(sizeof(*space));
+    address_space_t *space = vmalloc(sizeof(*space));
     if (unlikely(!space)) return HYDROGEN_OUT_OF_MEMORY;
     memset(space, 0, sizeof(*space));
     obj_init(&space->base, &address_space_ops);
-
-    hydrogen_error_t error = pmap_create(&space->pmap);
-    if (unlikely(error)) {
-        vmfree(space, sizeof(*space));
-        return error;
-    }
+    pmap_create(&space->pmap);
 
     *out = space;
     return HYDROGEN_SUCCESS;
@@ -405,15 +398,11 @@ hydrogen_error_t get_vm(hydrogen_handle_t handle, address_space_t **out, uint64_
     return HYDROGEN_SUCCESS;
 }
 
-hydrogen_error_t clone_region(vm_region_t **out, address_space_t *space, vm_region_t *src) {
-    hydrogen_error_t error = pmap_prepare(&space->pmap, src->head, src->tail - src->head + 1);
-    if (unlikely(error)) return error;
-
-    vm_region_t *dst = vmalloc(sizeof(*dst));
-    if (unlikely(!dst)) return HYDROGEN_OUT_OF_MEMORY;
+vm_region_t *clone_region(address_space_t *dspace, address_space_t *sspace, vm_region_t *src) {
+    vm_region_t *dst = kmalloc(sizeof(*dst));
     memset(dst, 0, sizeof(*dst));
 
-    dst->space = space;
+    dst->space = dspace;
     dst->head = src->head;
     dst->tail = src->tail;
     dst->flags = src->flags;
@@ -424,13 +413,14 @@ hydrogen_error_t clone_region(vm_region_t **out, address_space_t *space, vm_regi
         obj_ref(dst->object.object);
     }
 
-    *out = dst;
-    return HYDROGEN_SUCCESS;
+    pmap_clone(&dspace->pmap, &sspace->pmap, dst->head, dst->tail - dst->head + 1, !(dst->flags & HYDROGEN_MEM_SHARED));
+
+    return dst;
 }
 
-static hydrogen_error_t clone_regions(address_space_t *dst, address_space_t *src) {
+static void clone_regions(address_space_t *dst, address_space_t *src) {
     vm_region_t *scur = src->regtree;
-    if (!scur) return HYDROGEN_SUCCESS;
+    if (!scur) return;
 
     vm_region_t *dcur = NULL;
     int prev_relation = 0; // -1 = ascended from left subtree, 0 = descended, 1 = ascended from right subtree
@@ -440,9 +430,7 @@ static hydrogen_error_t clone_regions(address_space_t *dst, address_space_t *src
     for (;;) {
         // get or create dcur
         if (prev_relation == 0) {
-            vm_region_t *dreg;
-            hydrogen_error_t error = clone_region(&dreg, dst, scur);
-            if (unlikely(error)) return error;
+            vm_region_t *dreg = clone_region(dst, src, scur);
 
             dreg->balance = scur->balance;
 
@@ -491,14 +479,6 @@ static hydrogen_error_t clone_regions(address_space_t *dst, address_space_t *src
 
         break;
     }
-
-    return HYDROGEN_SUCCESS;
-}
-
-static void clone_pmap(address_space_t *dst, address_space_t *src) {
-    for (vm_region_t *reg = dst->regions; reg != NULL; reg = reg->next) {
-        pmap_clone(&dst->pmap, &src->pmap, reg->head, reg->tail - reg->head + 1, !(reg->flags & HYDROGEN_MEM_SHARED));
-    }
 }
 
 hydrogen_error_t hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t srch) {
@@ -515,25 +495,9 @@ hydrogen_error_t hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t srch
 
     mutex_lock(&src->lock);
 
-    if (!pmm_reserve(src->num_reserved)) {
-        mutex_unlock(&src->lock);
-        obj_deref(&dst->base);
-        if (srch) obj_deref(&src->base);
-        return error;
-    }
-
     dst->num_mapped = src->num_mapped;
-    dst->num_reserved = src->num_reserved;
 
-    error = clone_regions(dst, src);
-    if (unlikely(error)) {
-        mutex_unlock(&src->lock);
-        obj_deref(&dst->base);
-        if (srch) obj_deref(&src->base);
-        return error;
-    }
-
-    clone_pmap(dst, src);
+    clone_regions(dst, src);
 
     mutex_unlock(&src->lock);
     if (srch) obj_deref(&src->base);
@@ -589,23 +553,10 @@ static vm_region_t *get_next(address_space_t *space, vm_region_t *prev) {
 
 #define SHARED_WRITE (HYDROGEN_MEM_SHARED | HYDROGEN_MEM_WRITE)
 
-static bool need_manual_reserve(hydrogen_mem_flags_t flags, vm_object_t *obj) {
-    if (!(flags & VM_PERM_MASK)) return false;
-    if (!(flags & HYDROGEN_MEM_SHARED)) return true;
-
-    return obj == NULL;
-}
-
-static void process_unmap(address_space_t *space, vm_region_t *region, uintptr_t head, uintptr_t tail) {
+static void process_unmap(address_space_t *space, uintptr_t head, uintptr_t tail) {
     size_t pages = (tail - head + 1) >> PAGE_SHIFT;
 
     pmap_unmap(&space->pmap, head, tail - head + 1);
-
-    if (need_manual_reserve(region->flags, (vm_object_t *)region->object.object)) {
-        pmm_unreserve(pages);
-        space->num_reserved -= pages;
-    }
-
     space->num_mapped -= pages;
 }
 
@@ -641,14 +592,11 @@ static hydrogen_error_t remove_overlapping_regions(
 
         if (cur->head < head && cur->tail > tail) {
             // Needs to be split into two
-            // This is the *ONLY* branch allowed to return an error, because if this branch is taken it's the only
-            // action done by the function, so there's no cleanup required on errors.
             ASSERT(cur->prev == prev);
             ASSERT(cur->next == next);
-            process_unmap(space, cur, head, tail);
+            process_unmap(space, head, tail);
 
-            vm_region_t *nreg = vmalloc(sizeof(*nreg));
-            if (unlikely(!nreg)) return HYDROGEN_OUT_OF_MEMORY;
+            vm_region_t *nreg = kmalloc(sizeof(*nreg));
             memset(nreg, 0, sizeof(*nreg));
 
             nreg->space = space;
@@ -665,11 +613,10 @@ static hydrogen_error_t remove_overlapping_regions(
 
             *prev_inout = cur;
             *next_inout = nreg;
-            return HYDROGEN_SUCCESS;
         } else if (cur->head < head) {
             // Needs to be truncated
             ASSERT(cur->prev == prev);
-            process_unmap(space, cur, head, cur->tail);
+            process_unmap(space, head, cur->tail);
 
             cur->tail = head - 1;
 
@@ -678,7 +625,7 @@ static hydrogen_error_t remove_overlapping_regions(
         } else if (cur->tail > tail) {
             // Needs to be truncated and moved
             ASSERT(cur->next == next);
-            process_unmap(space, cur, cur->head, tail);
+            process_unmap(space, cur->head, tail);
 
             tree_mov(space, cur, tail + 1);
 
@@ -686,7 +633,7 @@ static hydrogen_error_t remove_overlapping_regions(
             return HYDROGEN_SUCCESS;
         } else {
             // Needs to be completely removed
-            process_unmap(space, cur, cur->head, cur->tail);
+            process_unmap(space, cur->head, cur->tail);
 
             vm_region_t *n = cur->next;
 
@@ -694,7 +641,7 @@ static hydrogen_error_t remove_overlapping_regions(
             list_del(space, cur->prev, n);
 
             if (cur->object.object) obj_deref(cur->object.object);
-            vmfree(cur, sizeof(*cur));
+            kfree(cur, sizeof(*cur));
 
             cur = n;
         }
@@ -733,18 +680,18 @@ static void merge_or_insert(address_space_t *space, vm_region_t *prev, vm_region
             obj_deref(prev->object.object);
         }
 
-        vmfree(region, sizeof(*region));
-        vmfree(next, sizeof(*next));
+        kfree(region, sizeof(*region));
+        kfree(next, sizeof(*next));
     } else if (prev_merge) {
         prev->tail = region->tail;
 
         if (prev->object.object) obj_deref(prev->object.object);
-        vmfree(region, sizeof(*region));
+        kfree(region, sizeof(*region));
     } else if (next_merge) {
         tree_mov(space, next, region->head);
 
         if (next->object.object) obj_deref(next->object.object);
-        vmfree(region, sizeof(*region));
+        kfree(region, sizeof(*region));
     } else {
         tree_add(space, region);
         list_add(space, prev, next, region);
@@ -761,19 +708,9 @@ static hydrogen_error_t do_map(
         vm_region_t *prev,
         vm_region_t *next
 ) {
-    bool reserve = need_manual_reserve(flags, (vm_object_t *)obj->object);
     size_t pages = (tail - head + 1) >> PAGE_SHIFT;
 
-    if (reserve && unlikely(!pmm_reserve(pages))) return HYDROGEN_OUT_OF_MEMORY;
-
-    hydrogen_error_t error = pmap_prepare(&space->pmap, head, tail - head + 1);
-    if (unlikely(error)) {
-        if (reserve) pmm_unreserve(pages);
-        return error;
-    }
-
-    vm_region_t *region = vmalloc(sizeof(*region));
-    if (unlikely(!region)) return HYDROGEN_OUT_OF_MEMORY;
+    vm_region_t *region = kmalloc(sizeof(*region));
     memset(region, 0, sizeof(*region));
 
     region->space = space;
@@ -783,10 +720,9 @@ static hydrogen_error_t do_map(
     region->object = *obj;
     region->offset = offset;
 
-    error = remove_overlapping_regions(space, &prev, &next, head, tail);
+    hydrogen_error_t error = remove_overlapping_regions(space, &prev, &next, head, tail);
     if (unlikely(error)) {
-        vmfree(region, sizeof(*region));
-        if (reserve) pmm_unreserve(pages);
+        kfree(region, sizeof(*region));
         return error;
     }
 
@@ -794,7 +730,6 @@ static hydrogen_error_t do_map(
     merge_or_insert(space, prev, next, region);
 
     space->num_mapped += pages;
-    if (reserve) space->num_reserved += pages;
 
     if (obj->object) {
         vm_object_t *object = (vm_object_t *)obj->object;
@@ -893,7 +828,7 @@ hydrogen_error_t hydrogen_vm_map(
     }
 
     if (!object) {
-        if (flags & (VM_CACHE_MODE_MASK | HYDROGEN_MEM_SHARED)) return HYDROGEN_INVALID_ARGUMENT;
+        if (flags & VM_CACHE_MODE_MASK) return HYDROGEN_INVALID_ARGUMENT;
     }
 
     address_space_t *space;
@@ -994,8 +929,6 @@ static hydrogen_error_t do_remap(
 ) {
     vm_region_t *cur = get_next(space, prev);
     size_t extra_regions = 0;
-    size_t num_unreserve = 0;
-    size_t extra_reserve = 0;
 
     while (cur != next) {
         ASSERT(cur);
@@ -1008,66 +941,23 @@ static hydrogen_error_t do_remap(
         }
 
         if (cur->object.object == vdso_handle.object) {
-            if (extra_reserve) pmm_unreserve(extra_reserve);
             return HYDROGEN_NO_PERMISSION;
         }
 
-        uintptr_t rhead = cur->head;
-        uintptr_t rtail = cur->tail;
-
-        if (cur->head < head) {
-            rhead = head;
-            extra_regions += 1;
-        }
-
-        if (cur->tail > tail) {
-            rtail = tail;
-            extra_regions += 1;
-        }
-
-        size_t pages = (rtail - rhead + 1) >> PAGE_SHIFT;
+        if (cur->head < head) extra_regions += 1;
+        if (cur->tail > tail) extra_regions += 1;
 
         if (cur->object.object) {
             uint64_t rights = flags_to_rights(new_flags);
 
             if ((cur->object.rights & rights) != rights) {
-                if (extra_reserve) pmm_unreserve(extra_reserve);
                 return HYDROGEN_NO_PERMISSION;
-            }
-        }
-
-        bool was_reserved = need_manual_reserve(cur->flags, (vm_object_t *)cur->object.object);
-        bool now_reserved = need_manual_reserve(new_flags, (vm_object_t *)cur->object.object);
-
-        if (was_reserved) {
-            if (!now_reserved) num_unreserve += pages;
-        } else if (now_reserved) {
-            if (unlikely(!pmm_reserve(pages))) {
-                if (extra_reserve) pmm_unreserve(extra_reserve);
-                return HYDROGEN_OUT_OF_MEMORY;
-            }
-
-            extra_reserve += pages;
-        }
-
-        bool was_mapped = cur->flags & VM_PERM_MASK;
-        bool now_mapped = new_flags & VM_PERM_MASK;
-
-        if (!was_mapped && now_mapped) {
-            hydrogen_error_t error = pmap_prepare(&space->pmap, rhead, rtail - rhead + 1);
-            if (unlikely(error)) {
-                if (extra_reserve) pmm_unreserve(extra_reserve);
-                return HYDROGEN_OUT_OF_MEMORY;
             }
         }
     }
 
     ASSERT(extra_regions <= 2);
-    vm_region_t *regions = vmalloc(sizeof(*regions) * 2);
-    if (unlikely(!regions)) {
-        if (extra_reserve) pmm_unreserve(extra_reserve);
-        return HYDROGEN_OUT_OF_MEMORY;
-    }
+    vm_region_t *regions = kmalloc(sizeof(*regions) * 2);
     memset(regions, 0, sizeof(*regions) * 2);
 
     cur = get_next(space, prev);
@@ -1182,13 +1072,7 @@ static hydrogen_error_t do_remap(
         cur = cur->next;
     }
 
-    space->num_reserved += extra_reserve;
-    space->num_reserved -= num_unreserve;
-
-    if (num_unreserve) {
-        pmm_unreserve(num_unreserve);
-    }
-
+    ASSERT(extra_regions == 0);
     return HYDROGEN_SUCCESS;
 }
 

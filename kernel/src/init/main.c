@@ -98,10 +98,10 @@ static void kernel_init(UNUSED void *ctx) {
     // Finalize kernel initialization
     reclaim_loader_pages();
     pmm_stats_t stats = pmm_get_stats();
-    printk("mem: %Uk total, %Uk available, %Uk free\n",
+    printk("mem: %Uk total, %Uk allocated, %Uk cache\n",
            stats.total << (PAGE_SHIFT - 10),
-           stats.available << (PAGE_SHIFT - 10),
-           stats.free << (PAGE_SHIFT - 10));
+           stats.alloc << (PAGE_SHIFT - 10),
+           stats.cache << (PAGE_SHIFT - 10));
 
     printk("init: entering userspace\n");
     enter_user_mode(user_entry, user_stack_top);

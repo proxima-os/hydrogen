@@ -27,11 +27,7 @@ void *kmalloc(size_t size) {
 
     int order = ORDER(size);
     if (unlikely(order > PAGE_SHIFT)) return NULL;
-    if (unlikely(order == PAGE_SHIFT)) {
-        page_t *page = pmm_alloc_now();
-        if (unlikely(!page)) return NULL;
-        return page_to_virt(page);
-    }
+    if (unlikely(order == PAGE_SHIFT)) return page_to_virt(pmm_alloc(false));
 
     mutex_lock(&locks[order - MIN_ORDER]);
 
@@ -48,13 +44,7 @@ void *kmalloc(size_t size) {
             if (slab->slab.next) slab->slab.next->slab.prev = NULL;
         }
     } else {
-        slab = pmm_alloc_now();
-
-        if (unlikely(!slab)) {
-            mutex_unlock(&locks[order - MIN_ORDER]);
-            return NULL;
-        }
-
+        slab = pmm_alloc(false);
         obj = page_to_virt(slab);
 
         struct slab_obj *last = obj;
@@ -87,7 +77,7 @@ void kfree(void *ptr, size_t size) {
     int order = ORDER(size);
 
     if (unlikely(order == PAGE_SHIFT)) {
-        pmm_free_now(slab);
+        pmm_free(slab, false);
         return;
     }
 
@@ -109,7 +99,7 @@ void kfree(void *ptr, size_t size) {
 
         if (slab->slab.next) slab->slab.next->slab.prev = slab->slab.prev;
 
-        pmm_free_now(slab);
+        pmm_free(slab, false);
     }
 
     mutex_unlock(&locks[order - MIN_ORDER]);

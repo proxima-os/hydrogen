@@ -43,7 +43,7 @@
 #define PTE_WRITE_COMBINE PAT_FLAG(5ul)
 #define PTE_CACHE_BITS PAT_FLAG(7ul)
 
-#define TABLE_FLAGS (PTE_PRESENT | PTE_WRITABLE | PTE_ACCESSED)
+#define TABLE_FLAGS (PTE_PRESENT | PTE_WRITABLE | PTE_USER | PTE_ACCESSED)
 
 #define PT_SIZE 0x1000
 
@@ -152,7 +152,7 @@ static void tlb_commit(tlb_ctx_t *ctx) {
     }
 
     for (page_t *page = ctx->free_pending; page != NULL; page = page->anon.tlb_next) {
-        pmm_free(page);
+        pmm_free(page, false);
     }
 }
 
@@ -171,7 +171,7 @@ static bool check_lazy_tlb(uintptr_t addr, uint64_t *table, uint64_t **ptr_out, 
         entry = __atomic_load_n(ptr, __ATOMIC_RELAXED);
 
         if (!entry) {
-            if (ptr_out) *ptr_out = shift == 12 ? ptr : NULL;
+            if (ptr_out) *ptr_out = NULL;
             if (ent_out) *ent_out = 0;
             return false;
         }
@@ -233,7 +233,32 @@ static uint64_t flags_to_map_pte(hydrogen_mem_flags_t flags) {
     return PTE_PRESENT | PTE_ACCESSED | PTE_DIRTY | flags_to_pte(flags);
 }
 
-static hydrogen_error_t try_create_mapping(vm_region_t *region, uintptr_t addr, uint64_t *ptr) {
+static void map_single(uint64_t *root, uintptr_t addr, uint64_t entry) {
+    unsigned shift = pt_top_shift;
+
+    for (;;) {
+        uint64_t *ptr = &root[(addr >> shift) & 511];
+
+        if (shift > 12) {
+            uint64_t pte = __atomic_load_n(ptr, __ATOMIC_RELAXED);
+
+            if (pte) {
+                root = phys_to_virt(pte & PTE_ADDR_MASK);
+            } else {
+                root = kmalloc(PT_SIZE);
+                memset(root, 0, PT_SIZE);
+                __atomic_store_n(ptr, virt_to_phys(root) | TABLE_FLAGS, __ATOMIC_RELAXED);
+            }
+        } else {
+            __atomic_store_n(ptr, entry, __ATOMIC_RELAXED);
+            break;
+        }
+
+        shift -= 9;
+    }
+}
+
+static hydrogen_error_t try_create_mapping(uint64_t *root, vm_region_t *region, uintptr_t addr) {
     uint64_t entry = flags_to_map_pte(region->flags) | PTE_USER;
 
     if (region->object.object) {
@@ -252,14 +277,14 @@ static hydrogen_error_t try_create_mapping(vm_region_t *region, uintptr_t addr, 
 
         entry |= phys;
     } else {
-        page_t *page = pmm_alloc();
+        page_t *page = pmm_alloc(false);
         page->anon.references = 1;
         memset(page_to_virt(page), 0, PAGE_SIZE);
         entry |= page_to_phys(page);
         entry |= PTE_ANON;
     }
 
-    __atomic_store_n(ptr, entry, __ATOMIC_RELAXED);
+    map_single(root, addr, entry);
     return HYDROGEN_SUCCESS;
 }
 
@@ -291,7 +316,7 @@ static void do_cow_copy(address_space_t *space, uint64_t ent, uint64_t *ptr, uin
 
     // Perform copy
     if ((ent & PTE_ANON) == 0 || deref_if_not_excl(phys_to_page(ent & PTE_ADDR_MASK))) {
-        page_t *dst = pmm_alloc();
+        page_t *dst = pmm_alloc(false);
         dst->anon.references = 1;
 
         // Using memcpy_user here because the target page might not be in HHDM.
@@ -351,7 +376,7 @@ static hydrogen_error_t handle_user_fault(
         panic("mapped permissions don't match region permissions");
     }
 
-    return try_create_mapping(region, addr, ptr);
+    return try_create_mapping(space->pmap.root, region, addr);
 }
 
 static void handle_page_fault(idt_frame_t *frame, void *ctx) {
@@ -374,15 +399,9 @@ static void handle_page_fault(idt_frame_t *frame, void *ctx) {
             return;
         }
 
-        if (likely(ptr)) {
-            hydrogen_error_t error = handle_user_fault(space, ptr, ent, addr, frame);
-            mutex_unlock(&space->lock);
-            if (unlikely(error)) signal_user_fault(addr, frame, error);
-            return;
-        }
-
+        hydrogen_error_t error = handle_user_fault(space, ptr, ent, addr, frame);
         mutex_unlock(&space->lock);
-        signal_user_fault(addr, frame, HYDROGEN_PAGE_FAULT);
+        if (unlikely(error)) signal_user_fault(addr, frame, error);
         return;
     } else if (!(frame->error_code & PF_ERROR_USER)) {
         if (addr < min_kernel_address) handle_fatal_exception(frame, ctx);
@@ -420,7 +439,6 @@ void init_pmap(void) {
     };
 
     kernel_pt = kmalloc(PT_SIZE);
-    if (unlikely(!kernel_pt)) panic("failed to allocate kernel page table");
     memset(kernel_pt, 0, PT_SIZE);
 
     if (pmode_req.response) {
@@ -461,12 +479,10 @@ void pmap_init_switch(void) {
     }
 }
 
-hydrogen_error_t pmap_create(pmap_t *out) {
+void pmap_create(pmap_t *out) {
     out->root = kmalloc(PT_SIZE);
-    if (unlikely(!out->root)) return HYDROGEN_OUT_OF_MEMORY;
     memset(out->root, 0, PT_SIZE / 2);
     memcpy(&out->root[256], &kernel_pt[256], PT_SIZE / 2);
-    return HYDROGEN_SUCCESS;
 }
 
 static void destroy_table(uint64_t *table, size_t max, int level) {
@@ -482,12 +498,12 @@ static void destroy_table(uint64_t *table, size_t max, int level) {
             page_t *page = phys_to_page(phys);
 
             if (__atomic_fetch_sub(&page->anon.references, 1, __ATOMIC_ACQ_REL) == 1) {
-                pmm_free(page);
+                pmm_free(page, false);
             }
         }
     }
 
-    pmm_free_now(virt_to_page(table));
+    pmm_free(virt_to_page(table), false);
 }
 
 void pmap_destroy(pmap_t *pmap) {
@@ -545,15 +561,32 @@ UNUSED static bool is_kernel_memory(uintptr_t virt) {
     return virt & (1ul << 63);
 }
 
-static hydrogen_error_t do_prepare(pmap_t *pmap, uint64_t *table, int level, uintptr_t addr, size_t size) {
-    if (level == 0) return HYDROGEN_SUCCESS;
-
+static void do_map(uint64_t *table, int level, uintptr_t addr, size_t size, uint64_t pte) {
     unsigned bits = level * 9 + 12;
     size_t index = (addr >> bits) & 511;
     size_t entry_size = 1ul << bits;
     size_t entry_mask = entry_size - 1;
 
     while (size > 0) {
+        if (level == 0 ||
+            (can_map_direct(level) && !((addr | pte) & (entry_mask & PTE_ADDR_MASK)) && size >= entry_size)) {
+            ASSERT(__atomic_load_n(&table[index], __ATOMIC_RELAXED) == 0);
+
+            uint64_t val = pte;
+
+            if (level != 0) {
+                val |= (val & PTE_HUGE) << 5;
+                val |= PTE_HUGE;
+            }
+
+            __atomic_store_n(&table[index], val, __ATOMIC_RELAXED);
+            index += 1;
+            addr += entry_size;
+            size -= entry_size;
+            pte += entry_size;
+            continue;
+        }
+
         uint64_t entry = __atomic_load_n(&table[index], __ATOMIC_RELAXED);
         uint64_t *child;
 
@@ -562,66 +595,9 @@ static hydrogen_error_t do_prepare(pmap_t *pmap, uint64_t *table, int level, uin
             child = phys_to_virt(entry & PTE_ADDR_MASK);
         } else {
             child = kmalloc(PT_SIZE);
-            if (unlikely(!child)) return HYDROGEN_OUT_OF_MEMORY;
             memset(child, 0, PT_SIZE);
-            __atomic_store_n(&table[index], virt_to_phys(child) | TABLE_FLAGS | PTE_USER, __ATOMIC_RELAXED);
+            __atomic_store_n(&table[index], virt_to_phys(child) | TABLE_FLAGS, __ATOMIC_RELAXED);
         }
-
-        size_t cur = entry_size - (addr & entry_mask);
-        if (cur > size) cur = size;
-
-        hydrogen_error_t error = do_prepare(pmap, child, level - 1, addr, cur);
-        if (unlikely(error)) return error;
-
-        index += 1;
-        addr += cur;
-        size -= cur;
-    }
-
-    return HYDROGEN_SUCCESS;
-}
-
-hydrogen_error_t pmap_prepare(pmap_t *pmap, uintptr_t addr, size_t size) {
-    ASSERT(((addr | size) & PAGE_MASK) == 0);
-    ASSERT(size != 0);
-    ASSERT(addr < addr + (size - 1));
-    ASSERT((pmap == NULL) == is_kernel_memory(addr));
-    ASSERT(is_kernel_memory(addr) == is_kernel_memory(addr + (size - 1)));
-
-    if (!pmap) mutex_lock(&kernel_pt_lock);
-
-    hydrogen_error_t error;
-    switch (pt_style) {
-    case PT_4LEVEL: error = do_prepare(pmap, pmap ? pmap->root : kernel_pt, 3, addr, size); break;
-    case PT_5LEVEL: error = do_prepare(pmap, pmap ? pmap->root : kernel_pt, 4, addr, size); break;
-    default: __builtin_unreachable();
-    }
-
-    if (!pmap) mutex_unlock(&kernel_pt_lock);
-    return error;
-}
-
-static void do_map(uint64_t *table, int level, uintptr_t addr, size_t size, uint64_t pte) {
-    unsigned bits = level * 9 + 12;
-    size_t index = (addr >> bits) & 511;
-    size_t entry_size = 1ul << bits;
-    size_t entry_mask = entry_size - 1;
-
-    while (size > 0) {
-        if (level == 0) {
-            ASSERT(__atomic_load_n(&table[index], __ATOMIC_RELAXED) == 0);
-            __atomic_store_n(&table[index], pte, __ATOMIC_RELAXED);
-            index += 1;
-            addr += 0x1000;
-            size -= 0x1000;
-            pte += 0x1000;
-            continue;
-        }
-
-        uint64_t entry = __atomic_load_n(&table[index], __ATOMIC_RELAXED);
-        ASSERT(entry != 0);
-        ASSERT((entry & PTE_HUGE) == 0);
-        uint64_t *child = phys_to_virt(entry & PTE_ADDR_MASK);
 
         size_t cur = entry_size - (addr & entry_mask);
         if (cur > size) cur = size;
@@ -664,7 +640,7 @@ static void do_alloc(uint64_t *table, int level, uintptr_t addr, size_t size, ui
     while (size > 0) {
         if (level == 0) {
             ASSERT(__atomic_load_n(&table[index], __ATOMIC_RELAXED) == 0);
-            page_t *page = pmm_alloc();
+            page_t *page = pmm_alloc(false);
             page->anon.references = 1;
             __atomic_store_n(&table[index], pte | page_to_phys(page), __ATOMIC_RELAXED);
             index += 1;
@@ -674,9 +650,16 @@ static void do_alloc(uint64_t *table, int level, uintptr_t addr, size_t size, ui
         }
 
         uint64_t entry = __atomic_load_n(&table[index], __ATOMIC_RELAXED);
-        ASSERT(entry != 0);
-        ASSERT((entry & PTE_HUGE) == 0);
-        uint64_t *child = phys_to_virt(entry & PTE_ADDR_MASK);
+        uint64_t *child;
+
+        if (entry) {
+            ASSERT((entry & PTE_HUGE) == 0);
+            child = phys_to_virt(entry & PTE_ADDR_MASK);
+        } else {
+            child = kmalloc(PT_SIZE);
+            memset(child, 0, PT_SIZE);
+            __atomic_store_n(&table[index], virt_to_phys(child) | TABLE_FLAGS, __ATOMIC_RELAXED);
+        }
 
         size_t cur = entry_size - (addr & entry_mask);
         if (cur > size) cur = size;
@@ -907,73 +890,4 @@ void pmap_unmap(pmap_t *pmap, uintptr_t addr, size_t size) {
 
     tlb_commit(&tlb);
     if (!pmap) mutex_unlock(&kernel_pt_lock);
-}
-
-static void do_init_map(uint64_t *table, int level, uintptr_t addr, size_t size, uint64_t pte) {
-    unsigned bits = level * 9 + 12;
-    size_t index = (addr >> bits) & 511;
-    size_t entry_size = 1ul << bits;
-    size_t entry_mask = (entry_size - 1) & ~0xfff;
-
-    while (size > 0) {
-        size_t offset = addr & entry_mask;
-        uint64_t entry = __atomic_load_n(&table[index], __ATOMIC_RELAXED);
-
-        if (level == 0 || (can_map_direct(level) && offset == 0 && size >= entry_size && (pte & entry_mask) == 0)) {
-            ASSERT(entry == 0);
-            entry = pte;
-
-            if (level != 0) {
-                entry |= PTE_HUGE | ((pte & PTE_HUGE) << 5);
-            }
-
-            __atomic_store_n(&table[index], entry, __ATOMIC_RELAXED);
-
-            index += 1;
-            addr += entry_size;
-            size -= entry_size;
-            pte += entry_size;
-            continue;
-        }
-
-        uint64_t *child;
-
-        if (entry == 0) {
-            child = kmalloc(PT_SIZE);
-            if (unlikely(!child)) panic("do_init_map out of memory");
-            memset(child, 0, PT_SIZE);
-            __atomic_store_n(&table[index], virt_to_phys(child) | TABLE_FLAGS, __ATOMIC_RELAXED);
-        } else {
-            ASSERT((entry & PTE_HUGE) == 0);
-            child = phys_to_virt(entry & PTE_ADDR_MASK);
-        }
-
-        size_t cur = entry_size - offset;
-        if (cur > size) cur = size;
-
-        do_init_map(child, level - 1, addr, cur, pte);
-
-        index += 1;
-        addr += cur;
-        size -= cur;
-        pte += cur;
-    }
-}
-
-void pmap_init_map(uintptr_t addr, size_t size, uint64_t phys, hydrogen_mem_flags_t flags) {
-    ASSERT(((addr | size | phys) & PAGE_MASK) == 0);
-    ASSERT(size != 0);
-    ASSERT(addr < addr + (size - 1));
-    ASSERT(is_kernel_memory(addr));
-
-    uint64_t pte = flags_to_map_pte(flags) | phys;
-
-    mutex_lock(&kernel_pt_lock);
-
-    switch (pt_style) {
-    case PT_4LEVEL: do_init_map(kernel_pt, 3, addr, size, pte); break;
-    case PT_5LEVEL: do_init_map(kernel_pt, 4, addr, size, pte); break;
-    }
-
-    mutex_unlock(&kernel_pt_lock);
 }

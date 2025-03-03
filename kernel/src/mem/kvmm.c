@@ -122,10 +122,9 @@ static bool try_merge(struct vmm_range *prev, struct vmm_range *next, uintptr_t 
     }
 }
 
-static hydrogen_error_t merge_or_insert(struct vmm_range *prev, struct vmm_range *next, uintptr_t start, size_t size) {
+static void merge_or_insert(struct vmm_range *prev, struct vmm_range *next, uintptr_t start, size_t size) {
     if (!try_merge(prev, next, start, size)) {
         struct vmm_range *range = kmalloc(sizeof(*range));
-        if (unlikely(!range)) return HYDROGEN_SUCCESS;
         memset(range, 0, sizeof(*range));
         range->start = start;
         range->size = size;
@@ -137,8 +136,6 @@ static hydrogen_error_t merge_or_insert(struct vmm_range *prev, struct vmm_range
         global_insert(range);
         free_insert(range, range->order);
     }
-
-    return HYDROGEN_SUCCESS;
 }
 
 void kvmm_add_range(uintptr_t start, size_t size) {
@@ -159,8 +156,7 @@ void kvmm_add_range(uintptr_t start, size_t size) {
     ASSERT(prev == NULL || (prev->start + prev->size) <= start);
     ASSERT(next == NULL || start + size <= next->start);
 
-    hydrogen_error_t error = merge_or_insert(prev, next, start, size);
-    if (unlikely(error)) panic("kvmm_add_range failed (%d)", error);
+    merge_or_insert(prev, next, start, size);
 
     mutex_unlock(&kvmm_lock);
 }
@@ -207,10 +203,6 @@ hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
 
     if (range->size != size) {
         alloc = kmalloc(sizeof(*alloc));
-        if (unlikely(!alloc)) {
-            mutex_unlock(&kvmm_lock);
-            return HYDROGEN_OUT_OF_MEMORY;
-        }
         memset(alloc, 0, sizeof(*alloc));
         alloc->start = range->start;
         alloc->size = size;
@@ -289,9 +281,6 @@ hydrogen_error_t map_phys_mem(void **out, uint64_t addr, size_t size, int flags)
 
     uintptr_t vaddr;
     hydrogen_error_t error = kvmm_alloc(&vaddr, size);
-    if (unlikely(error)) return error;
-
-    error = pmap_prepare(NULL, vaddr, size);
     if (unlikely(error)) return error;
 
     pmap_map(NULL, vaddr, size, addr, flags);
