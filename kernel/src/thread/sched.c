@@ -242,9 +242,11 @@ static void do_yield(sched_t *sched) {
     thread_t *next;
 
     if (sched->preempt != 0) {
-        current->preempted = true;
+        __atomic_store_n(&current->preempted, true, __ATOMIC_RELAXED);
         return;
     }
+
+    __atomic_store_n(&current->preempted, false, __ATOMIC_RELAXED);
 
     if (sched->queue.first) {
         next = sched->queue.first;
@@ -300,8 +302,7 @@ void sched_enable_preempt(void) {
     bool zero;
     asm volatile("decl %0" : "+m"(current_sched.preempt), "=@ccz"(zero));
 
-    if (zero && current_thread->preempted) {
-        current_thread->preempted = false;
+    if (zero && __atomic_load_n(&current_thread->preempted, __ATOMIC_RELAXED)) {
         sched_yield();
     }
 }
