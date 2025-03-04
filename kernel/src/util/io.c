@@ -1,6 +1,5 @@
 #include "hydrogen/io.h"
 #include "cpu/cpu.h"
-#include "hydrogen/error.h"
 #include "kernel/compiler.h"
 #include "util/handle.h"
 #include "util/io.h"
@@ -13,14 +12,13 @@ bool is_io_object(object_t *obj) {
     return obj == &io_object;
 }
 
-hydrogen_error_t hydrogen_io_enable(hydrogen_handle_t io) {
-    hydrogen_error_t error = resolve(io, NULL, is_io_object, 0);
+int hydrogen_io_enable(hydrogen_handle_t io) {
+    int error = resolve(io, NULL, is_io_object, 0);
     if (unlikely(error)) return error;
 
     // Set IOPL to 3
     current_thread->user_regs->rflags |= 3ul << 12;
-
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
 void hydrogen_io_disable(void) {

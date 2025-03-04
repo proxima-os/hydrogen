@@ -2,7 +2,6 @@
 #include "asm/mmio.h"
 #include "asm/pio.h"
 #include "drv/acpi.h"
-#include "hydrogen/error.h"
 #include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
@@ -76,7 +75,7 @@ void init_pic(void) {
             apic->next = ioapics;
             apic->gsi_base = entry->ioapic.gsi_base;
 
-            hydrogen_error_t error = map_phys_mem(
+            int error = map_phys_mem(
                     &apic->regs,
                     entry->ioapic.address,
                     0x14,

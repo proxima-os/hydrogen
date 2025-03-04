@@ -1,7 +1,6 @@
 #pragma once
 
 #include "cpu/idt.h"
-#include "hydrogen/error.h"
 #include "time/time.h"
 #include "util/handle.h"
 #include "util/object.h"
@@ -86,7 +85,7 @@ void init_sched_late(void);
 _Noreturn void sched_idle(void);
 
 // Creates a thread in the `THREAD_CREATED` state.
-hydrogen_error_t sched_create(thread_t **out, thread_func_t func, void *ctx, cpu_t *cpu);
+int sched_create(thread_t **out, thread_func_t func, void *ctx, cpu_t *cpu);
 
 void sched_yield(void);
 void sched_migrate(cpu_t *dest);
@@ -100,7 +99,7 @@ void sched_wake(thread_t *thread);
 // `THREAD_RUNNING` -> `THREAD_WAITING`
 // `timeout` is the value of `read_time()` at which the wait should time out. 0 is infinity.
 // if `lock` is non-NULL, it is unlocked in a way that prevents lost wakeups. it must be re-locked manually.
-hydrogen_error_t sched_wait(uint64_t timeout, spinlock_t *lock);
+int sched_wait(uint64_t timeout, spinlock_t *lock);
 
 void *alloc_kernel_stack(void);
 void free_kernel_stack(void *stack);

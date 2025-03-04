@@ -8,7 +8,7 @@
 #include "cpu/irqvecs.h"
 #include "cpu/lapic.h"
 #include "cpu/xsave.h"
-#include "hydrogen/error.h"
+#include "errno.h"
 #include "hydrogen/thread.h"
 #include "kernel/compiler.h"
 #include "mem/layout.h"
@@ -96,7 +96,7 @@ static void reaper_func(UNUSED void *ctx) {
 }
 
 void init_sched_late(void) {
-    hydrogen_error_t error = sched_create(&current_sched_ptr->reaper, reaper_func, NULL, current_cpu_ptr);
+    int error = sched_create(&current_sched_ptr->reaper, reaper_func, NULL, current_cpu_ptr);
     if (unlikely(error)) panic("failed to create reaper thread (%d)", error);
 }
 
@@ -155,21 +155,21 @@ static void handle_timeout(timer_event_t *event) {
     spin_unlock(&sched->queue.lock, state);
 }
 
-hydrogen_error_t sched_create(thread_t **out, thread_func_t func, void *ctx, cpu_t *cpu) {
+int sched_create(thread_t **out, thread_func_t func, void *ctx, cpu_t *cpu) {
     thread_t *thread = vmalloc(sizeof(*thread));
-    if (unlikely(!thread)) return HYDROGEN_OUT_OF_MEMORY;
+    if (unlikely(!thread)) return ENOMEM;
 
     void *stack = alloc_kernel_stack();
     if (unlikely(!stack)) {
         vmfree(thread, sizeof(*thread));
-        return HYDROGEN_OUT_OF_MEMORY;
+        return ENOMEM;
     }
 
     void *xsave = xsave_alloc();
     if (unlikely(!xsave)) {
         free_kernel_stack(stack);
         vmfree(thread, sizeof(*thread));
-        return HYDROGEN_OUT_OF_MEMORY;
+        return ENOMEM;
     }
 
     memset(thread, 0, sizeof(*thread));
@@ -204,7 +204,7 @@ hydrogen_error_t sched_create(thread_t **out, thread_func_t func, void *ctx, cpu
     __atomic_fetch_add(&cpu->sched.threads, 1, __ATOMIC_RELAXED);
 
     *out = thread;
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
 static void post_switch_func(sched_t *sched, thread_regs_t **prev_regs) {
@@ -334,7 +334,7 @@ void sched_wake(thread_t *thread) {
     spin_unlock(&sched->queue.lock, state);
 }
 
-hydrogen_error_t sched_wait(uint64_t timeout, spinlock_t *lock) {
+int sched_wait(uint64_t timeout, spinlock_t *lock) {
     sched_t *sched = current_sched_ptr;
     thread_t *thread = sched->current;
     ASSERT(thread != &sched->idle);
@@ -357,8 +357,8 @@ hydrogen_error_t sched_wait(uint64_t timeout, spinlock_t *lock) {
     if (lock) spin_lock_noirq(lock);
 
     switch (thread->wake_reason) {
-    case WAKE_EXPLICIT: return HYDROGEN_SUCCESS;
-    case WAKE_TIMEOUT: return HYDROGEN_TIMED_OUT;
+    case WAKE_EXPLICIT: return 0;
+    case WAKE_TIMEOUT: return ETIMEDOUT;
     default: __builtin_unreachable();
     }
 }

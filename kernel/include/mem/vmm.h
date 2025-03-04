@@ -1,6 +1,5 @@
 #pragma once
 
-#include "hydrogen/error.h"
 #include "hydrogen/handle.h"
 #include "hydrogen/memory.h"
 #include "mem/pmap.h"
@@ -22,7 +21,7 @@ typedef struct {
     object_ops_t base;
     // WARNING: Do not rely on `region` staying valid after this call returns!
     void (*post_map)(vm_object_t *self, vm_region_t *region);
-    hydrogen_error_t (*get_phys)(vm_object_t *self, uint64_t *out, vm_region_t *region, size_t offset);
+    int (*get_phys)(vm_object_t *self, uint64_t *out, vm_region_t *region, size_t offset);
 } vm_object_ops_t;
 
 struct vm_object {
@@ -50,14 +49,14 @@ struct address_space {
     pmap_t pmap;
     vm_region_t *regtree;
     vm_region_t *regions;
-    size_t num_mapped;  // the number of pages that are mapped in this address space
+    size_t num_mapped; // the number of pages that are mapped in this address space
     uintptr_t vdso_addr;
 };
 
 #define VM_SWITCH_RIGHTS                                                                                               \
     (HYDROGEN_VM_RIGHT_MAP | HYDROGEN_VM_RIGHT_REMAP | HYDROGEN_VM_RIGHT_UNMAP | HYDROGEN_VM_RIGHT_CLONE)
 
-hydrogen_error_t get_vm(hydrogen_handle_t handle, address_space_t **out, uint64_t rights);
+int get_vm(hydrogen_handle_t handle, address_space_t **out, uint64_t rights);
 
 void vm_switch(address_space_t *space);
 

@@ -6,7 +6,7 @@
 #include "cpu/gdt.h"
 #include "cpu/idt.h"
 #include "cpu/xsave.h"
-#include "hydrogen/error.h"
+#include "errno.h"
 #include "hydrogen/handle.h"
 #include "hydrogen/io.h"
 #include "hydrogen/log.h"
@@ -33,15 +33,15 @@ void init_syscall_cpu(void) {
     wrmsr(MSR_FMASK, 0x40600); // Clear AC, IF, and DF on syscall entry
 }
 
-static hydrogen_error_t do_syscall(size_t *ret, size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5) {
+static int do_syscall(size_t *ret, size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5) {
     syscall_vec_t vec = *ret;
-    hydrogen_error_t err;
+    int err;
     hydrogen_handle_t h;
 
     switch (vec) {
     case SYSCALL_THREAD_EXIT: hydrogen_thread_exit();
     case SYSCALL_LOG_WRITE: return hydrogen_log_write((hydrogen_handle_t)a0, (const void *)a1, a2);
-    case SYSCALL_GET_TIME: *ret = hydrogen_get_time(); return HYDROGEN_SUCCESS;
+    case SYSCALL_GET_TIME: *ret = hydrogen_get_time(); return 0;
     case SYSCALL_NAMESPACE_CREATE:
         err = hydrogen_namespace_create(&h);
         *ret = (size_t)h;
@@ -73,8 +73,8 @@ static hydrogen_error_t do_syscall(size_t *ret, size_t a0, size_t a1, size_t a2,
     case SYSCALL_VM_FILL: return hydrogen_vm_fill((hydrogen_handle_t)a0, a1, a2, a3);
     case SYSCALL_VM_READ: return hydrogen_vm_read((hydrogen_handle_t)a0, (void *)a1, a2, a3);
     case SYSCALL_IO_ENABLE: return hydrogen_io_enable((hydrogen_handle_t)a0);
-    case SYSCALL_IO_DISABLE: hydrogen_io_disable(); return HYDROGEN_SUCCESS;
-    default: return HYDROGEN_INVALID_SYSCALL;
+    case SYSCALL_IO_DISABLE: hydrogen_io_disable(); return 0;
+    default: return ENOSYS;
     }
 }
 
@@ -86,7 +86,7 @@ __attribute__((used)) void syscall_dispatch(idt_frame_t *frame) {
 
     if (!is_in_vdso(frame->rip)) {
         uintptr_t info[2] = {};
-        handle_user_exception(HYDROGEN_INVALID_ARGUMENT, "system call from outside vdso", frame, info);
+        handle_user_exception(EINVAL, "system call from outside vdso", frame, info);
         return;
     }
 
@@ -100,10 +100,10 @@ _Noreturn void enter_user_mode(uintptr_t rip, uintptr_t rsp) {
     do_enter_umode(rip, rsp, 0x200, SEL_UCODE, SEL_UDATA);
 }
 
-hydrogen_error_t verify_user_pointer(const void *ptr, size_t size) {
+int verify_user_pointer(const void *ptr, size_t size) {
     uintptr_t addr = (uintptr_t)ptr;
     uintptr_t end = addr + size;
-    if (end < addr) return HYDROGEN_INVALID_POINTER;
-    if (end > max_user_address) return HYDROGEN_INVALID_POINTER;
-    return HYDROGEN_SUCCESS;
+    if (end < addr) return EFAULT;
+    if (end > max_user_address) return EFAULT;
+    return 0;
 }

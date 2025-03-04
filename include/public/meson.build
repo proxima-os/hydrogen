@@ -1,5 +1,5 @@
 install_headers(
-    'hydrogen/error.h',
+    'hydrogen/errno.h',
     'hydrogen/handle.h',
     'hydrogen/init.h',
     'hydrogen/io.h',

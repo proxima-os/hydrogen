@@ -50,7 +50,7 @@ static _Noreturn void handle_fatal_exception_paranoid(idt_frame_t *frame, void *
     handle_fatal_exception(frame, ctx);
 }
 
-void handle_user_exception(hydrogen_error_t error, const char *desc, idt_frame_t *frame, uintptr_t info[2]) {
+void handle_user_exception(int error, const char *desc, idt_frame_t *frame, uintptr_t info[2]) {
     // TODO: Signal this properlty instead of just terminating the thread
     printk("hydrogen: userspace fault: %s (%d) at 0x%X (info: 0x%X, 0x%X)\n"
            "rax=0x%16X rbx=0x%16X rcx=0x%16X rdx=0x%16X\n"

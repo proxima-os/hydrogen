@@ -1,6 +1,5 @@
 #pragma once
 
-#include "hydrogen/error.h"
 #include "util/endian.h"
 #include <stdint.h>
 
@@ -111,6 +110,6 @@ typedef struct {
 
 void init_acpi(void);
 
-hydrogen_error_t map_acpi_table(const acpi_header_t **out, uint64_t addr);
+int map_acpi_table(const acpi_header_t **out, uint64_t addr);
 
 const acpi_header_t *get_acpi_table(const char signature[4]);

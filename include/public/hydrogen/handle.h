@@ -5,7 +5,6 @@
 #ifndef HYDROGEN_HANDLE_H
 #define HYDROGEN_HANDLE_H
 
-#include "error.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -32,7 +31,7 @@ typedef const void *hydrogen_handle_t;
  *
  * @param[out] ns The newly created namespace.
  */
-hydrogen_error_t hydrogen_namespace_create(hydrogen_handle_t *ns);
+int hydrogen_namespace_create(hydrogen_handle_t *ns);
 
 /**
  * Creates a new handle in a namespace.
@@ -43,12 +42,7 @@ hydrogen_error_t hydrogen_namespace_create(hydrogen_handle_t *ns);
  * \param[in] rights The rights of the newly created handle. Masked with the rights of `object`.
  * \param[out] handle The newly created handle.
  */
-hydrogen_error_t hydrogen_handle_create(
-        hydrogen_handle_t ns,
-        hydrogen_handle_t object,
-        uint64_t rights,
-        hydrogen_handle_t *handle
-);
+int hydrogen_handle_create(hydrogen_handle_t ns, hydrogen_handle_t object, uint64_t rights, hydrogen_handle_t *handle);
 
 /**
  * Closes a handle.
@@ -58,7 +52,7 @@ hydrogen_error_t hydrogen_handle_create(
  * \param[in] handle The handle to close.
  * \return The only errors that this function can encounter are #HYDROGEN_INVALID_HANDLE and #HYDROGEN_NO_PERMISSION.
  */
-hydrogen_error_t hydrogen_handle_close(hydrogen_handle_t ns, hydrogen_handle_t handle);
+int hydrogen_handle_close(hydrogen_handle_t ns, hydrogen_handle_t handle);
 
 #ifdef __cplusplus
 };

@@ -1,5 +1,5 @@
 #include "drv/acpi.h"
-#include "hydrogen/error.h"
+#include "errno.h"
 #include "hydrogen/memory.h"
 #include "init/main.h"
 #include "kernel/compiler.h"
@@ -53,7 +53,7 @@ static const rsdp_t *map_rsdp(size_t *len_out) {
     init_info.rsdp = addr;
 
     void *ptr;
-    hydrogen_error_t error = map_phys_mem(&ptr, addr, 24, HYDROGEN_MEM_READ);
+    int error = map_phys_mem(&ptr, addr, 24, HYDROGEN_MEM_READ);
     if (unlikely(error)) {
         printk("acpi: failed to map rsdp header at 0x%X (%d)\n", rsdp_req.response->address, error);
         return NULL;
@@ -119,7 +119,7 @@ void init_acpi(void) {
     unmap_phys_mem(rsdp, rsdp_len);
 
     const acpi_header_t *header;
-    hydrogen_error_t error = map_acpi_table(&header, addr);
+    int error = map_acpi_table(&header, addr);
     if (unlikely(error)) {
         printk("acpi: failed to map root table (%d)\n", error);
         return;
@@ -136,7 +136,7 @@ void init_acpi(void) {
 
     for (size_t i = 0; i < num_tables; i++) {
         uint64_t addr = xsdt ? le64(root_table->entries64[i]) : le32(root_table->entries32[i]);
-        hydrogen_error_t error = map_acpi_table(&tables[i], addr);
+        int error = map_acpi_table(&tables[i], addr);
 
         if (unlikely(error)) {
             printk("acpi: failed to map table (%d)\n", error);
@@ -147,9 +147,9 @@ void init_acpi(void) {
     unmap_phys_mem(header, le32(header->length));
 }
 
-hydrogen_error_t map_acpi_table(const acpi_header_t **out, uint64_t addr) {
+int map_acpi_table(const acpi_header_t **out, uint64_t addr) {
     void *ptr;
-    hydrogen_error_t error = map_phys_mem(&ptr, addr, sizeof(acpi_header_t), HYDROGEN_MEM_READ);
+    int error = map_phys_mem(&ptr, addr, sizeof(acpi_header_t), HYDROGEN_MEM_READ);
     if (unlikely(error)) return error;
     size_t length = le32(((const acpi_header_t *)ptr)->length);
     unmap_phys_mem(ptr, sizeof(acpi_header_t));
@@ -160,7 +160,7 @@ hydrogen_error_t map_acpi_table(const acpi_header_t **out, uint64_t addr) {
 
     if (unlikely(!acpi_checksum(header, length))) {
         unmap_phys_mem(ptr, length);
-        return HYDROGEN_INVALID_FORMAT;
+        return EILSEQ;
     }
 
     printk("acpi: %S v%2x @ 0x%X-0x%X (%S %S 0x%8x %S 0x%8x)\n",
@@ -178,7 +178,7 @@ hydrogen_error_t map_acpi_table(const acpi_header_t **out, uint64_t addr) {
            sizeof(header->creator_id),
            le32(header->creator_revision));
     *out = header;
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
 const acpi_header_t *get_acpi_table(const char signature[4]) {

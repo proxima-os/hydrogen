@@ -9,7 +9,6 @@
 #include "cpu/xsave.h"
 #include "drv/acpi.h"
 #include "drv/pic.h"
-#include "hydrogen/error.h"
 #include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "limine.h"
@@ -93,7 +92,7 @@ void init_lapic_bsp(void) {
     if (cpu_features.x2apic) {
         msr_apic_base |= MSR_APIC_BASE_EXTD;
     } else {
-        hydrogen_error_t error = map_phys_mem(
+        int error = map_phys_mem(
                 &xapic_regs,
                 msr_apic_base & (cpu_features.paddr_mask & ~0xfff),
                 0x1000,
@@ -315,7 +314,7 @@ void init_smp(void) {
         // These threads have to be created on the current CPU to avoid a race condition in `sched_create`'s CPU
         // selection code.
         thread_t *thread;
-        hydrogen_error_t error = sched_create(&thread, ap_init_thread_func, info, current_cpu_ptr);
+        int error = sched_create(&thread, ap_init_thread_func, info, current_cpu_ptr);
         if (unlikely(error)) panic("failed to create cpu initialization thread (%d)", error);
         sched_wake(thread);
         obj_deref(&thread->base);

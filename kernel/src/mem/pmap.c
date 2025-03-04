@@ -8,7 +8,7 @@
 #include "cpu/idt.h"
 #include "cpu/irqvecs.h"
 #include "cpu/lapic.h"
-#include "hydrogen/error.h"
+#include "errno.h"
 #include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -193,7 +193,7 @@ static bool is_usermem_func(uintptr_t pc) {
     return usermem_funcs.start <= pc && pc < usermem_funcs.end;
 }
 
-static void signal_user_fault(uintptr_t addr, idt_frame_t *frame, hydrogen_error_t error) {
+static void signal_user_fault(uintptr_t addr, idt_frame_t *frame, int error) {
     if (is_usermem_func(frame->rip)) {
         // See usermem.S
         frame->rax = error;
@@ -206,7 +206,7 @@ static void signal_user_fault(uintptr_t addr, idt_frame_t *frame, hydrogen_error
     handle_user_exception(error, "page fault", frame, info);
 }
 
-static hydrogen_error_t get_obj_phys(uint64_t *out, vm_region_t *region, uintptr_t addr) {
+static int get_obj_phys(uint64_t *out, vm_region_t *region, uintptr_t addr) {
     vm_object_t *object = (vm_object_t *)region->object.object;
     size_t offset = region->offset + ((addr & ~PAGE_MASK) - region->head);
 
@@ -258,12 +258,12 @@ static void map_single(uint64_t *root, uintptr_t addr, uint64_t entry) {
     }
 }
 
-static hydrogen_error_t try_create_mapping(uint64_t *root, vm_region_t *region, uintptr_t addr) {
+static int try_create_mapping(uint64_t *root, vm_region_t *region, uintptr_t addr) {
     uint64_t entry = flags_to_map_pte(region->flags) | PTE_USER;
 
     if (region->object.object) {
         uint64_t phys;
-        hydrogen_error_t error = get_obj_phys(&phys, region, addr);
+        int error = get_obj_phys(&phys, region, addr);
         if (unlikely(error)) return error;
 
         if (!(region->flags & HYDROGEN_MEM_SHARED)) {
@@ -285,7 +285,7 @@ static hydrogen_error_t try_create_mapping(uint64_t *root, vm_region_t *region, 
     }
 
     map_single(root, addr, entry);
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
 static bool deref_if_not_excl(page_t *page) {
@@ -320,7 +320,7 @@ static void do_cow_copy(address_space_t *space, uint64_t ent, uint64_t *ptr, uin
         dst->anon.references = 1;
 
         // Using memcpy_user here because the target page might not be in HHDM.
-        UNUSED hydrogen_error_t error = memcpy_user(page_to_virt(dst), (const void *)(addr & ~PAGE_MASK), PAGE_SIZE);
+        UNUSED int error = memcpy_user(page_to_virt(dst), (const void *)(addr & ~PAGE_MASK), PAGE_SIZE);
         ASSERT(!error); // The read-only mapping is currently present, so any page fault taken here is a bug.
 
         ent &= ~(PTE_ADDR_MASK | PTE_CACHE_BITS);
@@ -351,16 +351,10 @@ static void do_cow_copy(address_space_t *space, uint64_t ent, uint64_t *ptr, uin
     __atomic_store_n(ptr, ent, __ATOMIC_RELAXED);
 }
 
-static hydrogen_error_t handle_user_fault(
-        address_space_t *space,
-        uint64_t *ptr,
-        uint64_t ent,
-        uintptr_t addr,
-        idt_frame_t *frame
-) {
+static int handle_user_fault(address_space_t *space, uint64_t *ptr, uint64_t ent, uintptr_t addr, idt_frame_t *frame) {
     vm_region_t *region = vm_get_region(space, addr);
-    if (unlikely(!region)) return HYDROGEN_PAGE_FAULT;
-    if (unlikely(!is_access_allowed(region, frame->error_code))) return HYDROGEN_PAGE_FAULT;
+    if (unlikely(!region)) return EFAULT;
+    if (unlikely(!is_access_allowed(region, frame->error_code))) return EFAULT;
 
     // This cannot be moved to before vm_get_region because otherwise copy-on-write will be used for no-write regions.
     // PTE_COW also cannot be redefined to be illegal for no-write regions, otherwise vm_remap can be used to get
@@ -368,7 +362,7 @@ static hydrogen_error_t handle_user_fault(
     if (ent) {
         if ((frame->error_code & PF_ERROR_WRITE) && (ent & PTE_COW)) {
             do_cow_copy(space, ent, ptr, addr);
-            return HYDROGEN_SUCCESS;
+            return 0;
         }
 
         // The only scenarios where PTE permissions don't match region permissions are tested for above. All others
@@ -399,7 +393,7 @@ static void handle_page_fault(idt_frame_t *frame, void *ctx) {
             return;
         }
 
-        hydrogen_error_t error = handle_user_fault(space, ptr, ent, addr, frame);
+        int error = handle_user_fault(space, ptr, ent, addr, frame);
         mutex_unlock(&space->lock);
         if (unlikely(error)) signal_user_fault(addr, frame, error);
         return;
@@ -427,7 +421,7 @@ static void handle_page_fault(idt_frame_t *frame, void *ctx) {
         handle_fatal_exception(frame, ctx);
     }
 
-    signal_user_fault(addr, frame, HYDROGEN_PAGE_FAULT);
+    signal_user_fault(addr, frame, EFAULT);
 }
 
 void init_pmap(void) {

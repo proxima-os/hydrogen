@@ -1,5 +1,5 @@
 #include "mem/obj/pmem.h"
-#include "hydrogen/error.h"
+#include "errno.h"
 #include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -29,17 +29,12 @@ static void pmem_vm_obj_post_map(vm_object_t *ptr, vm_region_t *region) {
     }
 }
 
-static hydrogen_error_t pmem_vm_obj_get_phys(
-        vm_object_t *ptr,
-        uint64_t *out,
-        UNUSED vm_region_t *region,
-        size_t offset
-) {
+static int pmem_vm_obj_get_phys(vm_object_t *ptr, uint64_t *out, UNUSED vm_region_t *region, size_t offset) {
     pmem_vm_object_t *self = (pmem_vm_object_t *)ptr;
-    if (unlikely(offset >= self->size)) return HYDROGEN_NOT_FOUND;
+    if (unlikely(offset >= self->size)) return ENOENT;
 
     *out = self->addr + offset;
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
 const vm_object_ops_t pmem_vm_object_ops = {

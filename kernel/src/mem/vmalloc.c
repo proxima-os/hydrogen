@@ -1,5 +1,4 @@
 #include "mem/vmalloc.h"
-#include "hydrogen/error.h"
 #include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -19,7 +18,7 @@ void *vmalloc(size_t size) {
     size = (size + PAGE_MASK) & ~PAGE_MASK;
 
     uintptr_t addr;
-    hydrogen_error_t error = kvmm_alloc(&addr, size);
+    int error = kvmm_alloc(&addr, size);
     if (unlikely(error)) return NULL;
 
     pmap_alloc(addr, size, HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE);

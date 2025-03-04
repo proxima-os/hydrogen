@@ -1,6 +1,6 @@
 #include "util/logging.h"
 #include "asm/pio.h"
-#include "hydrogen/error.h"
+#include "errno.h"
 #include "hydrogen/log.h"
 #include "hydrogen/memory.h"
 #include "kernel/compiler.h"
@@ -72,12 +72,7 @@ void init_fb_log(void) {
     if (term_width) {
         size_t size = term_pitch * term_height;
         void *ptr;
-        hydrogen_error_t error = map_phys_mem(
-                &ptr,
-                phys,
-                size,
-                HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE | HYDROGEN_MEM_WRITE_COMBINE
-        );
+        int error = map_phys_mem(&ptr, phys, size, HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE | HYDROGEN_MEM_WRITE_COMBINE);
         if (unlikely(error)) printk("logging: failed to map framebuffer at 0x%X-0x%X (%d)\n", phys, phys + size, error);
         else framebuffer = ptr;
     }
@@ -338,12 +333,12 @@ static bool is_log_object(object_t *obj) {
     return obj == &klog_object;
 }
 
-hydrogen_error_t hydrogen_log_write(hydrogen_handle_t log, const void *data, size_t size) {
+int hydrogen_log_write(hydrogen_handle_t log, const void *data, size_t size) {
     uint8_t buffer[1024];
 
-    if (unlikely(size == 0)) return HYDROGEN_INVALID_ARGUMENT;
+    if (unlikely(size == 0)) return EINVAL;
 
-    hydrogen_error_t error = verify_user_pointer(data, size);
+    int error = verify_user_pointer(data, size);
     if (unlikely(error)) return error;
 
     error = resolve(log, NULL, is_log_object, HYDROGEN_LOG_RIGHT_WRITE);
@@ -353,7 +348,7 @@ hydrogen_error_t hydrogen_log_write(hydrogen_handle_t log, const void *data, siz
         size_t cur = sizeof(buffer);
         if (cur > size) cur = size;
 
-        hydrogen_error_t error = memcpy_user(buffer, data, cur);
+        error = memcpy_user(buffer, data, cur);
         if (unlikely(error)) return error;
 
         klog_write(buffer, cur);

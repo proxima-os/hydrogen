@@ -1,7 +1,6 @@
 #ifndef HYDROGEN_LOG_H
 #define HYDROGEN_LOG_H
 
-#include "hydrogen/error.h"
 #include "hydrogen/handle.h"
 #include <stddef.h>
 
@@ -18,7 +17,7 @@ extern "C" {
  * \param[in] data The data to write.
  * \param[in] size The number of bytes to write.
  */
-hydrogen_error_t hydrogen_log_write(hydrogen_handle_t log, const void *data, size_t size);
+int hydrogen_log_write(hydrogen_handle_t log, const void *data, size_t size);
 
 #ifdef __cplusplus
 };

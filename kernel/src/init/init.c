@@ -1,5 +1,4 @@
 #include "init/init.h"
-#include "hydrogen/error.h"
 #include "hydrogen/handle.h"
 #include "hydrogen/init.h"
 #include "hydrogen/memory.h"
@@ -62,7 +61,7 @@ static intptr_t get_image_slide(hydrogen_handle_t vm, elf_header_t *image) {
     if (min_addr >= max_addr) panic("no loadable segments in image");
 
     uintptr_t addr = image->type == ET_EXEC ? min_addr : 0;
-    hydrogen_error_t error = hydrogen_vm_map(
+    int error = hydrogen_vm_map(
             vm,
             &addr,
             max_addr - min_addr,
@@ -113,7 +112,7 @@ static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide,
 
             // map pages that don't need to be partially zeroed immediately
             if (imm_size) {
-                hydrogen_error_t error = hydrogen_vm_map(
+                int error = hydrogen_vm_map(
                         vm,
                         &addr,
                         imm_size,
@@ -132,7 +131,7 @@ static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide,
 
             // map pages that do need to be partially zeroed with write permissions, zero them, then protect
             if (map_size) {
-                hydrogen_error_t error = hydrogen_vm_map(
+                int error = hydrogen_vm_map(
                         vm,
                         &addr,
                         map_size,
@@ -157,7 +156,7 @@ static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide,
 
         // map pages that are fully zero anonymously
         if (size) {
-            hydrogen_error_t error = hydrogen_vm_map(vm, &addr, size, flags & ~HYDROGEN_MEM_SHARED, NULL, 0);
+            int error = hydrogen_vm_map(vm, &addr, size, flags & ~HYDROGEN_MEM_SHARED, NULL, 0);
             if (unlikely(error)) panic("failed to map segment zero data (%d)", error);
         }
     }
@@ -250,7 +249,7 @@ static void write_data(struct stack_ctx *ctx, const void *data, size_t size) {
     if (cur > size) cur = size;
 
     if (cur != 0) {
-        hydrogen_error_t error = memcpy_user((void *)ctx->area, data, cur);
+        int error = memcpy_user((void *)ctx->area, data, cur);
         if (unlikely(error)) panic("failed to write data to init stack (%d)", error);
         ctx->rem -= cur;
     }
@@ -271,7 +270,7 @@ static uintptr_t write_ibdata(struct stack_ctx *ctx, const void *data, size_t si
     ctx->ibarea = addr;
 
     if (cur > pad) {
-        hydrogen_error_t error = memcpy_user((void *)ctx->ibarea, data, cur - pad);
+        int error = memcpy_user((void *)ctx->ibarea, data, cur - pad);
         if (unlikely(error)) panic("failed to write data to init info block (%d)", error);
     }
 
@@ -332,7 +331,7 @@ uintptr_t create_init_stack(uintptr_t vdso_addr) {
 
     // allocate an area for the stack and its guard page
     uintptr_t addr = 0;
-    hydrogen_error_t error = hydrogen_vm_map(NULL, &addr, stack_size + PAGE_SIZE, 0, NULL, 0);
+    int error = hydrogen_vm_map(NULL, &addr, stack_size + PAGE_SIZE, 0, NULL, 0);
     if (unlikely(error)) panic("failed to allocate area for init stack");
 
     // allocate the actual stack

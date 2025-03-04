@@ -1,6 +1,6 @@
 #include "util/handle.h"
 #include "cpu/cpu.h"
-#include "hydrogen/error.h"
+#include "errno.h"
 #include "hydrogen/handle.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -41,18 +41,18 @@ static void namespace_free(object_t *ptr) {
 
 static const object_ops_t namespace_ops = {.free = namespace_free};
 
-hydrogen_error_t create_namespace_raw(namespace_t **out) {
+int create_namespace_raw(namespace_t **out) {
     namespace_t *ns = vmalloc(sizeof(*ns));
-    if (unlikely(!ns)) return HYDROGEN_OUT_OF_MEMORY;
+    if (unlikely(!ns)) return ENOMEM;
     memset(ns, 0, sizeof(*ns));
 
     obj_init(&ns->base, &namespace_ops);
 
     *out = ns;
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
-static hydrogen_error_t do_create(namespace_t *ns, object_t *obj, uint64_t rights, hydrogen_handle_t *out) {
+static int do_create(namespace_t *ns, object_t *obj, uint64_t rights, hydrogen_handle_t *out) {
     mutex_lock(&ns->lock);
 
     size_t i = ns->alloc_start;
@@ -84,59 +84,59 @@ success:
 
     mutex_unlock(&ns->lock);
     *out = idx_to_handle(i);
-    return HYDROGEN_SUCCESS;
+    return 0;
 
 fail:
     mutex_unlock(&ns->lock);
-    return HYDROGEN_OUT_OF_MEMORY;
+    return ENOMEM;
 }
 
-hydrogen_error_t create_handle(object_t *obj, uint64_t rights, hydrogen_handle_t *out) {
+int create_handle(object_t *obj, uint64_t rights, hydrogen_handle_t *out) {
     return do_create(current_thread->namespace, obj, rights, out);
 }
 
-hydrogen_error_t basic_resolve(hydrogen_handle_t handle, handle_data_t *out) {
-    if (unlikely(!handle)) return HYDROGEN_INVALID_HANDLE;
+int basic_resolve(hydrogen_handle_t handle, handle_data_t *out) {
+    if (unlikely(!handle)) return EBADF;
 
     size_t idx = handle_to_idx(handle);
-    if (unlikely(idx >= MAX_HANDLE)) return HYDROGEN_INVALID_HANDLE;
+    if (unlikely(idx >= MAX_HANDLE)) return EBADF;
 
     namespace_t *ns = current_thread->namespace;
     mutex_lock(&ns->lock);
 
     if (unlikely(idx >= ns->capacity) || unlikely(!ns->data[idx].object)) {
         mutex_unlock(&ns->lock);
-        return HYDROGEN_INVALID_HANDLE;
+        return EBADF;
     }
 
     *out = ns->data[idx];
     obj_ref(out->object);
     mutex_unlock(&ns->lock);
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
-hydrogen_error_t resolve(hydrogen_handle_t handle, handle_data_t *out, bool (*pred)(object_t *obj), uint64_t rights) {
+int resolve(hydrogen_handle_t handle, handle_data_t *out, bool (*pred)(object_t *obj), uint64_t rights) {
     handle_data_t data;
-    hydrogen_error_t error = basic_resolve(handle, &data);
+    int error = basic_resolve(handle, &data);
     if (unlikely(error)) return error;
 
     if (!pred(data.object)) {
         obj_deref(data.object);
-        return HYDROGEN_INVALID_HANDLE;
+        return EBADF;
     }
 
     if ((data.rights & rights) != rights) {
         obj_deref(data.object);
-        return HYDROGEN_NO_PERMISSION;
+        return EBADF;
     }
 
     if (out) *out = data;
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
-hydrogen_error_t hydrogen_namespace_create(hydrogen_handle_t *out) {
+int hydrogen_namespace_create(hydrogen_handle_t *out) {
     namespace_t *ns;
-    hydrogen_error_t error = create_namespace_raw(&ns);
+    int error = create_namespace_raw(&ns);
     if (unlikely(error)) return error;
 
     error = create_handle(&ns->base, -1, out);
@@ -148,27 +148,27 @@ static bool is_namespace(object_t *obj) {
     return obj->ops == &namespace_ops;
 }
 
-static hydrogen_error_t get_ns(hydrogen_handle_t handle, namespace_t **out, uint64_t rights) {
+static int get_ns(hydrogen_handle_t handle, namespace_t **out, uint64_t rights) {
     if (handle) {
         handle_data_t data;
-        hydrogen_error_t error = resolve(handle, &data, is_namespace, rights);
+        int error = resolve(handle, &data, is_namespace, rights);
         if (unlikely(error)) return error;
         *out = (namespace_t *)data.object;
     } else {
         *out = current_thread->namespace;
     }
 
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
-hydrogen_error_t hydrogen_handle_create(
+int hydrogen_handle_create(
         hydrogen_handle_t namespace,
         hydrogen_handle_t object,
         uint64_t rights,
         hydrogen_handle_t *handle
 ) {
     namespace_t *ns;
-    hydrogen_error_t error = get_ns(namespace, &ns, HYDROGEN_NAMESPACE_RIGHT_CREATE);
+    int error = get_ns(namespace, &ns, HYDROGEN_NAMESPACE_RIGHT_CREATE);
     if (unlikely(error)) return error;
 
     handle_data_t data;
@@ -181,7 +181,7 @@ hydrogen_error_t hydrogen_handle_create(
     if (!is_namespace(data.object)) {
         error = do_create(ns, data.object, rights & data.rights, handle);
     } else {
-        error = HYDROGEN_INVALID_ARGUMENT;
+        error = EINVAL;
     }
 
     obj_deref(data.object);
@@ -189,16 +189,16 @@ hydrogen_error_t hydrogen_handle_create(
     return error;
 }
 
-hydrogen_error_t hydrogen_handle_close(hydrogen_handle_t namespace, hydrogen_handle_t handle) {
-    if (unlikely(!handle)) return HYDROGEN_INVALID_HANDLE;
+int hydrogen_handle_close(hydrogen_handle_t namespace, hydrogen_handle_t handle) {
+    if (unlikely(!handle)) return EBADF;
 
     size_t idx = handle_to_idx(handle);
-    if (unlikely(idx >= MAX_HANDLE)) return HYDROGEN_INVALID_HANDLE;
+    if (unlikely(idx >= MAX_HANDLE)) return EBADF;
 
     namespace_t *ns;
-    hydrogen_error_t error = get_ns(namespace, &ns, HYDROGEN_NAMESPACE_RIGHT_CLOSE);
+    int error = get_ns(namespace, &ns, HYDROGEN_NAMESPACE_RIGHT_CLOSE);
     if (unlikely(error)) return error;
-    error = HYDROGEN_INVALID_HANDLE;
+    error = EBADF;
 
     mutex_lock(&ns->lock);
 
@@ -209,9 +209,9 @@ hydrogen_error_t hydrogen_handle_close(hydrogen_handle_t namespace, hydrogen_han
 
     if (idx < ns->alloc_start) ns->alloc_start = idx;
 
-    error = HYDROGEN_SUCCESS;
+    error = 0;
 fail:
     mutex_unlock(&ns->lock);
     if (namespace) obj_deref(&ns->base);
-    return HYDROGEN_INVALID_HANDLE;
+    return EBADF;
 }

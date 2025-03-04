@@ -6,7 +6,6 @@
 #include "cpu/xsave.h"
 #include "drv/acpi.h"
 #include "drv/pic.h"
-#include "hydrogen/error.h"
 #include "hydrogen/handle.h"
 #include "hydrogen/init.h"
 #include "hydrogen/memory.h"
@@ -47,7 +46,7 @@ hydrogen_init_info_t init_info = {
 static void create_init_handles(void) {
     static pmem_vm_object_t ram_object;
 
-    hydrogen_error_t error = create_handle(&klog_object, -1, &init_info.log_handle);
+    int error = create_handle(&klog_object, -1, &init_info.log_handle);
     if (unlikely(error)) panic("failed to create kernel log handle (%d)", error);
 
     pmem_vm_obj_init(&ram_object, 0, cpu_features.paddr_mask + 1);
@@ -65,7 +64,7 @@ static void kernel_init(UNUSED void *ctx) {
     init_syscall();
 
     // Create a namespace for this thread. Most things using handles will page fault before this point.
-    hydrogen_error_t error = create_namespace_raw(&current_thread->namespace);
+    int error = create_namespace_raw(&current_thread->namespace);
     if (unlikely(error)) panic("failed to create init namespace (%d)", error);
 
     create_init_handles();
@@ -127,7 +126,7 @@ USED _Noreturn void kernel_main(void) {
     init_syscall_cpu();
 
     thread_t *init_thread;
-    hydrogen_error_t error = sched_create(&init_thread, kernel_init, NULL, NULL);
+    int error = sched_create(&init_thread, kernel_init, NULL, NULL);
     if (unlikely(error)) panic("failed to create init thread (%d)", error);
     sched_wake(init_thread);
     obj_deref(&init_thread->base);

@@ -1,6 +1,6 @@
 #include "mem/kvmm.h"
 #include "cpu/cpu.h"
-#include "hydrogen/error.h"
+#include "errno.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "mem/kmalloc.h"
@@ -170,7 +170,7 @@ static uint64_t make_hash(uint64_t x) {
     return x;
 }
 
-hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
+int kvmm_alloc(uintptr_t *out, size_t size) {
     ASSERT((size & PAGE_MASK) == 0);
     int wanted_order = get_higher_p2(size);
 
@@ -188,11 +188,11 @@ hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
 
             if (unlikely(range == NULL)) {
                 mutex_unlock(&kvmm_lock);
-                return HYDROGEN_OUT_OF_MEMORY;
+                return ENOMEM;
             }
         } else {
             mutex_unlock(&kvmm_lock);
-            return HYDROGEN_OUT_OF_MEMORY;
+            return ENOMEM;
         }
     } else {
         order += wanted_order - 1;
@@ -224,7 +224,7 @@ hydrogen_error_t kvmm_alloc(uintptr_t *out, size_t size) {
 
     mutex_unlock(&kvmm_lock);
     *out = alloc->start;
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
 static struct vmm_range *get_range_from_alloc(uint64_t hash, uintptr_t start, UNUSED size_t size) {
@@ -267,12 +267,12 @@ void kvmm_free(uintptr_t start, size_t size) {
     mutex_unlock(&kvmm_lock);
 }
 
-hydrogen_error_t map_phys_mem(void **out, uint64_t addr, size_t size, int flags) {
-    if (unlikely(size == 0)) return HYDROGEN_SUCCESS;
+int map_phys_mem(void **out, uint64_t addr, size_t size, int flags) {
+    if (unlikely(size == 0)) return 0;
 
     uint64_t end = addr + (size - 1);
-    if (unlikely(end < addr)) return HYDROGEN_INVALID_ARGUMENT;
-    if (unlikely(end & ~cpu_features.paddr_mask)) return HYDROGEN_INVALID_ARGUMENT;
+    if (unlikely(end < addr)) return EINVAL;
+    if (unlikely(end & ~cpu_features.paddr_mask)) return EINVAL;
 
     uint64_t offset = addr & PAGE_MASK;
     addr &= ~PAGE_MASK;
@@ -280,12 +280,12 @@ hydrogen_error_t map_phys_mem(void **out, uint64_t addr, size_t size, int flags)
     size = end - addr + 1;
 
     uintptr_t vaddr;
-    hydrogen_error_t error = kvmm_alloc(&vaddr, size);
+    int error = kvmm_alloc(&vaddr, size);
     if (unlikely(error)) return error;
 
     pmap_map(NULL, vaddr, size, addr, flags);
     *out = (void *)(vaddr | offset);
-    return HYDROGEN_SUCCESS;
+    return 0;
 }
 
 void unmap_phys_mem(const void *ptr, size_t size) {

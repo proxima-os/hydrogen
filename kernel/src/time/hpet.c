@@ -61,7 +61,7 @@ void init_hpet(void) {
         return;
     }
 
-    hydrogen_error_t error = map_phys_mem(
+    int error = map_phys_mem(
             &hpet_regs,
             hpet_table->base.address,
             HPET_REGS_SIZE,
