@@ -16,8 +16,8 @@ extern "C" {
 /**
  * Information passed to the init process by the kernel upon boot.
  * This struct is versioned. As long as the major version remains the same, newer minor versions are backwards
- * compatible with older ones. However, if the major version changes, only `major` and `minor`, are guaranteed to be
- * in the same location with the same meaning.
+ * compatible with older ones. However, if the major version changes, only `major`, `minor`, and `log_handle`
+ * are guaranteed to be in the same location with the same meaning.
  */
 typedef struct {
     int major;                    /**< The major version of the init info. */

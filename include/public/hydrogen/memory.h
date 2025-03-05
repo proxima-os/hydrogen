@@ -22,7 +22,7 @@ typedef enum {
     HYDROGEN_MEM_READ = 1 << 0,          /**< Allow reading from this memory region. */
     HYDROGEN_MEM_WRITE = 1 << 1,         /**< Allow writing to this memory region. */
     HYDROGEN_MEM_EXEC = 1 << 2,          /**< Allow executing code in this memory region. */
-    HYDROGEN_MEM_SHARED = 1 << 3,        /**< Propagate writes to the backing object. */
+    HYDROGEN_MEM_SHARED = 1 << 3,        /**< Don't copy-on-write on clone. For object mappings, propagate writes. */
     HYDROGEN_MEM_NO_CACHE = 1 << 4,      /**< Don't cache memory accesses. */
     HYDROGEN_MEM_WRITE_COMBINE = 2 << 4, /**< Use write-combining caching or stronger for this memory region. */
     HYDROGEN_MEM_WRITE_THROUGH = 3 << 4, /**< Use write-through caching or stronger for this memory region. */
