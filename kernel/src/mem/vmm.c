@@ -613,6 +613,7 @@ static int remove_overlapping_regions(
 
             *prev_inout = cur;
             *next_inout = nreg;
+            return 0;
         } else if (cur->head < head) {
             // Needs to be truncated
             ASSERT(cur->prev == prev);
