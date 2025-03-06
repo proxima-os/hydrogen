@@ -16,7 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define INIT_STACK_SIZE 0x10000
+#define INIT_STACK_SIZE 0x800000
 
 static LIMINE_REQ struct limine_module_request module_req = {.id = LIMINE_MODULE_REQUEST};
 static LIMINE_REQ struct limine_executable_file_request kfile_req = {.id = LIMINE_EXECUTABLE_FILE_REQUEST};
