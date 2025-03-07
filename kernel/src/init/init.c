@@ -163,8 +163,10 @@ static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide,
 
     if (have_interp && exec_phdrs == UINTPTR_MAX) panic("no PT_PHDR in executable image with PT_INTERP");
 
-    exec_phent = image->phentsize;
-    exec_phnum = image->phnum;
+    if (!is_interp) {
+        exec_phent = image->phentsize;
+        exec_phnum = image->phnum;
+    }
 
     return have_interp;
 }
