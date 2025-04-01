@@ -721,12 +721,17 @@ static void do_clone(uint64_t *dst, uint64_t *src, int level, uintptr_t addr, si
 
         if (src_ent != 0) {
             if (level == 0 || (src_ent & PTE_HUGE) != 0) {
-                if (cow && (src_ent & PTE_WRITABLE) != 0) {
-                    src_ent &= ~PTE_WRITABLE;
+                if (cow) {
                     src_ent |= PTE_COW;
-                    __atomic_store_n(&src[index], src_ent, __ATOMIC_RELAXED);
-                    tlb_add(tlb, addr);
-                    tlb->global = true;
+
+                    if (src_ent & PTE_WRITABLE) {
+                        src_ent &= ~PTE_WRITABLE;
+                        __atomic_store_n(&src[index], src_ent, __ATOMIC_RELAXED);
+                        tlb_add(tlb, addr);
+                        tlb->global = true;
+                    } else {
+                        __atomic_store_n(&src[index], src_ent, __ATOMIC_RELAXED);
+                    }
                 }
 
                 if (src_ent & PTE_ANON) {
