@@ -958,8 +958,12 @@ static int do_remap(
     }
 
     ASSERT(extra_regions <= 2);
-    vm_region_t *regions = kmalloc(sizeof(*regions) * 2);
-    memset(regions, 0, sizeof(*regions) * 2);
+    vm_region_t *regions[2];
+
+    for (size_t i = 0; i < extra_regions; i++) {
+        regions[i] = kmalloc(sizeof(*regions[i]));
+        memset(regions[i], 0, sizeof(*regions[i]));
+    }
 
     cur = get_next(space, prev);
 
@@ -983,19 +987,22 @@ static int do_remap(
             ASSERT(cur->prev == prev);
             ASSERT(cur->next == next);
 
-            regions[0].space = space;
-            regions[0].head = head;
-            regions[0].tail = tail;
-            regions[0].flags = cur->flags;
-            regions[0].object = cur->object;
-            regions[0].offset = cur->offset + (head - cur->head);
+            extra_regions -= 2;
+            vm_region_t **new_regions = &regions[extra_regions];
 
-            regions[1].space = space;
-            regions[1].head = tail + 1;
-            regions[1].tail = cur->tail;
-            regions[1].flags = cur->flags;
-            regions[1].object = cur->object;
-            regions[1].offset = cur->offset + (tail + 1 - cur->head);
+            new_regions[0]->space = space;
+            new_regions[0]->head = head;
+            new_regions[0]->tail = tail;
+            new_regions[0]->flags = cur->flags;
+            new_regions[0]->object = cur->object;
+            new_regions[0]->offset = cur->offset + (head - cur->head);
+
+            new_regions[1]->space = space;
+            new_regions[1]->head = tail + 1;
+            new_regions[1]->tail = cur->tail;
+            new_regions[1]->flags = cur->flags;
+            new_regions[1]->object = cur->object;
+            new_regions[1]->offset = cur->offset + (tail + 1 - cur->head);
 
             if (cur->object.object) {
                 obj_ref(cur->object.object);
@@ -1003,23 +1010,19 @@ static int do_remap(
             }
 
             cur->tail = head - 1;
-            tree_add(space, &regions[0]);
-            tree_add(space, &regions[1]);
-            list_add(space, cur, next, &regions[0]);
-            list_add(space, &regions[0], next, &regions[1]);
+            tree_add(space, new_regions[0]);
+            tree_add(space, new_regions[1]);
+            list_add(space, cur, next, new_regions[0]);
+            list_add(space, new_regions[0], next, new_regions[1]);
 
-            region = &regions[0];
-            cur = &regions[1];
-
-            regions += 2;
-            extra_regions -= 2;
+            region = new_regions[0];
+            cur = new_regions[1];
         } else if (cur->head < head) {
             // Needs to be split into two
             ASSERT(extra_regions >= 1);
             ASSERT(cur->prev == prev);
 
-            region = regions++;
-            extra_regions--;
+            region = regions[--extra_regions];
 
             region->space = space;
             region->head = head;
@@ -1041,8 +1044,7 @@ static int do_remap(
             ASSERT(cur->next == next);
 
             region = cur;
-            cur = regions++;
-            extra_regions--;
+            cur = regions[--extra_regions];
 
             cur->space = space;
             cur->head = tail + 1;
