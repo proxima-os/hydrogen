@@ -16,7 +16,7 @@ static void pmem_vm_obj_free(object_t *ptr) {
 }
 
 static void pmem_vm_obj_post_map(vm_object_t *ptr, vm_region_t *region) {
-    if (region->flags & HYDROGEN_MEM_SHARED) {
+    if ((region->flags & VM_PERM_MASK) && (region->flags & HYDROGEN_MEM_SHARED)) {
         pmem_vm_object_t *self = (pmem_vm_object_t *)ptr;
         if (region->offset >= self->size) return;
 

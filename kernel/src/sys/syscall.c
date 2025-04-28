@@ -47,6 +47,7 @@ static hydrogen_ret_t do_syscall(syscall_vec_t vec, size_t a0, size_t a1, size_t
     case SYSCALL_VM_CLONE: return hydrogen_vm_clone((hydrogen_handle_t)a0);
     case SYSCALL_VM_MAP: return hydrogen_vm_map((hydrogen_handle_t)a0, a1, a2, a3, (hydrogen_handle_t)a4, a5);
     case SYSCALL_VM_MAP_VDSO: return hydrogen_vm_map_vdso((hydrogen_handle_t)a0);
+    case SYSCALL_VM_MOVE: return hydrogen_vm_move((hydrogen_handle_t)a0, a1, a2, (hydrogen_handle_t)a3, a4, a5);
     case SYSCALL_VM_REMAP: return RET_ERROR(hydrogen_vm_remap((hydrogen_handle_t)a0, a1, a2, a3));
     case SYSCALL_VM_UNMAP: return RET_ERROR(hydrogen_vm_unmap((hydrogen_handle_t)a0, a1, a2));
     case SYSCALL_VM_WRITE: return RET_ERROR(hydrogen_vm_write((hydrogen_handle_t)a0, a1, (const void *)a2, a3));

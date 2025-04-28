@@ -741,10 +741,17 @@ static void do_clone(uint64_t *dst, uint64_t *src, int level, uintptr_t addr, si
                 __atomic_store_n(&dst[index], src_ent, __ATOMIC_RELAXED);
             } else {
                 uint64_t dst_ent = __atomic_load_n(&dst[index], __ATOMIC_RELAXED);
-                ASSERT(dst_ent != 0);
-                ASSERT(!(dst_ent & PTE_HUGE));
+                uint64_t *dst_child;
 
-                uint64_t *dst_child = phys_to_virt(dst_ent & PTE_ADDR_MASK);
+                if (dst_ent) {
+                    ASSERT(!(dst_ent & PTE_HUGE));
+                    dst_child = phys_to_virt(dst_ent & PTE_ADDR_MASK);
+                } else {
+                    dst_child = kmalloc(PT_SIZE);
+                    memset(dst_child, 0, PT_SIZE);
+                    __atomic_store_n(&dst[index], virt_to_phys(dst_child) | TABLE_FLAGS, __ATOMIC_RELAXED);
+                }
+
                 uint64_t *src_child = phys_to_virt(src_ent & PTE_ADDR_MASK);
                 do_clone(dst_child, src_child, level - 1, addr, cur, cow, tlb);
             }
@@ -770,6 +777,113 @@ void pmap_clone(pmap_t *pmap, pmap_t *src, uintptr_t addr, size_t size, bool cow
     switch (pt_style) {
     case PT_4LEVEL: do_clone(pmap->root, src->root, 3, addr, size, cow, &tlb); break;
     case PT_5LEVEL: do_clone(pmap->root, src->root, 4, addr, size, cow, &tlb); break;
+    }
+
+    tlb_commit(&tlb);
+}
+
+void pmap_move(pmap_t *src, pmap_t *dest, uintptr_t addr, uintptr_t dest_addr, size_t size) {
+    ASSERT(((addr | dest_addr | size) & PAGE_MASK) == 0);
+    ASSERT(size != 0);
+    ASSERT(addr < addr + (size - 1));
+    ASSERT(!is_kernel_memory(addr + (size - 1)));
+    ASSERT(dest_addr < dest_addr + (size - 1));
+    ASSERT(!is_kernel_memory(dest_addr + (size - 1)));
+    ASSERT(src != NULL);
+    ASSERT(dest != NULL);
+    ASSERT(src != dest || addr > dest_addr + (size - 1) || addr + (size - 1) < dest_addr);
+
+    tlb_ctx_t tlb = {};
+    tlb_init(&tlb, src);
+
+    uint64_t srootent = virt_to_phys(src->root);
+    uint64_t *droot = dest->root;
+
+    while (size) {
+        uint64_t *table;
+        unsigned shift = pt_top_shift + 9;
+        size_t index;
+        uint64_t entry = srootent;
+
+        uint64_t req_size = 1ul << shift;
+        uint64_t req_mask = req_size - 1;
+
+        do {
+            table = phys_to_virt(entry & PTE_ADDR_MASK);
+
+            shift -= 9;
+            req_size >>= 9;
+            req_mask >>= 9;
+            index = (addr >> shift) & 511;
+
+            entry = __atomic_load_n(&table[index], __ATOMIC_RELAXED);
+            if (!entry) goto next;
+        } while (shift > 12 && (entry & PTE_HUGE) == 0);
+
+        // split the entry until the request can be honored
+        while (shift > 12 && (size < req_size || ((addr | dest_addr) & req_mask) != 0)) {
+            shift -= 9;
+            req_size >>= 9;
+            req_mask >>= 9;
+
+            if (shift == 12) {
+                entry &= ~PTE_HUGE;
+                entry |= (entry & 0x1000) >> 5;
+                entry &= ~0x1000;
+            }
+
+            uint64_t *child = kmalloc(PT_SIZE);
+
+            for (size_t i = 0; i < 512; i++) {
+                child[i] = entry;
+                entry += req_size;
+            }
+
+            __atomic_store_n(&table[index], virt_to_phys(child) | TABLE_FLAGS, __ATOMIC_RELAXED);
+            tlb_add(&tlb, addr);
+            tlb.global = true;
+
+            table = child;
+            index = (addr >> shift) & 511;
+            entry = __atomic_load_n(&child[index], __ATOMIC_RELAXED);
+        }
+
+        // remove the entry from src
+        __atomic_store_n(&table[index], 0, __ATOMIC_RELAXED);
+        tlb_add(&tlb, addr);
+        tlb.global = true;
+
+        // insert the entry into dst
+        table = droot;
+        unsigned dshift = pt_top_shift;
+
+        for (;;) {
+            index = (dest_addr >> dshift) & 511;
+            if (dshift == shift) break;
+            ASSERT(dshift > shift);
+
+            uint64_t entry = __atomic_load_n(&table[index], __ATOMIC_RELAXED);
+
+            if (entry) {
+                ASSERT(!(entry & PTE_HUGE));
+                table = phys_to_virt(entry & PTE_ADDR_MASK);
+            } else {
+                uint64_t *child = kmalloc(PT_SIZE);
+                memset(child, 0, PT_SIZE);
+                __atomic_store_n(&table[index], virt_to_phys(child) | TABLE_FLAGS, __ATOMIC_RELAXED);
+                table = child;
+            }
+
+            dshift -= 9;
+        }
+
+        __atomic_store_n(&table[index], entry, __ATOMIC_RELAXED);
+    next: {
+        size_t processed = req_size - (addr & req_mask);
+        addr += processed;
+        dest_addr += processed;
+        size -= processed;
+    }
     }
 
     tlb_commit(&tlb);
@@ -811,11 +925,14 @@ static void do_remap(uint64_t *table, int level, uintptr_t addr, size_t size, ui
                     if (level == 1) {
                         entry &= ~PTE_HUGE;
                         entry |= (entry & 0x1000) >> 5;
+                        entry &= ~0x1000;
                     }
+
+                    uint64_t incr = entry_size >> 9;
 
                     for (size_t i = 0; i < 512; i++) {
                         child[i] = entry;
-                        entry += entry_size;
+                        entry += incr;
                     }
 
                     __atomic_store_n(&table[index], virt_to_phys(child) | TABLE_FLAGS, __ATOMIC_RELAXED);
@@ -893,11 +1010,14 @@ static void do_unmap(uint64_t *table, int level, uintptr_t addr, size_t size, tl
                     if (level == 1) {
                         entry &= ~PTE_HUGE;
                         entry |= (entry & 0x1000) >> 5;
+                        entry &= ~0x1000;
                     }
+
+                    uint64_t incr = entry_size >> 9;
 
                     for (size_t i = 0; i < 512; i++) {
                         child[i] = entry;
-                        entry += entry_size;
+                        entry += incr;
                     }
 
                     __atomic_store_n(&table[index], virt_to_phys(child) | TABLE_FLAGS, __ATOMIC_RELAXED);

@@ -18,7 +18,7 @@ extern "C" {
 /**
  * Creates an empty namespace.
  *
- * @param[out] ns The newly created namespace.
+ * \return The newly created namespace (in `handle`).
  */
 hydrogen_ret_t hydrogen_namespace_create(void) __asm__("__hydrogen_namespace_create");
 
@@ -26,10 +26,10 @@ hydrogen_ret_t hydrogen_namespace_create(void) __asm__("__hydrogen_namespace_cre
  * Creates a new handle in a namespace.
  *
  * \param[in] ns The namespace to create the handle in. If `NULL`, use the current namespace.
- *               Requires the #HYDROGEN_NAMESPACE_CREATE right.
- * \param[in] object The object the handle will reference. Must not be the specified namespace.
+ *               Requires the #HYDROGEN_NAMESPACE_RIGHT_CREATE right.
+ * \param[in] object The object the handle will reference. Must not be a namespace.
  * \param[in] rights The rights of the newly created handle. Masked with the rights of `object`.
- * \param[out] handle The newly created handle.
+ * \return The newly created handle (in `handle`).
  */
 hydrogen_ret_t hydrogen_handle_create(hydrogen_handle_t ns, hydrogen_handle_t object, uint64_t rights) __asm__(
         "__hydrogen_handle_create"
@@ -39,9 +39,9 @@ hydrogen_ret_t hydrogen_handle_create(hydrogen_handle_t ns, hydrogen_handle_t ob
  * Closes a handle.
  *
  * \param[in] ns The namespace the handle is in. If `NULL`, use the current namespace.
- *               Requires the #HYDROGEN_NAMESPACE_CLOSE right.
+ *               Requires the #HYDROGEN_NAMESPACE_RIGHT_CLOSE right.
  * \param[in] handle The handle to close.
- * \return The only errors that this function can encounter are #HYDROGEN_INVALID_HANDLE and #HYDROGEN_NO_PERMISSION.
+ * \return The only error this function can return is `EBADF`.
  */
 int hydrogen_handle_close(hydrogen_handle_t ns, hydrogen_handle_t handle) __asm__("__hydrogen_handle_close");
 

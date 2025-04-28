@@ -668,7 +668,7 @@ static bool can_merge(vm_region_t *r1, vm_region_t *r2) {
 }
 
 // might free `region`
-static void merge_or_insert(address_space_t *space, vm_region_t *prev, vm_region_t *next, vm_region_t *region) {
+static vm_region_t *merge_or_insert(address_space_t *space, vm_region_t *prev, vm_region_t *next, vm_region_t *region) {
     bool prev_merge = can_merge(prev, region);
     bool next_merge = can_merge(region, next);
 
@@ -686,19 +686,23 @@ static void merge_or_insert(address_space_t *space, vm_region_t *prev, vm_region
 
         kfree(region, sizeof(*region));
         kfree(next, sizeof(*next));
+        return prev;
     } else if (prev_merge) {
         prev->tail = region->tail;
 
         if (prev->object.object) obj_deref(prev->object.object);
         kfree(region, sizeof(*region));
+        return prev;
     } else if (next_merge) {
         tree_mov(space, next, region->head);
 
         if (next->object.object) obj_deref(next->object.object);
         kfree(region, sizeof(*region));
+        return next;
     } else {
         tree_add(space, region);
         list_add(space, prev, next, region);
+        return region;
     }
 }
 
@@ -922,13 +926,16 @@ hydrogen_ret_t hydrogen_vm_map_vdso(hydrogen_handle_t vm) {
     return RET_POINTER_MAYBE(error, (void *)head);
 }
 
-static int do_remap(
+static int split_to_exact(
         address_space_t *space,
         vm_region_t *prev,
         vm_region_t *next,
         uintptr_t head,
         uintptr_t tail,
-        unsigned flags
+        int (*check_cb)(vm_region_t *, void *), /* returns 1 if the region should be skipped. negative = error code */
+        bool (*skip_cb)(vm_region_t *, void *), /* must return true if and only if check_cb returned 1 */
+        void (*final_cb)(address_space_t *space, vm_region_t *, void *),
+        void *ctx
 ) {
     vm_region_t *cur = get_next(space, prev);
     size_t extra_regions = 0;
@@ -937,25 +944,12 @@ static int do_remap(
         ASSERT(cur);
         ASSERT(cur->head <= tail && cur->tail >= head);
 
-        unsigned new_flags = (cur->flags & ~VM_PERM_MASK) | flags;
-        if (new_flags == cur->flags) {
-            cur = cur->next;
-            continue;
-        }
+        int ret = check_cb(cur, ctx);
+        if (unlikely(ret < 0)) return -ret;
 
-        if (cur->object.object == vdso_handle.object) {
-            return EACCES;
-        }
-
-        if (cur->head < head) extra_regions += 1;
-        if (cur->tail > tail) extra_regions += 1;
-
-        if (cur->object.object) {
-            uint64_t rights = flags_to_rights(new_flags);
-
-            if ((cur->object.rights & rights) != rights) {
-                return EACCES;
-            }
+        if (likely(ret == 0)) {
+            if (cur->head < head) extra_regions += 1;
+            if (cur->tail > tail) extra_regions += 1;
         }
 
         cur = cur->next;
@@ -977,8 +971,7 @@ static int do_remap(
         ASSERT(cur);
         ASSERT(cur->head <= tail && cur->tail >= head);
 
-        unsigned new_flags = (cur->flags & ~VM_PERM_MASK) | flags;
-        if (new_flags == cur->flags) {
+        if (skip_cb(cur, ctx)) {
             cur = cur->next;
             continue;
         }
@@ -1068,19 +1061,63 @@ static int do_remap(
             region = cur;
         }
 
-        region->flags = new_flags;
-
-        if (new_flags & VM_PERM_MASK) {
-            pmap_remap(&space->pmap, region->head, region->tail - region->head + 1, region->flags);
-        } else {
-            pmap_unmap(&space->pmap, region->head, region->tail - region->head + 1);
-        }
-
         cur = cur->next;
+        final_cb(space, region, ctx);
     }
 
     ASSERT(extra_regions == 0);
     return 0;
+}
+
+static int remap_check_cb(vm_region_t *region, void *ctx) {
+    unsigned new_flags = (region->flags & ~VM_PERM_MASK) | (uintptr_t)ctx;
+    if (new_flags == region->flags) return 1;
+    if (region->object.object == vdso_handle.object) return -EACCES;
+
+    if (region->object.object) {
+        uint64_t rights = flags_to_rights(new_flags);
+
+        if ((region->object.rights & rights) != rights) return -EACCES;
+    }
+
+    return 0;
+}
+
+static bool remap_skip_cb(vm_region_t *region, void *ctx) {
+    unsigned new_flags = (region->flags & ~VM_PERM_MASK) | (uintptr_t)ctx;
+    return new_flags == region->flags;
+}
+
+static void remap_final_cb(address_space_t *space, vm_region_t *region, void *ctx) {
+    unsigned new_flags = (region->flags & ~VM_PERM_MASK) | (uintptr_t)ctx;
+    region->flags = new_flags;
+
+    if (new_flags & VM_PERM_MASK) {
+        pmap_remap(&space->pmap, region->head, region->tail - region->head + 1, region->flags);
+    } else {
+        pmap_unmap(&space->pmap, region->head, region->tail - region->head + 1);
+    }
+}
+
+static int do_remap(
+        address_space_t *space,
+        vm_region_t *prev,
+        vm_region_t *next,
+        uintptr_t head,
+        uintptr_t tail,
+        unsigned flags
+) {
+    return split_to_exact(
+            space,
+            prev,
+            next,
+            head,
+            tail,
+            remap_check_cb,
+            remap_skip_cb,
+            remap_final_cb,
+            (void *)(uintptr_t)flags
+    );
 }
 
 int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, unsigned flags) {
@@ -1105,6 +1142,152 @@ int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, unsigne
     mutex_unlock(&space->lock);
     if (vm) obj_deref(&space->base);
     return error;
+}
+
+struct move_ctx {
+    vm_region_t *first;
+    vm_region_t *last;
+};
+
+static int move_check_cb(vm_region_t *region, UNUSED void *ptr) {
+    if (unlikely(region->object.object == vdso_handle.object)) return -EACCES;
+
+    return 0;
+}
+
+static bool move_skip_cb(UNUSED vm_region_t *region, UNUSED void *ptr) {
+    return false;
+}
+
+static void move_final_cb(address_space_t *space, vm_region_t *region, void *ptr) {
+    struct move_ctx *ctx = ptr;
+
+    /*pmap_move(
+            &space->pmap,
+            &ctx->dest->pmap,
+            region->head,
+            region->head + ctx->offset,
+            region->tail - region->head + 1
+    );*/
+
+    tree_del(space, region);
+    list_del(space, region->prev, region->next);
+
+    if (!ctx->first) ctx->first = region;
+    ctx->last = region;
+
+    /*region->space = ctx->dest;
+    region->head += ctx->offset;
+    region->tail += ctx->offset;
+
+    ctx->dprev = merge_or_insert(space, prev, next, region);*/
+}
+
+hydrogen_ret_t hydrogen_vm_move(
+        hydrogen_handle_t vm,
+        uintptr_t addr,
+        size_t size,
+        hydrogen_handle_t dest_vm,
+        uintptr_t dest_addr,
+        size_t dest_size
+) {
+    if (unlikely(size == 0)) return RET_ERROR(EINVAL);
+    if (unlikely(size > dest_size)) return RET_ERROR(EINVAL);
+    if (unlikely((addr | dest_addr | size | dest_size) & PAGE_MASK)) return RET_ERROR(EINVAL);
+
+    uintptr_t tail = addr + (size - 1);
+    if (unlikely(tail < addr)) return RET_ERROR(EINVAL);
+    if (unlikely(addr < PAGE_SIZE)) return RET_ERROR(EINVAL);
+    if (unlikely(tail >= max_user_address)) return RET_ERROR(EINVAL);
+
+    uintptr_t dest_tail;
+
+    if (dest_addr != 0) {
+        dest_tail = dest_addr + (dest_size - 1);
+        if (unlikely(dest_tail < dest_addr)) return RET_ERROR(EINVAL);
+        if (unlikely(dest_addr < PAGE_SIZE)) return RET_ERROR(EINVAL);
+        if (unlikely(dest_tail >= max_user_address)) return RET_ERROR(EINVAL);
+    }
+
+    address_space_t *src;
+    int error = get_vm(vm, &src, HYDROGEN_VM_RIGHT_UNMAP);
+    if (unlikely(error)) return RET_ERROR(error);
+
+    address_space_t *dst;
+    error = get_vm(dest_vm, &dst, HYDROGEN_VM_RIGHT_MAP);
+    if (unlikely(error)) {
+        obj_deref(&src->base);
+        return RET_ERROR(error);
+    }
+
+    mutex_lock(&dst->lock);
+
+    vm_region_t *dst_prev, *dst_next;
+
+    if (dest_addr != 0) {
+        get_nonoverlap_bounds(dst, dest_addr, dest_tail, &dst_prev, &dst_next);
+        if (unlikely(get_next(dst, dst_prev) != dst_next)) {
+            error = EEXIST;
+            goto ret;
+        }
+    } else {
+        error = find_map_location(dst, dest_size, &dst_prev, &dst_next, &dest_addr, &dest_tail);
+        if (unlikely(error)) goto ret;
+    }
+
+    if (src != dst) mutex_lock(&src->lock);
+
+    vm_region_t *prev, *next;
+    get_nonoverlap_bounds(src, addr, tail, &prev, &next);
+
+    struct move_ctx ctx = {};
+    error = split_to_exact(src, prev, next, addr, tail, move_check_cb, move_skip_cb, move_final_cb, &ctx);
+    if (unlikely(error)) goto ret2;
+
+    // get bounds again since the pointers may have changed in split_to_exact
+    get_nonoverlap_bounds(dst, dest_addr, dest_tail, &dst_prev, &dst_next);
+
+    uintptr_t offset = dest_addr - addr;
+
+    while (ctx.first) {
+        vm_region_t *next = ctx.first->next;
+
+        pmap_move(
+                &src->pmap,
+                &dst->pmap,
+                ctx.first->head,
+                ctx.first->head + offset,
+                ctx.first->tail - ctx.first->head + 1
+        );
+
+        ctx.first->space = dst;
+        ctx.first->head += offset;
+        ctx.first->tail += offset;
+
+        dst_prev = merge_or_insert(dst, dst_prev, get_next(dst, dst_prev), ctx.first);
+
+        if (ctx.first == ctx.last) break;
+        ctx.first = next;
+    }
+
+    if (size < dest_size) {
+        vm_region_t *region = kmalloc(sizeof(*region));
+        memset(region, 0, sizeof(*region));
+
+        region->space = dst;
+        region->head = dest_addr + size;
+        region->tail = dest_tail;
+
+        merge_or_insert(dst, dst_prev, get_next(dst, dst_prev), region);
+    }
+
+ret2:
+    if (src != dst) mutex_unlock(&src->lock);
+ret:
+    mutex_unlock(&dst->lock);
+    obj_deref(&dst->base);
+    obj_deref(&src->base);
+    return RET_POINTER_MAYBE(error, (void *)dest_addr);
 }
 
 int hydrogen_vm_unmap(hydrogen_handle_t vm, uintptr_t addr, size_t size) {

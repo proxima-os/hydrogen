@@ -50,7 +50,7 @@ extern const size_t hydrogen_page_size __asm__("__hydrogen_page_size");
 /**
  * Create a new address space.
  *
- * \return The newly created address space.
+ * \return The newly created address space (in `handle`).
  */
 hydrogen_ret_t hydrogen_vm_create(void) __asm__("__hydrogen_vm_create");
 
@@ -59,7 +59,8 @@ hydrogen_ret_t hydrogen_vm_create(void) __asm__("__hydrogen_vm_create");
  * All anonymous mappings and non-shared object mappings are cloned using copy-on-write.
  *
  * \param[in] src The address space to clone. If `NULL`, use the current address space.
- * \return The newly created address space.
+ *                Requires the #HYDROGEN_VM_RIGHT_CLONE right.
+ * \return The newly created address space (in `handle`).
  */
 hydrogen_ret_t hydrogen_vm_clone(hydrogen_handle_t src) __asm__("__hydrogen_vm_clone");
 
@@ -71,12 +72,13 @@ hydrogen_ret_t hydrogen_vm_clone(hydrogen_handle_t src) __asm__("__hydrogen_vm_c
  * to be mapped.
  *
  * \param[in] vm The address space to create the mapping in. If `NULL`, use the current address space.
+ *               Requires the #HYDROGEN_VM_RIGHT_MAP right.
  * \param[in] addr The address the mapping should be placed at. Must be page-aligned.
  * \param[in] size The size of the mapping. Must be page-aligned and non-zero.
  * \param[in] flags The mapping flags.
  * \param[in] object The object to map. If `NULL`, create an anonymous mapping.
  * \param[in] offset The offset into the object to map. Must be page-aligned, even if `object` is `NULL`.
- * \return The address the mapping was placed at.
+ * \return The address the mapping was placed at (in `pointer`).
  */
 hydrogen_ret_t hydrogen_vm_map(
         hydrogen_handle_t vm,
@@ -94,7 +96,8 @@ hydrogen_ret_t hydrogen_vm_map(
  * been used to create a thread.
  *
  * \param[in] vm The address space to map the vDSO in. If `NULL`, use the current address space.
- * \return The base address of the vDSO image.
+ *               Requires the #HYDROGEN_VM_RIGHT_MAP right.
+ * \return The base address of the vDSO image (in `pointer`).
  */
 hydrogen_ret_t hydrogen_vm_map_vdso(hydrogen_handle_t vm) __asm__("__hydrogen_vm_map_vdso");
 
@@ -104,6 +107,7 @@ hydrogen_ret_t hydrogen_vm_map_vdso(hydrogen_handle_t vm) __asm__("__hydrogen_vm
  * partially outside this region are split.
  *
  * \param[in] vm The address space the mappings are in. If `NULL`, use the current address space.
+ *               Requires the #HYDROGEN_VM_RIGHT_REMAP right.
  * \param[in] addr The starting address of the region to change.
  * \param[in] size The size of the region to change.
  * \param[in] flags The new permissions for the region. Must only specify protection flags.
@@ -111,10 +115,35 @@ hydrogen_ret_t hydrogen_vm_map_vdso(hydrogen_handle_t vm) __asm__("__hydrogen_vm
 int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, unsigned flags) __asm__("__hydrogen_vm_remap");
 
 /**
+ * Move a block of memory.
+ *
+ * \param[in] vm The address space to move from. If `NULL`, use the current address space.
+ *               Requires the #HYDROGEN_VM_RIGHT_UNMAP right.
+ * \param[in] addr The starting address of the region to move.
+ * \param[in] size The size of the region to move.
+ * \param[in] dest_vm The address space to move to. If `NULL`, use the current address space.
+ *                    Requires the #HYDROGEN_VM_RIGHT_MAP right.
+ * \param[in] dest_addr The address to move to. If zero, an address is picked arbitrarily.
+ * \param[in] dest_size The new size of the region. Must be larger than or equal to `size`.
+ *                      If larger than `size`, the space in between the two is filled as if
+ *                      by `hydrogen_vm_map(dest_vm, <address> + size, dest_size - size, 0, NULL, 0)`.
+ * \return The new address of the region (in `pointer`).
+ */
+hydrogen_ret_t hydrogen_vm_move(
+        hydrogen_handle_t vm,
+        uintptr_t addr,
+        size_t size,
+        hydrogen_handle_t dest_vm,
+        uintptr_t dest_addr,
+        size_t dest_size
+) asm("__hydrogen_vm_move");
+
+/**
  * Remove existing mappings.
  * All mappings between `addr` and `addr + size` are removed. Mappings that are partially outside this region are split.
  *
  * \param[in] vm The address space the mappings are in. If `NULL`, use the current address space.
+ *               Requires the #HYDROGEN_VM_RIGHT_UNMAP right.
  * \param[in] addr The starting address of the region to unmap.
  * \param[in] size The size of the region to unmap.
  */
@@ -125,6 +154,7 @@ int hydrogen_vm_unmap(hydrogen_handle_t vm, uintptr_t addr, size_t size) __asm__
  * Some error conditions can cause partial writes.
  *
  * \param[in] vm The address space to write to. Must not be the current address space.
+ *               Requires the #HYDROGEN_VM_RIGHT_WRITE right.
  * \param[in] dest The virtual address in the target address space to write to.
  * \param[in] src The data to write.
  * \param[in] size The number of bytes to write. Must not be zero.
@@ -137,6 +167,7 @@ int hydrogen_vm_write(hydrogen_handle_t vm, uintptr_t dest, const void *src, siz
  * Some error conditions can cause partial writes.
  *
  * \param[in] vm The address space to write to. Must not be the current address space.
+ *               Requires the #HYDROGEN_VM_RIGHT_WRITE right.
  * \param[in] dest The virtual address in the target address space to write to.
  * \param[in] value The value to write to each byte.
  * \param[in] size The number of bytes to write. Must not be zero.
@@ -148,6 +179,7 @@ int hydrogen_vm_fill(hydrogen_handle_t vm, uintptr_t dest, uint8_t value, size_t
  * Some error conditions can cause partial reads.
  *
  * \param[in] vm The address space to read from. Must not be the current address space.
+ *               Requires the #HYDROGEN_VM_RIGHT_READ right.
  * \param[in] dest The buffer to read the data into.
  * \param[in] src The virtual address in the target address space to read from.
  * \param[in] size The number of bytes to read. Must not be zero.

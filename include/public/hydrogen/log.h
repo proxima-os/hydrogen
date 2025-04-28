@@ -14,6 +14,7 @@ extern "C" {
  * Write data to the kernel log.
  *
  * \param[in] log The kernel log.
+ *                Requires the #HYDROGEN_LOG_RIGHT_WRITE right.
  * \param[in] data The data to write.
  * \param[in] size The number of bytes to write.
  */

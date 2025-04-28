@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <stdint.h>
 
 int memcmp(const void *s1, const void *s2, size_t n) {
     const unsigned char *b1 = s1;
@@ -30,11 +31,11 @@ void *memmove(void *dest, const void *src, size_t n) {
     unsigned char *d = dest;
     const unsigned char *s = src;
 
-    if (dest < src) {
+    if ((uintptr_t)dest < (uintptr_t)src) {
         while (n--) {
             *d++ = *s++;
         }
-    } else {
+    } else if ((uintptr_t)dest > (uintptr_t)src) {
         d += n;
         s += n;
 
