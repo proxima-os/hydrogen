@@ -10,13 +10,18 @@
 #include "cpu/xsave.h"
 #include "errno.h"
 #include "hydrogen/thread.h"
+#include "hydrogen/types.h"
 #include "kernel/compiler.h"
+#include "kernel/return.h"
 #include "mem/layout.h"
 #include "mem/pmap.h"
 #include "mem/vmalloc.h"
 #include "mem/vmm.h"
 #include "string.h"
+#include "sys/syscall.h"
+#include "thread/mutex.h"
 #include "time/time.h"
+#include "util/handle.h"
 #include "util/object.h"
 #include "util/panic.h"
 #include "util/spinlock.h"
@@ -391,6 +396,69 @@ void *alloc_kernel_stack(void) {
 
 void free_kernel_stack(void *stack) {
     vmfree(stack - KERNEL_STACK_SIZE, KERNEL_STACK_SIZE);
+}
+
+#define THREAD_NS_RIGHTS (HYDROGEN_NAMESPACE_RIGHT_CREATE | HYDROGEN_NAMESPACE_RIGHT_CLOSE)
+#define THREAD_VM_RIGHTS                                                                                   \
+    (HYDROGEN_VM_RIGHT_MAP | HYDROGEN_VM_RIGHT_REMAP | HYDROGEN_VM_RIGHT_UNMAP | HYDROGEN_VM_RIGHT_CLONE | \
+     HYDROGEN_VM_RIGHT_WRITE | HYDROGEN_VM_RIGHT_READ)
+
+static void launch_user_thread(void *ctx) {
+    enter_user_mode((uintptr_t)ctx, (uintptr_t)current_thread->user_regs);
+}
+
+hydrogen_ret_t hydrogen_thread_create(hydrogen_handle_t namespace, hydrogen_handle_t vm_handle, void *pc, void *sp) {
+    if (unlikely(!is_address_canonical((uintptr_t)pc))) return RET_ERROR(EINVAL);
+
+    namespace_t *ns;
+    int error = get_ns(namespace, &ns, THREAD_NS_RIGHTS);
+    if (unlikely(error)) return RET_ERROR(error);
+
+    address_space_t *vm;
+    error = get_vm(vm_handle, &vm, THREAD_VM_RIGHTS);
+    if (unlikely(error)) goto ret;
+
+    thread_t *thread;
+    error = sched_create(&thread, launch_user_thread, pc, NULL);
+    if (unlikely(error)) goto ret2;
+    thread->user_regs = sp;
+
+    hydrogen_handle_t handle;
+    error = create_handle(&thread->base, -1, &handle);
+    if (unlikely(error)) goto ret3;
+
+    sched_wake(thread);
+ret3:
+    obj_deref(&thread->base);
+ret2:
+    if (vm_handle) obj_deref(&vm->base);
+ret:
+    if (namespace) obj_deref(&ns->base);
+    return RET_HANDLE_MAYBE(error, handle);
+}
+
+int hydrogen_thread_reinit(hydrogen_handle_t namespace, hydrogen_handle_t vm_handle, void *pc, void *sp) {
+    if (unlikely(!is_address_canonical((uintptr_t)pc))) return EINVAL;
+
+    namespace_t *ns;
+    int error = get_ns(namespace, &ns, THREAD_NS_RIGHTS);
+    if (unlikely(error)) return error;
+
+    address_space_t *vm;
+    error = get_vm(vm_handle, &vm, THREAD_VM_RIGHTS);
+    if (unlikely(error)) {
+        if (namespace) obj_deref(&ns->base);
+        return error;
+    }
+
+    obj_deref(&current_thread->namespace->base);
+    current_thread->namespace = ns;
+    vm_switch(vm);
+    enter_user_mode((uintptr_t)pc, (uintptr_t)sp);
+}
+
+void hydrogen_thread_yield(void) {
+    sched_yield();
 }
 
 uintptr_t hydrogen_x86_64_get_fs_base(void) {

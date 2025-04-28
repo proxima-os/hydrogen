@@ -59,6 +59,11 @@ static hydrogen_ret_t do_syscall(syscall_vec_t vec, size_t a0, size_t a1, size_t
     case SYSCALL_X86_64_GET_GS_BASE: return RET_INTEGER(hydrogen_x86_64_get_gs_base());
     case SYSCALL_X86_64_SET_FS_BASE: return RET_ERROR(hydrogen_x86_64_set_fs_base(a0));
     case SYSCALL_X86_64_SET_GS_BASE: return RET_ERROR(hydrogen_x86_64_set_gs_base(a0));
+    case SYSCALL_THREAD_CREATE:
+        return hydrogen_thread_create((hydrogen_handle_t)a0, (hydrogen_handle_t)a1, (void *)a2, (void *)a3);
+    case SYSCALL_THREAD_REINIT:
+        return RET_ERROR(hydrogen_thread_reinit((hydrogen_handle_t)a0, (hydrogen_handle_t)a1, (void *)a2, (void *)a3));
+    case SYSCALL_THREAD_YIELD: hydrogen_thread_yield(); return RET_ERROR(0);
     default: return RET_ERROR(ENOSYS);
     }
 }

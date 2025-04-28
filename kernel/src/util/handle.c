@@ -180,7 +180,7 @@ static bool is_namespace(object_t *obj) {
     return obj->ops == &namespace_ops;
 }
 
-static int get_ns(hydrogen_handle_t handle, namespace_t **out, uint64_t rights) {
+int get_ns(hydrogen_handle_t handle, namespace_t **out, uint64_t rights) {
     if (handle) {
         handle_data_t data;
         int error = resolve(handle, &data, is_namespace, rights);

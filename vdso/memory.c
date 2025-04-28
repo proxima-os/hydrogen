@@ -8,7 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-const size_t hydrogen_page_size = PAGE_SIZE;
+EXPORT const size_t hydrogen_page_size = PAGE_SIZE;
 
 EXPORT hydrogen_ret_t hydrogen_vm_create(void) {
     hydrogen_handle_t ret;

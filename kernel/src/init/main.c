@@ -15,6 +15,7 @@
 #include "kernel/pgsize.h"
 #include "limine.h"
 #include "mem/obj/pmem.h"
+#include "mem/pmap.h"
 #include "mem/pmm.h"
 #include "mem/vmm.h"
 #include "sections.h"
@@ -106,6 +107,7 @@ static void kernel_init(UNUSED void *ctx) {
            stats.cache << (PAGE_SHIFT - 10));
 
     printk("init: entering userspace\n");
+    if (!is_address_canonical(user_entry)) panic("user entry point not canonical");
     enter_user_mode(user_entry, user_stack_top);
 }
 

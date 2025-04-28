@@ -1,4 +1,5 @@
 #include "hydrogen/thread.h"
+#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/syscall.h"
 #include "syscall.h"
@@ -6,6 +7,25 @@
 #include <cpuid.h>
 #include <stdbool.h>
 #include <stdint.h>
+
+EXPORT hydrogen_ret_t hydrogen_thread_create(hydrogen_handle_t namespace, hydrogen_handle_t vm, void *pc, void *sp) {
+    hydrogen_handle_t ret;
+    int error;
+    SYSCALL4(SYSCALL_THREAD_CREATE, namespace, vm, pc, sp);
+    return (hydrogen_ret_t){.error = error, .handle = ret};
+}
+
+EXPORT int hydrogen_thread_reinit(hydrogen_handle_t namespace, hydrogen_handle_t vm, void *pc, void *sp) {
+    UNUSED int ret;
+    int error;
+    SYSCALL4(SYSCALL_THREAD_REINIT, namespace, vm, pc, sp);
+    return error;
+}
+
+EXPORT void hydrogen_thread_yield(void) {
+    UNUSED int ret, error;
+    SYSCALL0(SYSCALL_THREAD_YIELD);
+}
 
 __attribute__((__noreturn__)) EXPORT void hydrogen_thread_exit(void) {
     UNUSED int ret, error;
@@ -81,7 +101,7 @@ static int (*resolve_set_gs_base(void))(uintptr_t) {
     return have_fsgsbase() ? set_gs_base_fsgsbase : set_gs_base_syscall;
 }
 
-__attribute__((ifunc("resolve_get_fs_base"))) uintptr_t hydrogen_x86_64_get_fs_base();
-__attribute__((ifunc("resolve_get_gs_base"))) uintptr_t hydrogen_x86_64_get_gs_base();
-__attribute__((ifunc("resolve_set_fs_base"))) int hydrogen_x86_64_set_fs_base(uintptr_t address);
-__attribute__((ifunc("resolve_set_gs_base"))) int hydrogen_x86_64_set_gs_base(uintptr_t address);
+__attribute__((ifunc("resolve_get_fs_base"))) EXPORT uintptr_t hydrogen_x86_64_get_fs_base();
+__attribute__((ifunc("resolve_get_gs_base"))) EXPORT uintptr_t hydrogen_x86_64_get_gs_base();
+__attribute__((ifunc("resolve_set_fs_base"))) EXPORT int hydrogen_x86_64_set_fs_base(uintptr_t address);
+__attribute__((ifunc("resolve_set_gs_base"))) EXPORT int hydrogen_x86_64_set_gs_base(uintptr_t address);

@@ -24,3 +24,4 @@ int create_namespace_raw(namespace_t **out);
 int create_handle(object_t *obj, uint64_t rights, hydrogen_handle_t *out);
 int basic_resolve(hydrogen_handle_t handle, handle_data_t *out); // increases the ref count of the obj!
 int resolve(hydrogen_handle_t handle, handle_data_t *out, bool (*pred)(object_t *obj), uint64_t rights);
+int get_ns(hydrogen_handle_t handle, namespace_t **out, uint64_t rights);

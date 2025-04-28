@@ -136,7 +136,7 @@ hydrogen_ret_t hydrogen_vm_move(
         hydrogen_handle_t dest_vm,
         uintptr_t dest_addr,
         size_t dest_size
-) asm("__hydrogen_vm_move");
+) __asm__("__hydrogen_vm_move");
 
 /**
  * Remove existing mappings.
