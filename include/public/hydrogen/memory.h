@@ -46,14 +46,14 @@ typedef enum {
 /**
  * The system page size.
  */
-extern const size_t hydrogen_page_size;
+extern const size_t hydrogen_page_size __asm__("__hydrogen_page_size");
 
 /**
  * Create a new address space.
  *
  * \param[out] vm The newly created address space.
  */
-int hydrogen_vm_create(hydrogen_handle_t *vm);
+int hydrogen_vm_create(hydrogen_handle_t *vm) __asm__("__hydrogen_vm_create");
 
 /**
  * Creates a new address space by cloning an existing one.
@@ -62,7 +62,7 @@ int hydrogen_vm_create(hydrogen_handle_t *vm);
  * \param[out] vm The newly created address space.
  * \param[in] src The address space to clone. If `NULL`, use the current address space.
  */
-int hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t src);
+int hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t src) __asm__("__hydrogen_vm_clone");
 
 /**
  * Create a new memory mapping.
@@ -85,7 +85,7 @@ int hydrogen_vm_map(
         hydrogen_mem_flags_t flags,
         hydrogen_handle_t object,
         size_t offset
-);
+) __asm__("__hydrogen_vm_map");
 
 /**
  * Map the vDSO.
@@ -96,7 +96,7 @@ int hydrogen_vm_map(
  * \param[in] vm The address space to map the vDSO in. If `NULL`, use the current address space.
  * \param[out] addr The base address of the vDSO image.
  */
-int hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr);
+int hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr) __asm__("__hydrogen_vm_map_vdso");
 
 /**
  * Change the permissions of existing mappings.
@@ -108,7 +108,9 @@ int hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr);
  * \param[in] size The size of the region to change.
  * \param[in] flags The new permissions for the region. Must only specify protection flags.
  */
-int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, hydrogen_mem_flags_t flags);
+int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, hydrogen_mem_flags_t flags) __asm__(
+        "__hydrogen_vm_remap"
+);
 
 /**
  * Remove existing mappings.
@@ -118,7 +120,7 @@ int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, hydroge
  * \param[in] addr The starting address of the region to unmap.
  * \param[in] size The size of the region to unmap.
  */
-int hydrogen_vm_unmap(hydrogen_handle_t vm, uintptr_t addr, size_t size);
+int hydrogen_vm_unmap(hydrogen_handle_t vm, uintptr_t addr, size_t size) __asm__("__hydrogen_vm_unmap");
 
 /**
  * Write memory to a remote address space.
@@ -129,7 +131,8 @@ int hydrogen_vm_unmap(hydrogen_handle_t vm, uintptr_t addr, size_t size);
  * \param[in] src The data to write.
  * \param[in] size The number of bytes to write. Must not be zero.
  */
-int hydrogen_vm_write(hydrogen_handle_t vm, uintptr_t dest, const void *src, size_t size);
+int hydrogen_vm_write(hydrogen_handle_t vm, uintptr_t dest, const void *src, size_t size) __asm__("__hydrogen_vm_write"
+);
 
 /**
  * Fill memory in a remote address space.
@@ -140,7 +143,7 @@ int hydrogen_vm_write(hydrogen_handle_t vm, uintptr_t dest, const void *src, siz
  * \param[in] value The value to write to each byte.
  * \param[in] size The number of bytes to write. Must not be zero.
  */
-int hydrogen_vm_fill(hydrogen_handle_t vm, uintptr_t dest, uint8_t value, size_t size);
+int hydrogen_vm_fill(hydrogen_handle_t vm, uintptr_t dest, uint8_t value, size_t size) __asm__("__hydrogen_vm_fill");
 
 /**
  * Read memory from a remote address space.
@@ -151,7 +154,7 @@ int hydrogen_vm_fill(hydrogen_handle_t vm, uintptr_t dest, uint8_t value, size_t
  * \param[in] src The virtual address in the target address space to read from.
  * \param[in] size The number of bytes to read. Must not be zero.
  */
-int hydrogen_vm_read(hydrogen_handle_t vm, void *dest, uintptr_t src, size_t size);
+int hydrogen_vm_read(hydrogen_handle_t vm, void *dest, uintptr_t src, size_t size) __asm__("__hydrogen_vm_read");
 
 #ifdef __cplusplus
 };

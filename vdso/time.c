@@ -1,4 +1,5 @@
 #include "kernel/time.h"
+#include "hydrogen/time.h"
 #include "kernel/compiler.h"
 #include "kernel/kvmclock.h"
 #include "kernel/syscall.h"

@@ -17,7 +17,7 @@ extern "C" {
  * \param[in] data The data to write.
  * \param[in] size The number of bytes to write.
  */
-int hydrogen_log_write(hydrogen_handle_t log, const void *data, size_t size);
+int hydrogen_log_write(hydrogen_handle_t log, const void *data, size_t size) __asm__("__hydrogen_log_write");
 
 #ifdef __cplusplus
 };

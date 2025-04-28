@@ -10,7 +10,7 @@ extern "C" {
 /**
  * Returns the number of nanoseconds that have elapsed since some point in the past.
  */
-uint64_t hydrogen_get_time(void);
+uint64_t hydrogen_get_time(void) __asm__("__hydrogen_get_time");
 
 #ifdef __cplusplus
 };

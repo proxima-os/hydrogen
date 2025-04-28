@@ -8,7 +8,7 @@ extern "C" {
 /**
  * Exit the current thread.
  */
-__attribute__((__noreturn__)) void hydrogen_thread_exit(void);
+__attribute__((__noreturn__)) void hydrogen_thread_exit(void) asm("__hydrogen_thread_exit");
 
 #ifdef __cplusplus
 };

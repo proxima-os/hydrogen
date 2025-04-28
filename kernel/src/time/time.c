@@ -6,6 +6,7 @@
 #include "cpu/idt.h"
 #include "cpu/irqvecs.h"
 #include "cpu/lapic.h"
+#include "hydrogen/time.h"
 #include "kernel/time.h"
 #include "kernel/vdso.h"
 #include "thread/sched.h"
