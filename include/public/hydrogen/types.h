@@ -15,7 +15,7 @@ extern "C" {
  * To prevent circular references, the only way to get an explicit handle to a namespace is to create one - in other
  * words, namespace handles cannot be transferred across namespace boundaries.
  */
-typedef void *hydrogen_handle_t;
+typedef struct __hydrogen_handle *hydrogen_handle_t;
 
 typedef struct {
     int error;

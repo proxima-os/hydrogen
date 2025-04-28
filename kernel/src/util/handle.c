@@ -4,7 +4,6 @@
 #include "hydrogen/handle.h"
 #include "hydrogen/types.h"
 #include "kernel/compiler.h"
-#include "kernel/pgsize.h"
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
 #include "string.h"
@@ -12,18 +11,14 @@
 #include "util/object.h"
 #include <stdint.h>
 
-#define HANDLE_BITS 31
-#define MAX_HANDLE (1ul << HANDLE_BITS)
-#define HANDLE_MASK (MAX_HANDLE - 1)
-
 static hydrogen_handle_t idx_to_handle(size_t idx) {
     // this is done to make it harder for userspace to accidentally treat handles as pointers
     // (since the addresses will be in kernel space)
-    return (hydrogen_handle_t)(-(uintptr_t)idx - PAGE_SIZE);
+    return (hydrogen_handle_t)(idx - 1);
 }
 
 static size_t handle_to_idx(hydrogen_handle_t handle) {
-    return -((uintptr_t)handle + PAGE_SIZE);
+    return (size_t)handle - 1;
 }
 
 static void namespace_free(object_t *ptr) {
@@ -67,8 +62,6 @@ static int do_create(namespace_t *ns, object_t *obj, uint64_t rights, hydrogen_h
     // No free handles in current buffer, expand
 
     size_t new_cap = ns->capacity ? ns->capacity * 2 : 8;
-    if (unlikely(new_cap > MAX_HANDLE)) goto fail;
-
     handle_data_t *new_buf = vmalloc(sizeof(*new_buf) * new_cap);
     if (unlikely(!new_buf)) goto fail;
     memcpy(new_buf, ns->data, ns->capacity * sizeof(*new_buf));
@@ -101,8 +94,6 @@ int basic_resolve(hydrogen_handle_t handle, handle_data_t *out) {
     if (unlikely(!handle)) return EBADF;
 
     size_t idx = handle_to_idx(handle);
-    if (unlikely(idx >= MAX_HANDLE)) return EBADF;
-
     namespace_t *ns = current_thread->namespace;
     mutex_lock(&ns->lock);
 
@@ -197,7 +188,6 @@ int hydrogen_handle_close(hydrogen_handle_t namespace, hydrogen_handle_t handle)
     if (unlikely(!handle)) return EBADF;
 
     size_t idx = handle_to_idx(handle);
-    if (unlikely(idx >= MAX_HANDLE)) return EBADF;
 
     namespace_t *ns;
     int error = get_ns(namespace, &ns, HYDROGEN_NAMESPACE_RIGHT_CLOSE);
