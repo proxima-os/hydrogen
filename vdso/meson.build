@@ -7,7 +7,7 @@ vdso = shared_library(
     'thread.c',
     'time.c',
     c_args: ['-ffreestanding', '-fno-stack-check', '-fno-stack-protector'],
-    gnu_symbol_visibility: 'protected',
+    gnu_symbol_visibility: 'hidden',
     implicit_include_directories: false,
     include_directories: [pub_inc, priv_inc],
     install: true,

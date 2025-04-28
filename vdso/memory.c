@@ -4,12 +4,13 @@
 #include "kernel/pgsize.h"
 #include "kernel/syscall.h"
 #include "syscall.h"
+#include "vdso.h"
 #include <stddef.h>
 #include <stdint.h>
 
 const size_t hydrogen_page_size = PAGE_SIZE;
 
-int hydrogen_vm_create(hydrogen_handle_t *vm) {
+EXPORT int hydrogen_vm_create(hydrogen_handle_t *vm) {
     hydrogen_handle_t ret;
     int error;
     SYSCALL0(SYSCALL_VM_CREATE);
@@ -17,7 +18,7 @@ int hydrogen_vm_create(hydrogen_handle_t *vm) {
     return error;
 }
 
-int hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t src) {
+EXPORT int hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t src) {
     hydrogen_handle_t ret;
     int error;
     SYSCALL1(SYSCALL_VM_CLONE, src);
@@ -25,7 +26,7 @@ int hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t src) {
     return error;
 }
 
-int hydrogen_vm_map(
+EXPORT int hydrogen_vm_map(
         hydrogen_handle_t vm,
         uintptr_t *addr,
         size_t size,
@@ -40,7 +41,7 @@ int hydrogen_vm_map(
     return error;
 }
 
-int hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr) {
+EXPORT int hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr) {
     uintptr_t ret;
     int error;
     SYSCALL1(SYSCALL_VM_MAP_VDSO, vm);
@@ -48,35 +49,35 @@ int hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr) {
     return error;
 }
 
-int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, hydrogen_mem_flags_t flags) {
+EXPORT int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, hydrogen_mem_flags_t flags) {
     UNUSED int ret;
     int error;
     SYSCALL4(SYSCALL_VM_REMAP, vm, addr, size, flags);
     return error;
 }
 
-int hydrogen_vm_unmap(hydrogen_handle_t vm, uintptr_t addr, size_t size) {
+EXPORT int hydrogen_vm_unmap(hydrogen_handle_t vm, uintptr_t addr, size_t size) {
     UNUSED int ret;
     int error;
     SYSCALL3(SYSCALL_VM_UNMAP, vm, addr, size);
     return error;
 }
 
-int hydrogen_vm_write(hydrogen_handle_t vm, uintptr_t dest, const void *src, size_t size) {
+EXPORT int hydrogen_vm_write(hydrogen_handle_t vm, uintptr_t dest, const void *src, size_t size) {
     UNUSED int ret;
     int error;
     SYSCALL4(SYSCALL_VM_WRITE, vm, dest, src, size);
     return error;
 }
 
-int hydrogen_vm_fill(hydrogen_handle_t vm, uintptr_t dest, uint8_t value, size_t size) {
+EXPORT int hydrogen_vm_fill(hydrogen_handle_t vm, uintptr_t dest, uint8_t value, size_t size) {
     UNUSED int ret;
     int error;
     SYSCALL4(SYSCALL_VM_FILL, vm, dest, value, size);
     return error;
 }
 
-int hydrogen_vm_read(hydrogen_handle_t vm, void *dest, uintptr_t src, size_t size) {
+EXPORT int hydrogen_vm_read(hydrogen_handle_t vm, void *dest, uintptr_t src, size_t size) {
     UNUSED int ret;
     int error;
     SYSCALL4(SYSCALL_VM_READ, vm, dest, src, size);

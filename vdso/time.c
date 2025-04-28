@@ -5,6 +5,7 @@
 #include "kernel/syscall.h"
 #include "kernel/vdso.h"
 #include "syscall.h"
+#include "vdso.h"
 #include <stdint.h>
 
 static uint64_t get_time_syscall(void) {
@@ -31,4 +32,4 @@ static uint64_t (*resolve_get_time(void))(void) {
     }
 }
 
-__attribute__((ifunc("resolve_get_time"))) uint64_t hydrogen_get_time(void);
+__attribute__((ifunc("resolve_get_time"))) EXPORT uint64_t hydrogen_get_time(void);
