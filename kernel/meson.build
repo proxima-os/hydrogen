@@ -1,6 +1,17 @@
+strip_ver_out = run_command(strip, '--version', capture: true)
+strip_args = []
+
+if strip_ver_out.returncode() == 0
+    if strip_ver_out.stdout().contains('GNU Binutils')
+        strip_args += ['--strip-section-headers']
+    elif strip_ver_out.stdout().contains('LLVM')
+        strip_args += ['--strip-sections']
+    endif
+endif
+
 stripped_vdso = custom_target(
     'stripped-vdso',
-    command: [strip, '@INPUT@', '-o@OUTPUT@'],
+    command: [strip, '@INPUT@', '-o@OUTPUT@', strip_args],
     input: vdso,
     output: 'stripped-vdso.so',
 )
