@@ -1,5 +1,5 @@
 #include "hydrogen/memory.h"
-#include "hydrogen/handle.h"
+#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/syscall.h"
@@ -10,43 +10,39 @@
 
 const size_t hydrogen_page_size = PAGE_SIZE;
 
-EXPORT int hydrogen_vm_create(hydrogen_handle_t *vm) {
+EXPORT hydrogen_ret_t hydrogen_vm_create(void) {
     hydrogen_handle_t ret;
     int error;
     SYSCALL0(SYSCALL_VM_CREATE);
-    if (likely(!error)) *vm = ret;
-    return error;
+    return (hydrogen_ret_t){.error = error, .handle = ret};
 }
 
-EXPORT int hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t src) {
+EXPORT hydrogen_ret_t hydrogen_vm_clone(hydrogen_handle_t src) {
     hydrogen_handle_t ret;
     int error;
     SYSCALL1(SYSCALL_VM_CLONE, src);
-    if (likely(!error)) *vm = ret;
-    return error;
+    return (hydrogen_ret_t){.error = error, .handle = ret};
 }
 
-EXPORT int hydrogen_vm_map(
+EXPORT hydrogen_ret_t hydrogen_vm_map(
         hydrogen_handle_t vm,
-        uintptr_t *addr,
+        uintptr_t addr,
         size_t size,
         hydrogen_mem_flags_t flags,
         hydrogen_handle_t object,
         size_t offset
 ) {
-    uintptr_t ret;
+    void *ret;
     int error;
-    SYSCALL6(SYSCALL_VM_MAP, vm, *addr, size, flags, object, offset);
-    if (likely(!error)) *addr = ret;
-    return error;
+    SYSCALL6(SYSCALL_VM_MAP, vm, addr, size, flags, object, offset);
+    return (hydrogen_ret_t){.error = error, .handle = ret};
 }
 
-EXPORT int hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr) {
-    uintptr_t ret;
+EXPORT hydrogen_ret_t hydrogen_vm_map_vdso(hydrogen_handle_t vm) {
+    void *ret;
     int error;
     SYSCALL1(SYSCALL_VM_MAP_VDSO, vm);
-    if (likely(!error)) *addr = ret;
-    return error;
+    return (hydrogen_ret_t){.error = error, .handle = ret};
 }
 
 EXPORT int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, hydrogen_mem_flags_t flags) {

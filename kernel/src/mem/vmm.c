@@ -2,10 +2,11 @@
 #include "asm/irq.h"
 #include "cpu/cpu.h"
 #include "errno.h"
-#include "hydrogen/handle.h"
 #include "hydrogen/memory.h"
+#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
+#include "kernel/return.h"
 #include "mem/kmalloc.h"
 #include "mem/obj/pmem.h"
 #include "mem/pmap.h"
@@ -367,14 +368,15 @@ static int do_create(address_space_t **out) {
     return 0;
 }
 
-int hydrogen_vm_create(hydrogen_handle_t *vm) {
+hydrogen_ret_t hydrogen_vm_create(void) {
     address_space_t *space;
     int error = do_create(&space);
-    if (unlikely(error)) return error;
+    if (unlikely(error)) return RET_ERROR(error);
 
-    error = create_handle(&space->base, -1, vm);
+    hydrogen_handle_t handle;
+    error = create_handle(&space->base, -1, &handle);
     obj_deref(&space->base);
-    return 0;
+    return RET_HANDLE_MAYBE(error, handle);
 }
 
 static bool is_address_space(object_t *obj) {
@@ -481,16 +483,16 @@ static void clone_regions(address_space_t *dst, address_space_t *src) {
     }
 }
 
-int hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t srch) {
+hydrogen_ret_t hydrogen_vm_clone(hydrogen_handle_t srch) {
     address_space_t *src;
     int error = get_vm(srch, &src, HYDROGEN_VM_RIGHT_CLONE);
-    if (unlikely(error)) return error;
+    if (unlikely(error)) return RET_ERROR(error);
 
     address_space_t *dst;
     error = do_create(&dst);
     if (unlikely(error)) {
         if (srch) obj_deref(&src->base);
-        return error;
+        return RET_ERROR(error);
     }
 
     mutex_lock(&src->lock);
@@ -502,9 +504,10 @@ int hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t srch) {
     mutex_unlock(&src->lock);
     if (srch) obj_deref(&src->base);
 
-    error = create_handle(&dst->base, -1, vm);
+    hydrogen_handle_t handle;
+    error = create_handle(&dst->base, -1, &handle);
     obj_deref(&dst->base);
-    return error;
+    return RET_HANDLE_MAYBE(error, handle);
 }
 
 void vm_switch(address_space_t *space) {
@@ -810,26 +813,25 @@ static int find_map_location(
     return 0;
 }
 
-int hydrogen_vm_map(
+hydrogen_ret_t hydrogen_vm_map(
         hydrogen_handle_t vm,
-        uintptr_t *addr,
+        uintptr_t addr,
         size_t size,
         hydrogen_mem_flags_t flags,
         hydrogen_handle_t object,
         size_t offset
 ) {
-    if (size == 0) return EINVAL;
+    if (size == 0) return RET_ERROR(EINVAL);
 
-    uintptr_t wanted = *addr;
-    if ((wanted | size | offset) & PAGE_MASK) return EINVAL;
-    if (flags & ~(VM_REGION_FLAG_MASK | VM_MAP_FLAG_MASK)) return EINVAL;
+    if ((addr | size | offset) & PAGE_MASK) return RET_ERROR(EINVAL);
+    if (flags & ~(VM_REGION_FLAG_MASK | VM_MAP_FLAG_MASK)) return RET_ERROR(EINVAL);
 
     if ((flags & (HYDROGEN_MEM_OVERWRITE | HYDROGEN_MEM_EXACT)) == HYDROGEN_MEM_OVERWRITE) {
-        return EINVAL;
+        return RET_ERROR(EINVAL);
     }
 
     if (!object) {
-        if (flags & VM_CACHE_MODE_MASK) return EINVAL;
+        if (flags & VM_CACHE_MODE_MASK) return RET_ERROR(EINVAL);
     }
 
     address_space_t *space;
@@ -839,14 +841,14 @@ int hydrogen_vm_map(
         uint64_t rights = HYDROGEN_VM_RIGHT_MAP;
         if (flags & HYDROGEN_MEM_OVERWRITE) rights |= HYDROGEN_VM_RIGHT_UNMAP;
         int error = get_vm(vm, &space, rights);
-        if (unlikely(error)) return error;
+        if (unlikely(error)) return RET_ERROR(error);
     }
 
     if (object) {
         int error = resolve(object, &obj, is_vm_object, flags_to_rights(flags));
         if (unlikely(error)) {
             if (vm) obj_deref(&space->base);
-            return error;
+            return RET_ERROR(error);
         }
     } else {
         obj = (handle_data_t){};
@@ -854,12 +856,12 @@ int hydrogen_vm_map(
 
     mutex_lock(&space->lock);
 
-    int error = do_map_exact(space, wanted, size, flags, &obj, offset);
+    int error = do_map_exact(space, addr, size, flags, &obj, offset);
     if (!error || (flags & HYDROGEN_MEM_EXACT)) {
         mutex_unlock(&space->lock);
         if (object) obj_deref(obj.object);
         if (vm) obj_deref(&space->base);
-        return error;
+        return RET_POINTER_MAYBE(error, (void *)addr);
     }
 
     vm_region_t *prev, *next;
@@ -870,27 +872,27 @@ int hydrogen_vm_map(
         error = do_map(space, head, tail, flags, &obj, offset, prev, next);
 
         if (likely(!error)) {
-            *addr = head;
+            addr = head;
         }
     }
 
     mutex_unlock(&space->lock);
     if (object) obj_deref(obj.object);
     if (vm) obj_deref(&space->base);
-    return error;
+    return RET_POINTER_MAYBE(error, (void *)addr);
 }
 
-int hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr) {
+hydrogen_ret_t hydrogen_vm_map_vdso(hydrogen_handle_t vm) {
     address_space_t *space;
     int error = get_vm(vm, &space, HYDROGEN_VM_RIGHT_MAP);
-    if (unlikely(error)) return error;
+    if (unlikely(error)) return RET_ERROR(error);
 
     mutex_lock(&space->lock);
 
     if (space->vdso_addr) {
         mutex_unlock(&space->lock);
         if (vm) obj_deref(&space->base);
-        return EEXIST;
+        return RET_ERROR(error);
     }
 
     vm_region_t *prev, *next;
@@ -910,14 +912,14 @@ int hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr) {
         );
 
         if (likely(!error)) {
-            *addr = head + PAGE_SIZE;
+            head += PAGE_SIZE;
             space->vdso_addr = head;
         }
     }
 
     mutex_unlock(&space->lock);
     if (vm) obj_deref(&space->base);
-    return error;
+    return RET_POINTER_MAYBE(error, (void *)head);
 }
 
 static int do_remap(
@@ -955,6 +957,8 @@ static int do_remap(
                 return EACCES;
             }
         }
+
+        cur = cur->next;
     }
 
     ASSERT(extra_regions <= 2);

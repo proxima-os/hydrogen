@@ -13,6 +13,8 @@
 #include "hydrogen/memory.h"
 #include "hydrogen/thread.h"
 #include "hydrogen/time.h"
+#include "hydrogen/types.h"
+#include "kernel/return.h"
 #include "kernel/syscall.h"
 #include "mem/pmap.h"
 #include "sys/vdso.h"
@@ -33,48 +35,26 @@ void init_syscall_cpu(void) {
     wrmsr(MSR_FMASK, 0x40600); // Clear AC, IF, and DF on syscall entry
 }
 
-static int do_syscall(size_t *ret, size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5) {
-    syscall_vec_t vec = *ret;
-    int err;
-    hydrogen_handle_t h;
-
+static hydrogen_ret_t do_syscall(syscall_vec_t vec, size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5) {
     switch (vec) {
-    case SYSCALL_THREAD_EXIT: hydrogen_thread_exit();
-    case SYSCALL_LOG_WRITE: return hydrogen_log_write((hydrogen_handle_t)a0, (const void *)a1, a2);
-    case SYSCALL_GET_TIME: *ret = hydrogen_get_time(); return 0;
-    case SYSCALL_NAMESPACE_CREATE:
-        err = hydrogen_namespace_create(&h);
-        *ret = (size_t)h;
-        return err;
-    case SYSCALL_HANDLE_CREATE:
-        err = hydrogen_handle_create((hydrogen_handle_t)a0, (hydrogen_handle_t)a1, a2, &h);
-        *ret = (size_t)h;
-        return err;
-    case SYSCALL_HANDLE_CLOSE: return hydrogen_handle_close((hydrogen_handle_t)a0, (hydrogen_handle_t)a1);
-    case SYSCALL_VM_CREATE:
-        err = hydrogen_vm_create(&h);
-        *ret = (size_t)h;
-        return err;
-    case SYSCALL_VM_CLONE:
-        err = hydrogen_vm_clone(&h, (hydrogen_handle_t)a0);
-        *ret = (size_t)h;
-        return err;
-    case SYSCALL_VM_MAP:
-        err = hydrogen_vm_map((hydrogen_handle_t)a0, &a1, a2, a3, (hydrogen_handle_t)a4, a5);
-        *ret = a1;
-        return err;
-    case SYSCALL_VM_MAP_VDSO:
-        err = hydrogen_vm_map_vdso((hydrogen_handle_t)a0, &a1);
-        *ret = a1;
-        return err;
-    case SYSCALL_VM_REMAP: return hydrogen_vm_remap((hydrogen_handle_t)a0, a1, a2, a3);
-    case SYSCALL_VM_UNMAP: return hydrogen_vm_unmap((hydrogen_handle_t)a0, a1, a2);
-    case SYSCALL_VM_WRITE: return hydrogen_vm_write((hydrogen_handle_t)a0, a1, (const void *)a2, a3);
-    case SYSCALL_VM_FILL: return hydrogen_vm_fill((hydrogen_handle_t)a0, a1, a2, a3);
-    case SYSCALL_VM_READ: return hydrogen_vm_read((hydrogen_handle_t)a0, (void *)a1, a2, a3);
-    case SYSCALL_IO_ENABLE: return hydrogen_io_enable((hydrogen_handle_t)a0);
-    case SYSCALL_IO_DISABLE: hydrogen_io_disable(); return 0;
-    default: return ENOSYS;
+    case SYSCALL_THREAD_EXIT: hydrogen_thread_exit(); return RET_ERROR(0);
+    case SYSCALL_LOG_WRITE: return RET_ERROR(hydrogen_log_write((hydrogen_handle_t)a0, (const void *)a1, a2));
+    case SYSCALL_GET_TIME: return RET_INTEGER(hydrogen_get_time());
+    case SYSCALL_NAMESPACE_CREATE: return hydrogen_namespace_create();
+    case SYSCALL_HANDLE_CREATE: return hydrogen_handle_create((hydrogen_handle_t)a0, (hydrogen_handle_t)a1, a2);
+    case SYSCALL_HANDLE_CLOSE: return RET_ERROR(hydrogen_handle_close((hydrogen_handle_t)a0, (hydrogen_handle_t)a1));
+    case SYSCALL_VM_CREATE: return hydrogen_vm_create();
+    case SYSCALL_VM_CLONE: return hydrogen_vm_clone((hydrogen_handle_t)a0);
+    case SYSCALL_VM_MAP: return hydrogen_vm_map((hydrogen_handle_t)a0, a1, a2, a3, (hydrogen_handle_t)a4, a5);
+    case SYSCALL_VM_MAP_VDSO: return hydrogen_vm_map_vdso((hydrogen_handle_t)a0);
+    case SYSCALL_VM_REMAP: return RET_ERROR(hydrogen_vm_remap((hydrogen_handle_t)a0, a1, a2, a3));
+    case SYSCALL_VM_UNMAP: return RET_ERROR(hydrogen_vm_unmap((hydrogen_handle_t)a0, a1, a2));
+    case SYSCALL_VM_WRITE: return RET_ERROR(hydrogen_vm_write((hydrogen_handle_t)a0, a1, (const void *)a2, a3));
+    case SYSCALL_VM_FILL: return RET_ERROR(hydrogen_vm_fill((hydrogen_handle_t)a0, a1, a2, a3));
+    case SYSCALL_VM_READ: return RET_ERROR(hydrogen_vm_read((hydrogen_handle_t)a0, (void *)a1, a2, a3));
+    case SYSCALL_IO_ENABLE: return RET_ERROR(hydrogen_io_enable((hydrogen_handle_t)a0));
+    case SYSCALL_IO_DISABLE: hydrogen_io_disable(); return RET_ERROR(0);
+    default: return RET_ERROR(ENOSYS);
     }
 }
 
@@ -90,7 +70,9 @@ __attribute__((used)) void syscall_dispatch(idt_frame_t *frame) {
         return;
     }
 
-    frame->rdx = do_syscall(&frame->rax, frame->rdi, frame->rsi, frame->rdx, frame->r10, frame->r8, frame->r9);
+    hydrogen_ret_t ret = do_syscall(frame->rax, frame->rdi, frame->rsi, frame->rdx, frame->r10, frame->r8, frame->r9);
+    frame->rax = ret.error;
+    frame->rdx = ret.integer;
 }
 
 _Noreturn void do_enter_umode(uintptr_t rip, uintptr_t rsp, uintptr_t rflags, uintptr_t cs, uintptr_t ss);

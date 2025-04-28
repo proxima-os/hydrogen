@@ -5,23 +5,12 @@
 #ifndef HYDROGEN_HANDLE_H
 #define HYDROGEN_HANDLE_H
 
+#include "hydrogen/types.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-/**
- * A reference to a kernel object.
- *
- * Besides indicating which object to operate on, a handle also specifies its "rights": what operations are allowed on
- * the object.
- *
- * Handles are local to namespaces. Every thread has an implicit namespace handle with create and close rights.
- * To prevent circular references, the only way to get an explicit handle to a namespace is to create one - in other
- * words, namespace handles cannot be transferred across namespace boundaries.
- */
-typedef const void *hydrogen_handle_t;
 
 #define HYDROGEN_NAMESPACE_RIGHT_CREATE (1ull << 0) /**< Allow handles to be created in the namespace. */
 #define HYDROGEN_NAMESPACE_RIGHT_CLOSE (1ull << 1)  /**< Allow handles to be closed in the namespace. */
@@ -31,7 +20,7 @@ typedef const void *hydrogen_handle_t;
  *
  * @param[out] ns The newly created namespace.
  */
-int hydrogen_namespace_create(hydrogen_handle_t *ns) __asm__("__hydrogen_namespace_create");
+hydrogen_ret_t hydrogen_namespace_create(void) __asm__("__hydrogen_namespace_create");
 
 /**
  * Creates a new handle in a namespace.
@@ -42,12 +31,9 @@ int hydrogen_namespace_create(hydrogen_handle_t *ns) __asm__("__hydrogen_namespa
  * \param[in] rights The rights of the newly created handle. Masked with the rights of `object`.
  * \param[out] handle The newly created handle.
  */
-int hydrogen_handle_create(
-        hydrogen_handle_t ns,
-        hydrogen_handle_t object,
-        uint64_t rights,
-        hydrogen_handle_t *handle
-) __asm__("__hydrogen_handle_create");
+hydrogen_ret_t hydrogen_handle_create(hydrogen_handle_t ns, hydrogen_handle_t object, uint64_t rights) __asm__(
+        "__hydrogen_handle_create"
+);
 
 /**
  * Closes a handle.

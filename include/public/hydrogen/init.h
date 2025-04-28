@@ -1,7 +1,7 @@
 #ifndef HYDROGEN_INIT_H
 #define HYDROGEN_INIT_H
 
-#include "hydrogen/handle.h"
+#include "hydrogen/types.h"
 #include <stdint.h>
 
 #ifdef __cplusplus

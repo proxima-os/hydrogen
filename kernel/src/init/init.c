@@ -1,7 +1,7 @@
 #include "init/init.h"
-#include "hydrogen/handle.h"
 #include "hydrogen/init.h"
 #include "hydrogen/memory.h"
+#include "hydrogen/types.h"
 #include "init/main.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -60,18 +60,17 @@ static intptr_t get_image_slide(hydrogen_handle_t vm, elf_header_t *image) {
 
     if (min_addr >= max_addr) panic("no loadable segments in image");
 
-    uintptr_t addr = image->type == ET_EXEC ? min_addr : 0;
-    int error = hydrogen_vm_map(
+    hydrogen_ret_t ret = hydrogen_vm_map(
             vm,
-            &addr,
+            image->type == ET_EXEC ? min_addr : 0,
             max_addr - min_addr,
             image->type == ET_EXEC ? HYDROGEN_MEM_EXACT : 0,
             NULL,
             0
     );
-    if (unlikely(error)) panic("failed to find suitable map location for image");
+    if (unlikely(ret.error)) panic("failed to find suitable map location for image (%d)", ret.error);
 
-    return (intptr_t)addr - (intptr_t)min_addr;
+    return (intptr_t)ret.pointer - (intptr_t)min_addr;
 }
 
 static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide, bool is_interp) {
@@ -112,15 +111,15 @@ static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide,
 
             // map pages that don't need to be partially zeroed immediately
             if (imm_size) {
-                int error = hydrogen_vm_map(
+                hydrogen_ret_t pret = hydrogen_vm_map(
                         vm,
-                        &addr,
+                        addr,
                         imm_size,
                         flags,
                         init_info.ram_handle,
                         virt_to_phys(image) + (segment->offset - offset)
                 );
-                if (unlikely(error)) panic("failed to map segment file data (%d)", error);
+                if (unlikely(pret.error)) panic("failed to map segment file data (%d)", pret.error);
 
                 addr += imm_size;
                 size -= imm_size;
@@ -131,17 +130,17 @@ static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide,
 
             // map pages that do need to be partially zeroed with write permissions, zero them, then protect
             if (map_size) {
-                int error = hydrogen_vm_map(
+                hydrogen_ret_t pret = hydrogen_vm_map(
                         vm,
-                        &addr,
+                        addr,
                         map_size,
                         zero_flags,
                         init_info.ram_handle,
                         virt_to_phys(image) + (segment->offset - offset) + imm_size
                 );
-                if (unlikely(error)) panic("failed to map segment file data (%d)", error);
+                if (unlikely(pret.error)) panic("failed to map segment file data (%d)", pret.error);
 
-                error = hydrogen_vm_fill(vm, addr + available, 0, zero_size - available);
+                int error = hydrogen_vm_fill(vm, addr + available, 0, zero_size - available);
                 if (unlikely(error)) panic("failed to zero-fill segment (%d)", error);
 
                 if ((flags & ~HYDROGEN_MEM_SHARED) != zero_flags) {
@@ -156,8 +155,8 @@ static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide,
 
         // map pages that are fully zero anonymously
         if (size) {
-            int error = hydrogen_vm_map(vm, &addr, size, flags & ~HYDROGEN_MEM_SHARED, NULL, 0);
-            if (unlikely(error)) panic("failed to map segment zero data (%d)", error);
+            hydrogen_ret_t pret = hydrogen_vm_map(vm, addr, size, flags & ~HYDROGEN_MEM_SHARED, NULL, 0);
+            if (unlikely(pret.error)) panic("failed to map segment zero data (%d)", pret.error);
         }
     }
 
@@ -332,23 +331,19 @@ uintptr_t create_init_stack(uintptr_t vdso_addr) {
     size_t stack_size = (INIT_STACK_SIZE + init_data_offs + PAGE_MASK) & ~PAGE_MASK;
 
     // allocate an area for the stack and its guard page
-    uintptr_t addr = 0;
-    int error = hydrogen_vm_map(NULL, &addr, stack_size + PAGE_SIZE, 0, NULL, 0);
-    if (unlikely(error)) panic("failed to allocate area for init stack");
+    hydrogen_ret_t pret = hydrogen_vm_map(NULL, 0, stack_size + PAGE_SIZE, 0, NULL, 0);
+    if (unlikely(pret.error)) panic("failed to allocate area for init stack (%d)", pret.error);
 
     // allocate the actual stack
-    addr += PAGE_SIZE;
-    error = hydrogen_vm_map(
+    int error = hydrogen_vm_remap(
             NULL,
-            &addr,
+            (uintptr_t)pret.pointer + PAGE_SIZE,
             stack_size,
-            HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE | HYDROGEN_MEM_EXACT | HYDROGEN_MEM_OVERWRITE,
-            NULL,
-            0
+            HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE
     );
-    if (unlikely(error)) panic("failed to allocate init stack");
+    if (unlikely(error)) panic("failed to allocate init stack (%d)", error);
 
-    uintptr_t stack_top = addr + stack_size - init_data_offs;
+    uintptr_t stack_top = (uintptr_t)pret.pointer + PAGE_SIZE + stack_size - init_data_offs;
 
     // write the init data to the stack
     ctx.rem = ctx.area;

@@ -2,8 +2,10 @@
 #include "cpu/cpu.h"
 #include "errno.h"
 #include "hydrogen/handle.h"
+#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
+#include "kernel/return.h"
 #include "mem/vmalloc.h"
 #include "string.h"
 #include "thread/mutex.h"
@@ -134,14 +136,15 @@ int resolve(hydrogen_handle_t handle, handle_data_t *out, bool (*pred)(object_t 
     return 0;
 }
 
-int hydrogen_namespace_create(hydrogen_handle_t *out) {
+hydrogen_ret_t hydrogen_namespace_create(void) {
     namespace_t *ns;
     int error = create_namespace_raw(&ns);
-    if (unlikely(error)) return error;
+    if (unlikely(error)) return RET_ERROR(error);
 
-    error = create_handle(&ns->base, -1, out);
+    hydrogen_handle_t handle;
+    error = create_handle(&ns->base, -1, &handle);
     obj_deref(&ns->base);
-    return error;
+    return RET_HANDLE_MAYBE(error, handle);
 }
 
 static bool is_namespace(object_t *obj) {
@@ -161,32 +164,33 @@ static int get_ns(hydrogen_handle_t handle, namespace_t **out, uint64_t rights) 
     return 0;
 }
 
-int hydrogen_handle_create(
+hydrogen_ret_t hydrogen_handle_create(
         hydrogen_handle_t namespace,
         hydrogen_handle_t object,
-        uint64_t rights,
-        hydrogen_handle_t *handle
+        uint64_t rights
 ) {
     namespace_t *ns;
     int error = get_ns(namespace, &ns, HYDROGEN_NAMESPACE_RIGHT_CREATE);
-    if (unlikely(error)) return error;
+    if (unlikely(error)) return RET_ERROR(error);
 
     handle_data_t data;
     error = basic_resolve(object, &data);
     if (unlikely(error)) {
         if (namespace) obj_deref(&ns->base);
-        return error;
+        return RET_ERROR(error);
     }
 
+    hydrogen_handle_t handle;
+
     if (!is_namespace(data.object)) {
-        error = do_create(ns, data.object, rights & data.rights, handle);
+        error = do_create(ns, data.object, rights & data.rights, &handle);
     } else {
         error = EINVAL;
     }
 
     obj_deref(data.object);
     if (namespace) obj_deref(&ns->base);
-    return error;
+    return RET_HANDLE_MAYBE(error, handle);
 }
 
 int hydrogen_handle_close(hydrogen_handle_t namespace, hydrogen_handle_t handle) {
@@ -213,5 +217,5 @@ int hydrogen_handle_close(hydrogen_handle_t namespace, hydrogen_handle_t handle)
 fail:
     mutex_unlock(&ns->lock);
     if (namespace) obj_deref(&ns->base);
-    return EBADF;
+    return error;
 }

@@ -9,6 +9,7 @@
 #include "hydrogen/handle.h"
 #include "hydrogen/init.h"
 #include "hydrogen/memory.h"
+#include "hydrogen/types.h"
 #include "init/init.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -74,22 +75,24 @@ static void kernel_init(UNUSED void *ctx) {
 
     // Create an address space for this thread
     {
-        hydrogen_handle_t handle;
-        error = hydrogen_vm_create(&handle);
-        if (unlikely(error)) panic("failed to create init address space (%d)", error);
+        hydrogen_ret_t hret = hydrogen_vm_create();
+        if (unlikely(hret.error)) panic("failed to create init address space (%d)", hret.error);
+        hydrogen_handle_t handle = hret.handle;
 
         // Do this before mapping vDSO (aka when the address space is still completely empty), because the executable
         // might not be relocatable.
-        user_entry = load_init_image(handle);
+        user_entry = load_init_image(hret.handle);
 
-        error = hydrogen_vm_map_vdso(handle, &vdso_addr);
-        if (unlikely(error)) panic("failed to map init thread vdso (%d)", error);
+        hydrogen_ret_t pret = hydrogen_vm_map_vdso(hret.handle);
+        if (unlikely(pret.error)) panic("failed to map init thread vdso (%d)", pret.error);
+        vdso_addr = (uintptr_t)pret.pointer;
 
         error = get_vm(handle, &current_thread->address_space, VM_SWITCH_RIGHTS);
         if (unlikely(error)) panic("failed to resolve init address space (%d)", error);
         vm_switch(current_thread->address_space);
 
-        hydrogen_handle_close(NULL, handle);
+        error = hydrogen_handle_close(NULL, handle);
+        if (unlikely(error)) panic("failed to close init address space handle (%d)", error);
     }
 
     uintptr_t user_stack_top = create_init_stack(vdso_addr);

@@ -1,7 +1,7 @@
 #ifndef HYDROGEN_IO_H
 #define HYDROGEN_IO_H
 
-#include "hydrogen/handle.h"
+#include "hydrogen/types.h"
 
 #ifdef __cplusplus
 extern "C" {

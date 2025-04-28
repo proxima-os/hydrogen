@@ -5,7 +5,7 @@
 #ifndef HYDROGEN_MEMORY_H
 #define HYDROGEN_MEMORY_H
 
-#include "hydrogen/handle.h"
+#include "hydrogen/types.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -51,18 +51,18 @@ extern const size_t hydrogen_page_size __asm__("__hydrogen_page_size");
 /**
  * Create a new address space.
  *
- * \param[out] vm The newly created address space.
+ * \return The newly created address space.
  */
-int hydrogen_vm_create(hydrogen_handle_t *vm) __asm__("__hydrogen_vm_create");
+hydrogen_ret_t hydrogen_vm_create(void) __asm__("__hydrogen_vm_create");
 
 /**
  * Creates a new address space by cloning an existing one.
  * All anonymous mappings and non-shared object mappings are cloned using copy-on-write.
  *
- * \param[out] vm The newly created address space.
  * \param[in] src The address space to clone. If `NULL`, use the current address space.
+ * \return The newly created address space.
  */
-int hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t src) __asm__("__hydrogen_vm_clone");
+hydrogen_ret_t hydrogen_vm_clone(hydrogen_handle_t src) __asm__("__hydrogen_vm_clone");
 
 /**
  * Create a new memory mapping.
@@ -72,15 +72,16 @@ int hydrogen_vm_clone(hydrogen_handle_t *vm, hydrogen_handle_t src) __asm__("__h
  * to be mapped.
  *
  * \param[in] vm The address space to create the mapping in. If `NULL`, use the current address space.
- * \param[in,out] addr The address of the mapping. Must be page-aligned.
+ * \param[in] addr The address the mapping should be placed at. Must be page-aligned.
  * \param[in] size The size of the mapping. Must be page-aligned and non-zero.
  * \param[in] flags The mapping flags.
  * \param[in] object The object to map. If `NULL`, create an anonymous mapping.
  * \param[in] offset The offset into the object to map. Must be page-aligned, even if `object` is `NULL`.
+ * \return The address the mapping was placed at.
  */
-int hydrogen_vm_map(
+hydrogen_ret_t hydrogen_vm_map(
         hydrogen_handle_t vm,
-        uintptr_t *addr,
+        uintptr_t addr,
         size_t size,
         hydrogen_mem_flags_t flags,
         hydrogen_handle_t object,
@@ -94,9 +95,9 @@ int hydrogen_vm_map(
  * been used to create a thread.
  *
  * \param[in] vm The address space to map the vDSO in. If `NULL`, use the current address space.
- * \param[out] addr The base address of the vDSO image.
+ * \return The base address of the vDSO image.
  */
-int hydrogen_vm_map_vdso(hydrogen_handle_t vm, uintptr_t *addr) __asm__("__hydrogen_vm_map_vdso");
+hydrogen_ret_t hydrogen_vm_map_vdso(hydrogen_handle_t vm) __asm__("__hydrogen_vm_map_vdso");
 
 /**
  * Change the permissions of existing mappings.
