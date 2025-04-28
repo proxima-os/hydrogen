@@ -238,7 +238,7 @@ static void do_printk(printk_sink_t sink, void *ctx, const char *format, va_list
             case 'U': print_uint(sink, ctx, va_arg(args, uint64_t), min_digits, 10); break;
             case 'X': print_uint(sink, ctx, va_arg(args, uint64_t), min_digits, 16); break;
             case 'p': {
-                static const char prefix[2] = "0x";
+                NONSTRING static const char prefix[2] = "0x";
                 sink(prefix, sizeof(prefix), ctx);
                 print_uint(sink, ctx, (uintptr_t)va_arg(args, void *), 0, 16);
                 break;
@@ -254,7 +254,7 @@ static void do_printk(printk_sink_t sink, void *ctx, const char *format, va_list
                 break;
             }
             case 's': {
-                static const char def[6] = "(null)";
+                NONSTRING static const char def[6] = "(null)";
                 const char *s = va_arg(args, const char *);
                 if (s) sink(s, strlen(s), ctx);
                 else sink(def, sizeof(def), ctx);

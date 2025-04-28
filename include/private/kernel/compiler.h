@@ -11,3 +11,9 @@
 #else
 #define HYDROGEN_ASSERTIONS 0
 #endif
+
+#if !defined(__clang__) && __GNUC__ >= 15
+#define NONSTRING __attribute__((nonstring))
+#else
+#define NONSTRING
+#endif
