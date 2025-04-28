@@ -706,7 +706,7 @@ static int do_map(
         address_space_t *space,
         uintptr_t head,
         uintptr_t tail,
-        hydrogen_mem_flags_t flags,
+        unsigned flags,
         handle_data_t *obj,
         size_t offset,
         vm_region_t *prev,
@@ -743,7 +743,7 @@ static int do_map(
     return 0;
 }
 
-static uint64_t flags_to_rights(hydrogen_mem_flags_t flags) {
+static uint64_t flags_to_rights(unsigned flags) {
     uint64_t rights = 0;
     if (flags & HYDROGEN_MEM_READ) rights |= HYDROGEN_MEMORY_RIGHT_READ;
     if ((flags & SHARED_WRITE) == SHARED_WRITE) rights |= HYDROGEN_MEMORY_RIGHT_WRITE;
@@ -757,7 +757,7 @@ static int do_map_exact(
         address_space_t *space,
         uintptr_t head,
         size_t size,
-        hydrogen_mem_flags_t flags,
+        unsigned flags,
         handle_data_t *obj,
         size_t offset
 ) {
@@ -817,7 +817,7 @@ hydrogen_ret_t hydrogen_vm_map(
         hydrogen_handle_t vm,
         uintptr_t addr,
         size_t size,
-        hydrogen_mem_flags_t flags,
+        unsigned flags,
         hydrogen_handle_t object,
         size_t offset
 ) {
@@ -928,7 +928,7 @@ static int do_remap(
         vm_region_t *next,
         uintptr_t head,
         uintptr_t tail,
-        hydrogen_mem_flags_t flags
+        unsigned flags
 ) {
     vm_region_t *cur = get_next(space, prev);
     size_t extra_regions = 0;
@@ -937,7 +937,7 @@ static int do_remap(
         ASSERT(cur);
         ASSERT(cur->head <= tail && cur->tail >= head);
 
-        hydrogen_mem_flags_t new_flags = (cur->flags & ~VM_PERM_MASK) | flags;
+        unsigned new_flags = (cur->flags & ~VM_PERM_MASK) | flags;
         if (new_flags == cur->flags) {
             cur = cur->next;
             continue;
@@ -977,7 +977,7 @@ static int do_remap(
         ASSERT(cur);
         ASSERT(cur->head <= tail && cur->tail >= head);
 
-        hydrogen_mem_flags_t new_flags = (cur->flags & ~VM_PERM_MASK) | flags;
+        unsigned new_flags = (cur->flags & ~VM_PERM_MASK) | flags;
         if (new_flags == cur->flags) {
             cur = cur->next;
             continue;
@@ -1083,7 +1083,7 @@ static int do_remap(
     return 0;
 }
 
-int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, hydrogen_mem_flags_t flags) {
+int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, unsigned flags) {
     if (size == 0) return EINVAL;
     if ((addr | size) & PAGE_MASK) return EINVAL;
     if (flags & ~VM_PERM_MASK) return EINVAL;

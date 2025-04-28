@@ -18,17 +18,16 @@ extern "C" {
  *
  * Note: if any protection flag is given, #HYDROGEN_MEM_READ and/or #HYDROGEN_MEM_EXEC may be implied.
  */
-typedef enum {
-    HYDROGEN_MEM_READ = 1 << 0,          /**< Allow reading from this memory region. */
-    HYDROGEN_MEM_WRITE = 1 << 1,         /**< Allow writing to this memory region. */
-    HYDROGEN_MEM_EXEC = 1 << 2,          /**< Allow executing code in this memory region. */
-    HYDROGEN_MEM_SHARED = 1 << 3,        /**< Don't copy-on-write on clone. For object mappings, propagate writes. */
-    HYDROGEN_MEM_NO_CACHE = 1 << 4,      /**< Don't cache memory accesses. */
-    HYDROGEN_MEM_WRITE_COMBINE = 2 << 4, /**< Use write-combining caching or stronger for this memory region. */
-    HYDROGEN_MEM_WRITE_THROUGH = 3 << 4, /**< Use write-through caching or stronger for this memory region. */
-    HYDROGEN_MEM_EXACT = 1 << 6,         /**< Fail if the mapping cannot be placed at the specified address. */
-    HYDROGEN_MEM_OVERWRITE = 1 << 7,     /**< If combined with #HYDROGEN_MEM_EXACT, remove existing mappings. */
-} hydrogen_mem_flags_t;
+
+#define HYDROGEN_MEM_READ (1u << 0)
+#define HYDROGEN_MEM_WRITE (1u << 1)
+#define HYDROGEN_MEM_EXEC (1u << 2)
+#define HYDROGEN_MEM_SHARED (1u << 3)
+#define HYDROGEN_MEM_NO_CACHE (1u << 4)
+#define HYDROGEN_MEM_WRITE_COMBINE (2u << 4)
+#define HYDROGEN_MEM_WRITE_THROUGH (3u << 4)
+#define HYDROGEN_MEM_EXACT (1u << 6)
+#define HYDROGEN_MEM_OVERWRITE (1u << 7)
 
 #define HYDROGEN_MEMORY_RIGHT_READ (1ull << 0)    /**< Allow this object to be explicitly mapped for reading. */
 #define HYDROGEN_MEMORY_RIGHT_WRITE (1ull << 1)   /**< Allow this object to be mapped for shared writing. */
@@ -83,7 +82,7 @@ hydrogen_ret_t hydrogen_vm_map(
         hydrogen_handle_t vm,
         uintptr_t addr,
         size_t size,
-        hydrogen_mem_flags_t flags,
+        unsigned flags,
         hydrogen_handle_t object,
         size_t offset
 ) __asm__("__hydrogen_vm_map");
@@ -109,9 +108,7 @@ hydrogen_ret_t hydrogen_vm_map_vdso(hydrogen_handle_t vm) __asm__("__hydrogen_vm
  * \param[in] size The size of the region to change.
  * \param[in] flags The new permissions for the region. Must only specify protection flags.
  */
-int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, hydrogen_mem_flags_t flags) __asm__(
-        "__hydrogen_vm_remap"
-);
+int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, unsigned flags) __asm__("__hydrogen_vm_remap");
 
 /**
  * Remove existing mappings.

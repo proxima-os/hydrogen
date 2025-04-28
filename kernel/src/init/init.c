@@ -93,7 +93,7 @@ static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide,
         uintptr_t addr = segment->vaddr - offset + slide;
         size_t size = (segment->memsz + offset + PAGE_MASK) & ~PAGE_MASK;
 
-        hydrogen_mem_flags_t flags = HYDROGEN_MEM_EXACT | HYDROGEN_MEM_OVERWRITE | HYDROGEN_MEM_SHARED;
+        unsigned flags = HYDROGEN_MEM_EXACT | HYDROGEN_MEM_OVERWRITE | HYDROGEN_MEM_SHARED;
         if (segment->flags & PF_R) flags |= HYDROGEN_MEM_READ;
         if (segment->flags & PF_W) flags |= HYDROGEN_MEM_WRITE;
         if (segment->flags & PF_X) flags |= HYDROGEN_MEM_EXEC;
@@ -105,7 +105,7 @@ static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide,
             if (zero_size > map_size) zero_size = map_size;
 
             // don't share memory that needs to be zeroed, because the underlying file might have important data there
-            hydrogen_mem_flags_t zero_flags = (flags | HYDROGEN_MEM_WRITE) & ~HYDROGEN_MEM_SHARED;
+            unsigned zero_flags = (flags | HYDROGEN_MEM_WRITE) & ~HYDROGEN_MEM_SHARED;
 
             size_t imm_size = available == zero_size ? map_size : map_size - PAGE_SIZE;
 

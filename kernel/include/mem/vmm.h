@@ -1,6 +1,5 @@
 #pragma once
 
-#include "hydrogen/handle.h"
 #include "hydrogen/memory.h"
 #include "mem/pmap.h"
 #include "thread/mutex.h"
@@ -38,7 +37,7 @@ struct vm_region {
     uintptr_t head;
     uintptr_t tail;
     int balance;
-    hydrogen_mem_flags_t flags;
+    unsigned flags;
     handle_data_t object;
     size_t offset; // For object mappings
 };

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hydrogen/handle.h"
+#include "hydrogen/types.h"
 #include <stdint.h>
 
 uintptr_t load_init_image(hydrogen_handle_t vm);

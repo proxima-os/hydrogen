@@ -50,7 +50,7 @@ static void free_by_type(uint64_t type) {
     }
 }
 
-static void map_segment(const void *start, const void *end, hydrogen_mem_flags_t flags) {
+static void map_segment(const void *start, const void *end, unsigned flags) {
     uint64_t phys = sym_to_phys(start);
     pmap_map(NULL, (uintptr_t)start, end - start, phys, flags);
 }

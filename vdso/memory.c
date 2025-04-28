@@ -28,7 +28,7 @@ EXPORT hydrogen_ret_t hydrogen_vm_map(
         hydrogen_handle_t vm,
         uintptr_t addr,
         size_t size,
-        hydrogen_mem_flags_t flags,
+        unsigned flags,
         hydrogen_handle_t object,
         size_t offset
 ) {
@@ -45,7 +45,7 @@ EXPORT hydrogen_ret_t hydrogen_vm_map_vdso(hydrogen_handle_t vm) {
     return (hydrogen_ret_t){.error = error, .handle = ret};
 }
 
-EXPORT int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, hydrogen_mem_flags_t flags) {
+EXPORT int hydrogen_vm_remap(hydrogen_handle_t vm, uintptr_t addr, size_t size, unsigned flags) {
     UNUSED int ret;
     int error;
     SYSCALL4(SYSCALL_VM_REMAP, vm, addr, size, flags);

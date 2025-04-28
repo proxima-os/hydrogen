@@ -213,7 +213,7 @@ static int get_obj_phys(uint64_t *out, vm_region_t *region, uintptr_t addr) {
     return ((const vm_object_ops_t *)object->base.ops)->get_phys(object, out, region, offset);
 }
 
-static uint64_t flags_to_pte(hydrogen_mem_flags_t flags) {
+static uint64_t flags_to_pte(unsigned flags) {
     uint64_t pte = 0;
 
     if (flags & HYDROGEN_MEM_WRITE) pte |= PTE_WRITABLE;
@@ -229,7 +229,7 @@ static uint64_t flags_to_pte(hydrogen_mem_flags_t flags) {
     return pte;
 }
 
-static uint64_t flags_to_map_pte(hydrogen_mem_flags_t flags) {
+static uint64_t flags_to_map_pte(unsigned flags) {
     return PTE_PRESENT | PTE_ACCESSED | PTE_DIRTY | flags_to_pte(flags);
 }
 
@@ -605,7 +605,7 @@ static void do_map(uint64_t *table, int level, uintptr_t addr, size_t size, uint
     }
 }
 
-void pmap_map(pmap_t *pmap, uintptr_t addr, size_t size, uint64_t phys, hydrogen_mem_flags_t flags) {
+void pmap_map(pmap_t *pmap, uintptr_t addr, size_t size, uint64_t phys, unsigned flags) {
     ASSERT(((addr | size) & PAGE_MASK) == 0);
     ASSERT(size != 0);
     ASSERT(addr < addr + (size - 1));
@@ -666,7 +666,7 @@ static void do_alloc(uint64_t *table, int level, uintptr_t addr, size_t size, ui
     }
 }
 
-void pmap_alloc(uintptr_t addr, size_t size, hydrogen_mem_flags_t flags) {
+void pmap_alloc(uintptr_t addr, size_t size, unsigned flags) {
     ASSERT(((addr | size) & PAGE_MASK) == 0);
     ASSERT(size != 0);
     ASSERT(addr < addr + (size - 1));
@@ -833,7 +833,7 @@ static void do_remap(uint64_t *table, int level, uintptr_t addr, size_t size, ui
     }
 }
 
-void pmap_remap(pmap_t *pmap, uintptr_t addr, size_t size, hydrogen_mem_flags_t flags) {
+void pmap_remap(pmap_t *pmap, uintptr_t addr, size_t size, unsigned flags) {
     ASSERT(((addr | size) & PAGE_MASK) == 0);
     ASSERT(size != 0);
     ASSERT(addr < addr + (size - 1));
