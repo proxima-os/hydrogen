@@ -81,9 +81,9 @@ static void kernel_init(UNUSED void *ctx) {
 
         // Do this before mapping vDSO (aka when the address space is still completely empty), because the executable
         // might not be relocatable.
-        user_entry = load_init_image(hret.handle);
+        user_entry = load_init_image(handle);
 
-        hydrogen_ret_t pret = hydrogen_vm_map_vdso(hret.handle);
+        hydrogen_ret_t pret = hydrogen_vm_map_vdso(handle);
         if (unlikely(pret.error)) panic("failed to map init thread vdso (%d)", pret.error);
         vdso_addr = (uintptr_t)pret.pointer;
 

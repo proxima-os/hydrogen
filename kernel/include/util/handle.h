@@ -13,6 +13,7 @@ typedef struct {
 typedef struct {
     object_t base;
     handle_data_t *data;
+    uint64_t *bitmap;
     size_t capacity;
     size_t alloc_start;
     mutex_t lock;

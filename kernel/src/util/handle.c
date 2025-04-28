@@ -14,25 +14,36 @@
 static hydrogen_handle_t idx_to_handle(size_t idx) {
     // this is done to make it harder for userspace to accidentally treat handles as pointers
     // (since the addresses will be in kernel space)
-    return (hydrogen_handle_t)(idx - 1);
+    return (hydrogen_handle_t)(idx + 1);
 }
 
 static size_t handle_to_idx(hydrogen_handle_t handle) {
     return (size_t)handle - 1;
 }
 
+static size_t bitmap_entries(size_t capacity) {
+    return (capacity + 63) / 64;
+}
+
+static void free_buffer(namespace_t *ns) {
+    vmfree(ns->data, (ns->capacity * sizeof(*ns->data)) + (bitmap_entries(ns->capacity) * sizeof(*ns->bitmap)));
+}
+
 static void namespace_free(object_t *ptr) {
     namespace_t *ns = (namespace_t *)ptr;
 
-    for (size_t i = 0; i < ns->capacity; i++) {
-        handle_data_t *data = &ns->data[i];
+    for (size_t i = 0; i < ns->capacity; i += 64) {
+        uint64_t value = ns->bitmap[i / 64];
+        if (!value) continue;
 
-        if (data->object) {
-            obj_deref(data->object);
+        for (size_t j = 0; j < 64; j++) {
+            if (value & (1ul << j)) {
+                obj_deref(ns->data[i + j].object);
+            }
         }
     }
 
-    vmfree(ns->data, ns->capacity * sizeof(*ns->data));
+    free_buffer(ns);
     vmfree(ns, sizeof(*ns));
 }
 
@@ -49,31 +60,56 @@ int create_namespace_raw(namespace_t **out) {
     return 0;
 }
 
+static bool expand_buffer(namespace_t *ns, size_t new_cap) {
+    size_t bitmap_len = bitmap_entries(new_cap);
+    handle_data_t *data = vmalloc((new_cap * sizeof(*ns->data)) + (bitmap_len * sizeof(*ns->bitmap)));
+    if (unlikely(!data)) return false;
+    uint64_t *bitmap = (void *)data + new_cap * sizeof(*data);
+
+    size_t old_bitmap_len = bitmap_entries(ns->capacity);
+    memcpy(data, ns->data, ns->capacity * sizeof(*data));
+    memcpy(bitmap, ns->bitmap, old_bitmap_len * sizeof(*bitmap));
+    memset(bitmap + old_bitmap_len, 0, (bitmap_len - old_bitmap_len) * sizeof(*bitmap));
+
+    free_buffer(ns);
+    ns->data = data;
+    ns->bitmap = bitmap;
+    ns->capacity = new_cap;
+    return true;
+}
+
 static int do_create(namespace_t *ns, object_t *obj, uint64_t rights, hydrogen_handle_t *out) {
     mutex_lock(&ns->lock);
 
-    size_t i = ns->alloc_start;
+    size_t i = ns->alloc_start & ~63;
+    size_t j = 0;
 
     while (i < ns->capacity) {
-        if (!ns->data[i].object) goto success;
-        i += 1;
+        uint64_t value = ns->bitmap[i / 64];
+
+        if (value != UINT64_MAX) {
+            if (value != 0) {
+                j = __builtin_ctzl(~value);
+            } else {
+                j = 0;
+            }
+
+            i += j;
+            if (i < ns->capacity) goto success;
+        } else {
+            i += 64;
+        }
     }
 
     // No free handles in current buffer, expand
 
-    size_t new_cap = ns->capacity ? ns->capacity * 2 : 8;
-    handle_data_t *new_buf = vmalloc(sizeof(*new_buf) * new_cap);
-    if (unlikely(!new_buf)) goto fail;
-    memcpy(new_buf, ns->data, ns->capacity * sizeof(*new_buf));
-    memset(&new_buf[ns->capacity], 0, (new_cap - ns->capacity) * sizeof(*new_buf));
-    vmfree(ns->data, ns->capacity * sizeof(*new_buf));
-    ns->data = new_buf;
-    ns->capacity = new_cap;
+    if (unlikely(!expand_buffer(ns, ns->capacity ? ns->capacity * 2 : 8))) goto fail;
 
 success:
     ns->alloc_start = i + 1;
 
     obj_ref(obj);
+    ns->bitmap[i / 64] |= 1ul << j;
     ns->data[i].object = obj;
     ns->data[i].rights = rights;
 
@@ -90,6 +126,10 @@ int create_handle(object_t *obj, uint64_t rights, hydrogen_handle_t *out) {
     return do_create(current_thread->namespace, obj, rights, out);
 }
 
+static bool is_idx_valid(namespace_t *ns, size_t idx) {
+    return idx < ns->capacity && (ns->bitmap[idx / 64] & (1ul << (idx % 64))) != 0;
+}
+
 int basic_resolve(hydrogen_handle_t handle, handle_data_t *out) {
     if (unlikely(!handle)) return EBADF;
 
@@ -97,7 +137,7 @@ int basic_resolve(hydrogen_handle_t handle, handle_data_t *out) {
     namespace_t *ns = current_thread->namespace;
     mutex_lock(&ns->lock);
 
-    if (unlikely(idx >= ns->capacity) || unlikely(!ns->data[idx].object)) {
+    if (unlikely(!is_idx_valid(ns, idx))) {
         mutex_unlock(&ns->lock);
         return EBADF;
     }
@@ -155,11 +195,7 @@ static int get_ns(hydrogen_handle_t handle, namespace_t **out, uint64_t rights) 
     return 0;
 }
 
-hydrogen_ret_t hydrogen_handle_create(
-        hydrogen_handle_t namespace,
-        hydrogen_handle_t object,
-        uint64_t rights
-) {
+hydrogen_ret_t hydrogen_handle_create(hydrogen_handle_t namespace, hydrogen_handle_t object, uint64_t rights) {
     namespace_t *ns;
     int error = get_ns(namespace, &ns, HYDROGEN_NAMESPACE_RIGHT_CREATE);
     if (unlikely(error)) return RET_ERROR(error);
@@ -196,10 +232,11 @@ int hydrogen_handle_close(hydrogen_handle_t namespace, hydrogen_handle_t handle)
 
     mutex_lock(&ns->lock);
 
-    if (idx >= ns->capacity || !ns->data[idx].object) goto fail;
+    if (unlikely(!is_idx_valid(ns, idx))) goto fail;
 
     obj_deref(ns->data[idx].object);
     ns->data[idx].object = NULL;
+    ns->bitmap[idx / 64] &= ~(1ul << (idx % 64));
 
     if (idx < ns->alloc_start) ns->alloc_start = idx;
 

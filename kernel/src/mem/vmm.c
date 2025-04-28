@@ -1162,25 +1162,11 @@ static bool move_skip_cb(UNUSED vm_region_t *region, UNUSED void *ptr) {
 static void move_final_cb(address_space_t *space, vm_region_t *region, void *ptr) {
     struct move_ctx *ctx = ptr;
 
-    /*pmap_move(
-            &space->pmap,
-            &ctx->dest->pmap,
-            region->head,
-            region->head + ctx->offset,
-            region->tail - region->head + 1
-    );*/
-
     tree_del(space, region);
     list_del(space, region->prev, region->next);
 
     if (!ctx->first) ctx->first = region;
     ctx->last = region;
-
-    /*region->space = ctx->dest;
-    region->head += ctx->offset;
-    region->tail += ctx->offset;
-
-    ctx->dprev = merge_or_insert(space, prev, next, region);*/
 }
 
 hydrogen_ret_t hydrogen_vm_move(
@@ -1216,7 +1202,7 @@ hydrogen_ret_t hydrogen_vm_move(
     address_space_t *dst;
     error = get_vm(dest_vm, &dst, HYDROGEN_VM_RIGHT_MAP);
     if (unlikely(error)) {
-        obj_deref(&src->base);
+        if (vm) obj_deref(&src->base);
         return RET_ERROR(error);
     }
 
@@ -1285,8 +1271,8 @@ ret2:
     if (src != dst) mutex_unlock(&src->lock);
 ret:
     mutex_unlock(&dst->lock);
-    obj_deref(&dst->base);
-    obj_deref(&src->base);
+    if (dest_vm) obj_deref(&dst->base);
+    if (vm) obj_deref(&src->base);
     return RET_POINTER_MAYBE(error, (void *)dest_addr);
 }
 
