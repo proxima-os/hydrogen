@@ -12,8 +12,6 @@
 #include <stdint.h>
 
 static hydrogen_handle_t idx_to_handle(size_t idx) {
-    // this is done to make it harder for userspace to accidentally treat handles as pointers
-    // (since the addresses will be in kernel space)
     return (hydrogen_handle_t)(idx + 1);
 }
 
