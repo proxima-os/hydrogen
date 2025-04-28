@@ -10,6 +10,7 @@
 #include "cpu/xsave.h"
 #include "errno.h"
 #include "hydrogen/thread.h"
+#include "hydrogen/time.h"
 #include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
@@ -26,6 +27,8 @@
 #include "util/panic.h"
 #include "util/spinlock.h"
 #include <stdint.h>
+
+#define TIMESLICE_LEN_NS (10000000ul) /* 10ms */
 
 #define current_sched (current_cpu.sched)
 #define current_sched_ptr (&current_cpu_ptr->sched)
@@ -61,11 +64,14 @@ void init_sched_global(void) {
     idt_install(VEC_IPI_YIELD, handle_ipi_yield, NULL);
 }
 
+static void switch_handler(timer_event_t *event);
+
 void init_sched_early(void) {
     sched_t *sched = current_sched_ptr;
     sched->current = &sched->idle;
     sched->current->state = THREAD_RUNNING;
     sched->current->sched = sched;
+    event_init(&sched->switch_event, switch_handler);
 }
 
 static void reap_thread(thread_t *thread) {
@@ -185,6 +191,7 @@ int sched_create(thread_t **out, thread_func_t func, void *ctx, cpu_t *cpu) {
     thread->xsave = xsave;
     thread->address_space = NULL;
     event_init(&thread->timeout_event, handle_timeout);
+    thread->timeslice_rem = TIMESLICE_LEN_NS;
 
     thread->regs->rbx = (uintptr_t)func;
     thread->regs->r12 = (uintptr_t)ctx;
@@ -253,6 +260,16 @@ static void do_yield(sched_t *sched) {
 
     __atomic_store_n(&current->preempted, false, __ATOMIC_RELAXED);
 
+    uint64_t time = hydrogen_get_time();
+    uint64_t diff = time - sched->switch_time;
+    sched->switch_time = time;
+
+    if (diff >= current->timeslice_rem) {
+        current->timeslice_rem = TIMESLICE_LEN_NS;
+    } else {
+        current->timeslice_rem -= diff;
+    }
+
     if (sched->queue.first) {
         next = sched->queue.first;
         sched->queue.first = next->next;
@@ -260,12 +277,20 @@ static void do_yield(sched_t *sched) {
         if (current->state == THREAD_RUNNING && current->sched == sched && current != &sched->idle) {
             enqueue(sched, current);
         }
+    } else if (current->state == THREAD_RUNNING && current->sched == sched) {
+        next = current;
     } else {
-        if (current->state == THREAD_RUNNING && current->sched == sched) return;
         next = &sched->idle;
     }
 
-    ASSERT(current != next);
+    cancel_event(&sched->switch_event);
+
+    if (next != &sched->idle) {
+        sched->switch_event.time = time + next->timeslice_rem;
+        queue_event(&sched->switch_event);
+    }
+
+    if (current == next) return;
 
     xsave();
     current->ds = read_ds();
@@ -277,6 +302,17 @@ static void do_yield(sched_t *sched) {
 
     sched->current = next;
     post_switch_func(current->sched, switch_thread(&current->regs, next->regs));
+}
+
+static void switch_handler(UNUSED timer_event_t *event) {
+    sched_t *sched = current_sched_ptr;
+    spin_lock_noirq(&sched->queue.lock);
+
+    if (current_thread->state == THREAD_RUNNING) {
+        do_yield(sched);
+    }
+
+    spin_unlock_noirq(&sched->queue.lock);
 }
 
 _Noreturn void sched_init_thread(thread_regs_t **prev_regs, thread_func_t func, void *ctx) {

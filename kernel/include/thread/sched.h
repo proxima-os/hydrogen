@@ -61,6 +61,7 @@ struct thread {
     address_space_t *address_space;
     namespace_t *namespace;
     idt_frame_t *user_regs;
+    uint64_t timeslice_rem;
 };
 
 struct sched {
@@ -74,6 +75,8 @@ struct sched {
     thread_t *reap_queue;
     thread_t idle;
     size_t threads;
+    timer_event_t switch_event;
+    uint64_t switch_time;
     unsigned preempt;
 };
 
