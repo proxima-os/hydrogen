@@ -421,7 +421,13 @@ hydrogen_ret_t hydrogen_thread_create(hydrogen_handle_t namespace, hydrogen_hand
     thread_t *thread;
     error = sched_create(&thread, launch_user_thread, pc, NULL);
     if (unlikely(error)) goto ret2;
+
+    thread->address_space = vm;
+    thread->namespace = ns;
     thread->user_regs = sp;
+
+    obj_ref(&vm->base);
+    obj_ref(&ns->base);
 
     hydrogen_handle_t handle;
     error = create_handle(&thread->base, -1, &handle);
