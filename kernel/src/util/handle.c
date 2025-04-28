@@ -32,12 +32,11 @@ static void namespace_free(object_t *ptr) {
 
     for (size_t i = 0; i < ns->capacity; i += 64) {
         uint64_t value = ns->bitmap[i / 64];
-        if (!value) continue;
 
-        for (size_t j = 0; j < 64; j++) {
-            if (value & (1ul << j)) {
-                obj_deref(ns->data[i + j].object);
-            }
+        while (value) {
+            size_t j = __builtin_ffsl(value) - 1;
+            value &= ~(1ul << j);
+            obj_deref(ns->data[i + j].object);
         }
     }
 
