@@ -238,6 +238,7 @@ typedef struct {
 
 static size_t smp_done;
 static thread_t *smp_init_thread;
+static cpu_t *extra_cpus, *extra_cpus_last;
 static spinlock_t smp_init_lock;
 
 _Noreturn void smp_init_cpu(cpu_init_data_t *data) {
@@ -292,12 +293,18 @@ static void ap_init_thread_func(void *ptr) {
     sched_migrate(&data->cpu);
     init_sched_late();
 
+    state = spin_lock(&smp_init_lock);
+
+    if (extra_cpus) extra_cpus_last->next = &data->cpu;
+    else extra_cpus = &data->cpu;
+    extra_cpus_last = &data->cpu;
+
     if (__atomic_fetch_sub(&smp_done, 1, __ATOMIC_SEQ_CST) == 1) {
         // disabling preemption is unnecessary here since the current thread is guaranteed to be on a different cpu
-        irq_state_t state = spin_lock(&data->init_lock);
         if (smp_init_thread) sched_wake(smp_init_thread);
-        spin_unlock(&data->init_lock, state);
     }
+
+    spin_unlock(&smp_init_lock, state);
 }
 
 void init_smp(void) {
@@ -326,6 +333,8 @@ void init_smp(void) {
         sched_wait(0, &smp_init_lock);
         smp_init_thread = NULL;
     }
+
+    if (extra_cpus) cpus->next = extra_cpus;
 
     spin_unlock(&smp_init_lock, state);
 
