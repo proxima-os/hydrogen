@@ -545,13 +545,13 @@ static bool can_map_direct(unsigned level) {
     return level < 2 || (level == 2 && cpu_features.huge_1gb);
 }
 
-UNUSED static bool is_canonical(uintptr_t virt) {
+bool is_address_canonical(uintptr_t virt) {
     virt >>= (pt_top_shift + 8); // isolate the highest valid bit and everything above it
-    return !virt || virt == UINTPTR_MAX >> (pt_top_shift + 8);
+    return !virt || virt == (UINTPTR_MAX >> (pt_top_shift + 8));
 }
 
 UNUSED static bool is_kernel_memory(uintptr_t virt) {
-    ASSERT(is_canonical(virt));
+    ASSERT(is_address_canonical(virt));
     return virt & (1ul << 63);
 }
 

@@ -392,3 +392,23 @@ void *alloc_kernel_stack(void) {
 void free_kernel_stack(void *stack) {
     vmfree(stack - KERNEL_STACK_SIZE, KERNEL_STACK_SIZE);
 }
+
+uintptr_t hydrogen_x86_64_get_fs_base(void) {
+    return rdmsr(MSR_FS_BASE);
+}
+
+uintptr_t hydrogen_x86_64_get_gs_base(void) {
+    return rdmsr(MSR_KERNEL_GS_BASE);
+}
+
+int hydrogen_x86_64_set_fs_base(uintptr_t address) {
+    if (unlikely(!is_address_canonical(address))) return EINVAL;
+    wrmsr(MSR_FS_BASE, address);
+    return 0;
+}
+
+int hydrogen_x86_64_set_gs_base(uintptr_t address) {
+    if (unlikely(!is_address_canonical(address))) return EINVAL;
+    wrmsr(MSR_KERNEL_GS_BASE, address);
+    return 0;
+}

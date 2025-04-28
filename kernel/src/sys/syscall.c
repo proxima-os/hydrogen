@@ -55,6 +55,10 @@ static hydrogen_ret_t do_syscall(syscall_vec_t vec, size_t a0, size_t a1, size_t
     case SYSCALL_VM_READ: return RET_ERROR(hydrogen_vm_read((hydrogen_handle_t)a0, (void *)a1, a2, a3));
     case SYSCALL_IO_ENABLE: return RET_ERROR(hydrogen_io_enable((hydrogen_handle_t)a0));
     case SYSCALL_IO_DISABLE: hydrogen_io_disable(); return RET_ERROR(0);
+    case SYSCALL_X86_64_GET_FS_BASE: return RET_INTEGER(hydrogen_x86_64_get_fs_base());
+    case SYSCALL_X86_64_GET_GS_BASE: return RET_INTEGER(hydrogen_x86_64_get_gs_base());
+    case SYSCALL_X86_64_SET_FS_BASE: return RET_ERROR(hydrogen_x86_64_set_fs_base(a0));
+    case SYSCALL_X86_64_SET_GS_BASE: return RET_ERROR(hydrogen_x86_64_set_gs_base(a0));
     default: return RET_ERROR(ENOSYS);
     }
 }

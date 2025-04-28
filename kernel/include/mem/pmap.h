@@ -30,3 +30,5 @@ void pmap_clone(pmap_t *pmap, pmap_t *src, uintptr_t addr, size_t size, bool cow
 void pmap_move(pmap_t *src, pmap_t *dest, uintptr_t addr, uintptr_t dest_addr, size_t size);
 void pmap_remap(pmap_t *pmap, uintptr_t addr, size_t size, unsigned flags);
 void pmap_unmap(pmap_t *pmap, uintptr_t addr, size_t size);
+
+bool is_address_canonical(uintptr_t address);

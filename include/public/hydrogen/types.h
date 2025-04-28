@@ -1,5 +1,5 @@
-#ifndef _HYDROGEN_TYPES_H
-#define _HYDROGEN_TYPES_H
+#ifndef HYDROGEN_TYPES_H
+#define HYDROGEN_TYPES_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -30,4 +30,4 @@ typedef struct {
 };
 #endif
 
-#endif /* _HYDROGEN_TYPES_H */
+#endif /* HYDROGEN_TYPES_H */
