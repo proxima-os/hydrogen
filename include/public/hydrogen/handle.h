@@ -26,6 +26,7 @@ hydrogen_ret_t hydrogen_namespace_create(void) __asm__("__hydrogen_namespace_cre
 
 /**
  * Clone a new namespace by cloning an existing one.
+ * Namespace handles are not cloned.
  *
  * \param[in] namespace The namespace to clone. If `NULL`, use the current namespace.
  *                      Requires the #HYDROGEN_NAMESPACE_RIGHT_CLONE right.

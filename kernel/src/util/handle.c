@@ -186,6 +186,10 @@ static size_t next_power_of_two(size_t value) {
     return 1ul << (64 - __builtin_clzl(value - 1));
 }
 
+static bool is_namespace(object_t *obj) {
+    return obj->ops == &namespace_ops;
+}
+
 hydrogen_ret_t hydrogen_namespace_clone(hydrogen_handle_t namespace) {
     namespace_t *src;
     int error = get_ns(namespace, &src, HYDROGEN_NAMESPACE_RIGHT_CLONE);
@@ -202,11 +206,23 @@ hydrogen_ret_t hydrogen_namespace_clone(hydrogen_handle_t namespace) {
 
     size_t max = (src->capacity + 63) & ~63;
     uint64_t *sbmap = &src->bitmap[max / 64];
-    uint64_t bmval;
 
     while (max > 0) {
-        bmval = *--sbmap;
-        if (bmval) break;
+        uint64_t bmval = *--sbmap;
+
+        if (bmval) {
+            size_t i = 0;
+            handle_data_t *data = &src->data[max];
+
+            while (i < 64) {
+                data--;
+                if (data->object && !is_namespace(data->object)) break;
+                i += 1;
+            }
+
+            if (i != 64) break;
+        }
+
         max -= 64;
     }
 
@@ -223,33 +239,29 @@ hydrogen_ret_t hydrogen_namespace_clone(hydrogen_handle_t namespace) {
     ns->alloc_start = max;
 
     for (size_t i = 0; i < max; i += 64) {
-        bmval = *sbmap++;
-        if (!bmval) continue;
+        uint64_t sbmval = *sbmap++;
+        if (!sbmval) continue;
 
-        *dbmap++ = bmval;
+        uint64_t dbmval = 0;
 
-        if (bmval == UINT64_MAX) {
-            for (size_t j = 0; j < 64; j++) {
-                size_t idx = i + j;
-                handle_data_t data = src->data[idx];
-                ns->data[idx] = data;
-                obj_ref(data.object);
-            }
-        } else {
-            if (ns->alloc_start == max) {
-                ns->alloc_start = i + __builtin_ffsl(~bmval) - 1;
-            }
+        while (sbmval) {
+            size_t j = __builtin_ffsl(sbmval) - 1;
+            sbmval &= ~(1ul << j);
 
-            while (bmval) {
-                size_t j = __builtin_ffsl(bmval) - 1;
-                bmval &= ~(1ul << j);
+            size_t idx = i + j;
+            handle_data_t data = src->data[idx];
+            if (is_namespace(data.object)) continue;
 
-                size_t idx = i + j;
-                handle_data_t data = src->data[idx];
-                ns->data[idx] = data;
-                obj_ref(data.object);
-            }
+            ns->data[idx] = data;
+            obj_ref(data.object);
+            dbmval |= 1ul << j;
         }
+
+        if (dbmval != 0 && dbmval != UINT64_MAX && ns->alloc_start == max) {
+            ns->alloc_start = i + __builtin_ffsl(~sbmval) - 1;
+        }
+
+        *dbmap++ = dbmval;
     }
 
 ret:
@@ -261,10 +273,6 @@ ret:
     obj_deref(&ns->base);
 
     return RET_HANDLE_MAYBE(error, handle);
-}
-
-static bool is_namespace(object_t *obj) {
-    return obj->ops == &namespace_ops;
 }
 
 int get_ns(hydrogen_handle_t handle, namespace_t **out, uint64_t rights) {
