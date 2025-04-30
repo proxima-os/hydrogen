@@ -772,7 +772,7 @@ void pmap_clone(pmap_t *pmap, pmap_t *src, uintptr_t addr, size_t size, bool cow
     ASSERT(!is_kernel_memory(addr + (size - 1)));
 
     tlb_ctx_t tlb = {};
-    tlb_init(&tlb, pmap);
+    tlb_init(&tlb, src);
 
     switch (pt_style) {
     case PT_4LEVEL: do_clone(pmap->root, src->root, 3, addr, size, cow, &tlb); break;
