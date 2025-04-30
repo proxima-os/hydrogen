@@ -13,7 +13,7 @@
 
 int mutex_try_lock(mutex_t *mutex) {
     char wanted = MUTEX_UNLOCKED;
-    return __atomic_compare_exchange_n(&mutex->state, &wanted, MUTEX_LOCKED, false, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)
+    return __atomic_compare_exchange_n(&mutex->state, &wanted, MUTEX_LOCKED, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)
                    ? 0
                    : EBUSY;
 }
@@ -26,7 +26,7 @@ void mutex_lock(mutex_t *mutex) {
 static bool try_lock_weak(mutex_t *mutex) {
     char wanted = MUTEX_UNLOCKED;
 
-    return __atomic_compare_exchange_n(&mutex->state, &wanted, MUTEX_LOCKED, true, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED);
+    return __atomic_compare_exchange_n(&mutex->state, &wanted, MUTEX_LOCKED, true, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
 }
 
 int mutex_lock_timeout(mutex_t *mutex, uint64_t timeout) {
@@ -42,7 +42,7 @@ int mutex_lock_timeout(mutex_t *mutex, uint64_t timeout) {
 
     int error;
 
-    if (likely(__atomic_exchange_n(&mutex->state, MUTEX_CONTESTED, __ATOMIC_ACQ_REL) != MUTEX_UNLOCKED)) {
+    if (likely(__atomic_exchange_n(&mutex->state, MUTEX_CONTESTED, __ATOMIC_ACQUIRE) != MUTEX_UNLOCKED)) {
         current_thread->priv_prev = NULL;
         current_thread->priv_next = mutex->waiters;
         mutex->waiters = current_thread;
@@ -58,7 +58,7 @@ int mutex_lock_timeout(mutex_t *mutex, uint64_t timeout) {
         }
     } else {
         // not racy because we own the spinlock
-        __atomic_store_n(&mutex->state, MUTEX_LOCKED, __ATOMIC_RELEASE);
+        __atomic_store_n(&mutex->state, MUTEX_LOCKED, __ATOMIC_RELAXED);
         error = 0;
     }
 
@@ -73,7 +73,7 @@ void mutex_unlock(mutex_t *mutex) {
                 &wanted,
                 MUTEX_UNLOCKED,
                 false,
-                __ATOMIC_ACQ_REL,
+                __ATOMIC_RELEASE,
                 __ATOMIC_RELAXED
         ))) {
         return;
