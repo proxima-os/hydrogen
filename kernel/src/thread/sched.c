@@ -9,6 +9,7 @@
 #include "cpu/lapic.h"
 #include "cpu/xsave.h"
 #include "errno.h"
+#include "hydrogen/handle.h"
 #include "hydrogen/thread.h"
 #include "hydrogen/time.h"
 #include "hydrogen/types.h"
@@ -434,7 +435,8 @@ void free_kernel_stack(void *stack) {
     vmfree(stack - KERNEL_STACK_SIZE, KERNEL_STACK_SIZE);
 }
 
-#define THREAD_NS_RIGHTS (HYDROGEN_NAMESPACE_RIGHT_CREATE | HYDROGEN_NAMESPACE_RIGHT_CLOSE)
+#define THREAD_NS_RIGHTS \
+    (HYDROGEN_NAMESPACE_RIGHT_CREATE | HYDROGEN_NAMESPACE_RIGHT_CLOSE | HYDROGEN_NAMESPACE_RIGHT_CLONE)
 #define THREAD_VM_RIGHTS                                                                                   \
     (HYDROGEN_VM_RIGHT_MAP | HYDROGEN_VM_RIGHT_REMAP | HYDROGEN_VM_RIGHT_UNMAP | HYDROGEN_VM_RIGHT_CLONE | \
      HYDROGEN_VM_RIGHT_WRITE | HYDROGEN_VM_RIGHT_READ)

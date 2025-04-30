@@ -14,6 +14,7 @@ extern "C" {
 
 #define HYDROGEN_NAMESPACE_RIGHT_CREATE (1ull << 0) /**< Allow handles to be created in the namespace. */
 #define HYDROGEN_NAMESPACE_RIGHT_CLOSE (1ull << 1)  /**< Allow handles to be closed in the namespace. */
+#define HYDROGEN_NAMESPACE_RIGHT_CLONE (1ull << 2)  /**< Allow a new namespace to be created by cloning this one. */
 
 /**
  * Create an empty namespace.
@@ -21,6 +22,15 @@ extern "C" {
  * \return The newly created namespace (in `handle`).
  */
 hydrogen_ret_t hydrogen_namespace_create(void) __asm__("__hydrogen_namespace_create");
+
+/**
+ * Clone a new namespace by cloning an existing one.
+ *
+ * \param[in] namespace The namespace to clone. If `NULL`, use the current namespace.
+ *                      Requires the #HYDROGEN_NAMESPACE_RIGHT_CLONE right.
+ * \return The newly created namespace (in `handle`).
+ */
+hydrogen_ret_t hydrogen_namespace_clone(hydrogen_handle_t namespace) __asm__("__hydrogen_namespace_clone");
 
 /**
  * Create a new handle in a namespace.

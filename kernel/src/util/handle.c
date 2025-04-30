@@ -175,6 +175,89 @@ hydrogen_ret_t hydrogen_namespace_create(void) {
     return RET_HANDLE_MAYBE(error, handle);
 }
 
+static size_t next_power_of_two(size_t value) {
+    if (!(value & (value - 1))) return value;
+
+    return 1ul << (64 - __builtin_clzl(value - 1));
+}
+
+hydrogen_ret_t hydrogen_namespace_clone(hydrogen_handle_t namespace) {
+    namespace_t *src;
+    int error = get_ns(namespace, &src, HYDROGEN_NAMESPACE_RIGHT_CLONE);
+    if (unlikely(error)) return RET_ERROR(error);
+
+    namespace_t *ns;
+    error = create_namespace_raw(&ns);
+    if (unlikely(error)) {
+        if (namespace) obj_deref(&src->base);
+        return RET_ERROR(error);
+    }
+
+    mutex_lock(&src->lock);
+
+    size_t max = (src->capacity + 63) & ~63;
+    uint64_t *sbmap = &src->bitmap[max / 64];
+    uint64_t bmval;
+
+    while (max > 0) {
+        bmval = *--sbmap;
+        if (bmval) break;
+        max -= 64;
+    }
+
+    if (!max) goto ret;
+
+    if (unlikely(!expand_buffer(ns, next_power_of_two(max)))) {
+        error = ENOMEM;
+        goto ret;
+    }
+
+    sbmap = src->bitmap;
+    uint64_t *dbmap = ns->bitmap;
+
+    ns->alloc_start = max;
+
+    for (size_t i = 0; i < max; i += 64) {
+        bmval = *sbmap++;
+        if (!bmval) continue;
+
+        *dbmap++ = bmval;
+
+        if (bmval == UINT64_MAX) {
+            for (size_t j = 0; j < 64; j++) {
+                size_t idx = i + j;
+                handle_data_t data = src->data[idx];
+                ns->data[idx] = data;
+                obj_ref(data.object);
+            }
+        } else {
+            if (ns->alloc_start == max) {
+                ns->alloc_start = i + __builtin_ffsl(~bmval) - 1;
+            }
+
+            while (bmval) {
+                size_t j = __builtin_ffsl(bmval) - 1;
+                bmval &= ~(1ul << j);
+
+                size_t idx = i + j;
+                handle_data_t data = src->data[idx];
+                ns->data[idx] = data;
+                obj_ref(data.object);
+            }
+        }
+    }
+
+ret:
+    mutex_unlock(&src->lock);
+    if (namespace) obj_deref(&src->base);
+
+    hydrogen_handle_t handle;
+    if (likely(!error)) error = create_handle(&ns->base, -1, &handle);
+    obj_deref(&ns->base);
+
+    return RET_HANDLE_MAYBE(error, handle);
+}
+
 static bool is_namespace(object_t *obj) {
     return obj->ops == &namespace_ops;
 }

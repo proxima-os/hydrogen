@@ -12,7 +12,8 @@ extern "C" {
  * Create a new thread.
  *
  * \param[in] namespace The namespace used for resolving handles in the thread. If `NULL`, use the current namespace.
- *                      Requires #HYDROGEN_NAMESPACE_RIGHT_CREATE and #HYDROGEN_NAMESPACE_RIGHT_CLOSE.
+ *                      Requires #HYDROGEN_NAMESPACE_RIGHT_CREATE, #HYDROGEN_NAMESPACE_RIGHT_CLOSE,
+ *                      and #HYDROGEN_NAMESPACE_RIGHT_CLONE.
  * \param[in] vm The address space the thread will run in. If `NULL`, use the current address space.
  *               Requires #HYDROGEN_VM_RIGHT_MAP, #HYDROGEN_VM_RIGHT_REMAP, #HYDROGEN_VM_RIGHT_UNMAP,
  *               #HYDROGEN_VM_RIGHT_CLONE, #HYDROGEN_VM_RIGHT_WRITE, and #HYDROGEN_VM_RIGHT_READ.
@@ -28,7 +29,8 @@ hydrogen_ret_t hydrogen_thread_create(hydrogen_handle_t namespace, hydrogen_hand
  * Reinitialize the current thread.
  *
  * \param[in] namespace The namespace used for resolving handles in the thread. If `NULL`, use the current namespace.
- *                      Requires #HYDROGEN_NAMESPACE_RIGHT_CREATE and #HYDROGEN_NAMESPACE_RIGHT_CLOSE.
+ *                      Requires #HYDROGEN_NAMESPACE_RIGHT_CREATE, #HYDROGEN_NAMESPACE_RIGHT_CLOSE,
+ *                      and #HYDROGEN_NAMESPACE_RIGHT_CLONE.
  * \param[in] vm The address space the thread will run in. If `NULL`, use the current address space.
  *               Requires #HYDROGEN_VM_RIGHT_MAP, #HYDROGEN_VM_RIGHT_REMAP, #HYDROGEN_VM_RIGHT_UNMAP,
  *               #HYDROGEN_VM_RIGHT_CLONE, #HYDROGEN_VM_RIGHT_WRITE, and #HYDROGEN_VM_RIGHT_READ.
