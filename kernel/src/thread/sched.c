@@ -506,6 +506,9 @@ static void launch_cloned_thread(void *ptr) {
     idt_frame_t *ctx = ptr;
     idt_frame_t regs = *ctx;
     vmfree(ctx, sizeof(*ctx));
+
+    regs.rax = 0;
+    regs.rdx = 0;
     return_from_fork(&regs);
 }
 
