@@ -1,10 +1,12 @@
 #include "hydrogen/thread.h"
+#include "hydrogen/handle.h"
 #include "hydrogen/types.h"
 #include "kernel/syscall.h"
 #include "syscall.h"
 #include "vdso.h"
 #include <cpuid.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 EXPORT hydrogen_ret_t hydrogen_thread_create(hydrogen_handle_t namespace, hydrogen_handle_t vm, void *pc, void *sp) {
@@ -17,6 +19,37 @@ EXPORT int hydrogen_thread_reinit(hydrogen_handle_t namespace, hydrogen_handle_t
 
 EXPORT hydrogen_ret_t hydrogen_thread_clone(hydrogen_handle_t namespace, hydrogen_handle_t vm) {
     return SYSCALL2(SYSCALL_THREAD_CLONE, namespace, vm);
+}
+
+EXPORT hydrogen_ret_t hydrogen_thread_fork(hydrogen_handle_t namespace) {
+    hydrogen_ret_t ret;
+    hydrogen_handle_t p0 = NULL;
+    hydrogen_handle_t orig_ns = namespace;
+
+    // This has to be done in one asm block, because there must be no writes to memory between
+    // the call to `hydrogen_vm_clone` and `hydrogen_thread_clone`.
+    asm("syscall \n\t"             // Clone the vm
+        "test %%eax, %%eax \n\t"   // Check if the vm clone was successful
+        "jnz 1f \n\t"              // If not, skip straight to return
+        "mov %[tcvec], %%eax \n\t" // Set syscall number for thread clone
+        "mov %%rsi, %%rdi \n\t"    // Use namespace handle as first parameter
+        "mov %%rdx, %%rsi \n\t"    // Use cloned address space as second parameter
+        "syscall \n\t"             // Clone the thread
+        "1: "
+        : "=A"(ret), "+D"(p0), "+S"(namespace)
+        : "a"(SYSCALL_VM_CLONE), [tcvec] "i"(SYSCALL_THREAD_CLONE)
+        : "rcx", "r11", "memory");
+
+    if (orig_ns != namespace) {
+        // `namespace` is now the created VM.
+        // Close the handle to it in the creator.
+
+        if (ret.error != 0 || ret.handle != NULL) {
+            ASSERT_OK_INT(hydrogen_handle_close(NULL, namespace));
+        }
+    }
+
+    return ret;
 }
 
 EXPORT void hydrogen_thread_yield(void) {

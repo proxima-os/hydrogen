@@ -50,6 +50,14 @@ hydrogen_ret_t hydrogen_thread_clone(hydrogen_handle_t namespace, hydrogen_handl
 );
 
 /**
+ * Create a new thread by cloning the current thread and address space.
+ *
+ * \param[in] namespace See #hydrogen_thread_create.
+ * \return The created thread, or `NULL` if running in the created thread.
+ */
+hydrogen_ret_t hydrogen_thread_fork(hydrogen_handle_t namespace) __asm__("__hydrogen_thread_fork");
+
+/**
  * Yield to another thread.
  */
 void hydrogen_thread_yield(void) __asm__("__hydrogen_thread_yield");

@@ -288,7 +288,7 @@ static void do_yield(sched_t *sched) {
 
     if (next != &sched->idle) {
         sched->switch_event.time = time + next->timeslice_rem;
-        queue_event(&sched->switch_event);
+        //queue_event(&sched->switch_event);
     }
 
     if (current == next) return;
