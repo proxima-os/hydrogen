@@ -498,7 +498,7 @@ hydrogen_ret_t hydrogen_vm_clone(hydrogen_handle_t srch) {
     mutex_lock(&src->lock);
 
     dst->num_mapped = src->num_mapped;
-    dst->vdso_addr = src->vdso_addr;
+    if (src->vdso_addr < max_user_address) dst->vdso_addr = src->vdso_addr;
 
     clone_regions(dst, src);
 
