@@ -21,19 +21,7 @@
 static LIMINE_REQ struct limine_module_request module_req = {.id = LIMINE_MODULE_REQUEST};
 static LIMINE_REQ struct limine_executable_file_request kfile_req = {.id = LIMINE_EXECUTABLE_FILE_REQUEST};
 
-static uint64_t next_module_idx;
-static uintptr_t exec_phdrs = -1;
-static size_t exec_phent;
-static size_t exec_phnum;
-static uintptr_t exec_entry;
-static uintptr_t interp_base = -1;
-
 static const uint8_t wanted_elf_ident[] = {0x7f, 'E', 'L', 'F', ELF_CLASS, ELF_DATA, ELF_VERSION};
-
-static void *next_module(void) {
-    if (next_module_idx >= module_req.response->module_count) return NULL;
-    return module_req.response->modules[next_module_idx++]->address;
-}
 
 static void verify_image(elf_header_t *image) {
     if (image->version != ELF_VERSION) panic("invalid image version");
@@ -73,20 +61,12 @@ static intptr_t get_image_slide(hydrogen_handle_t vm, elf_header_t *image) {
     return (intptr_t)ret.pointer - (intptr_t)min_addr;
 }
 
-static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide, bool is_interp) {
-    bool have_interp = false;
-
+static void map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide) {
     for (size_t i = 0; i < image->phnum; i++) {
         elf_segment_t *segment = (void *)image + image->phoff + i * image->phentsize;
 
-        if (segment->type != PT_LOAD || segment->memsz == 0) {
-            if (!is_interp) {
-                if (segment->type == PT_INTERP) have_interp = true;
-                else if (segment->type == PT_PHDR) exec_phdrs = segment->vaddr + slide;
-            }
-
-            continue;
-        }
+        if (segment->type == PT_INTERP) panic("init image has PT_INTERP");
+        if (segment->type != PT_LOAD || segment->memsz == 0) continue;
 
         uintptr_t offset = segment->vaddr & PAGE_MASK;
 
@@ -159,43 +139,26 @@ static bool map_image(hydrogen_handle_t vm, elf_header_t *image, intptr_t slide,
             if (unlikely(pret.error)) panic("failed to map segment zero data (%d)", pret.error);
         }
     }
-
-    if (have_interp && exec_phdrs == UINTPTR_MAX) panic("no PT_PHDR in executable image with PT_INTERP");
-
-    if (!is_interp) {
-        exec_phent = image->phentsize;
-        exec_phnum = image->phnum;
-    }
-
-    return have_interp;
 }
 
 static uintptr_t load_image(hydrogen_handle_t vm, void *image) {
-    bool is_interp = false;
+    if (!image) panic("no image to load");
+    if (memcmp(image, wanted_elf_ident, sizeof(wanted_elf_ident))) panic("invalid image header");
 
-    for (;;) {
-        if (!image) panic("no image to load");
-        if (memcmp(image, wanted_elf_ident, sizeof(wanted_elf_ident))) panic("invalid image header");
+    verify_image(image);
+    intptr_t slide = get_image_slide(vm, image);
 
-        verify_image(image);
-        intptr_t slide = get_image_slide(vm, image);
-        if (is_interp) interp_base = slide;
-
-        uintptr_t entry = ((elf_header_t *)image)->entry + slide;
-        if (!map_image(vm, image, slide, is_interp)) return entry;
-        exec_entry = entry;
-
-        printk("init: loading interpreter\n");
-        image = next_module();
-        is_interp = true;
-    }
+    uintptr_t entry = ((elf_header_t *)image)->entry + slide;
+    map_image(vm, image, slide);
+    return entry;
 }
 
 uintptr_t load_init_image(hydrogen_handle_t vm) {
     if (!module_req.response) panic("no response to module request");
+    if (!module_req.response->module_count) panic("no image to load");
 
     printk("init: loading init executable\n");
-    return load_image(vm, next_module());
+    return load_image(vm, module_req.response->modules[0]->address);
 }
 
 static void parse_cmdline(void (*handler)(char *, size_t, void *), void *ctx) {
@@ -307,15 +270,6 @@ static void write_init_data(struct stack_ctx *ctx, uintptr_t vdso_addr) {
     write_data(ctx, &zero, sizeof(zero)); // envp terminator
 
     write_auxv(ctx, AT_SYSINFO_EHDR, vdso_addr);
-
-    if (interp_base != UINTPTR_MAX) {
-        write_auxv(ctx, AT_BASE, interp_base);
-        write_auxv(ctx, AT_ENTRY, exec_entry);
-        write_auxv(ctx, AT_PHDR, exec_phdrs);
-        write_auxv(ctx, AT_PHENT, exec_phent);
-        write_auxv(ctx, AT_PHNUM, exec_phnum);
-    }
-
     write_auxv(ctx, HYDROGEN_AT_INIT_INFO, init_info_addr);
     write_auxv(ctx, AT_NULL, 0);
 }

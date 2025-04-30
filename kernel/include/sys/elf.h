@@ -40,7 +40,6 @@ typedef struct {
 
 #define PT_LOAD 1
 #define PT_INTERP 3
-#define PT_PHDR 6
 
 #define PF_X 1
 #define PF_W 2
@@ -52,9 +51,4 @@ typedef struct {
 } elf_auxv_t;
 
 #define AT_NULL 0
-#define AT_PHDR 3
-#define AT_PHENT 4
-#define AT_PHNUM 5
-#define AT_BASE 7
-#define AT_ENTRY 9
 #define AT_SYSINFO_EHDR 33
