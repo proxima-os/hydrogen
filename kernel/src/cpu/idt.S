@@ -67,6 +67,7 @@ idt_stub_common:
 
     .cfi_endproc
 
+.Ldo_irq_ret:
     cli
     mov 0x00(%rsp), %rax
     mov 0x08(%rsp), %rbx
@@ -89,6 +90,14 @@ idt_stub_common:
     swapgs
 1:  iretq
 .size idt_stub_common, . - idt_stub_common
+
+.balign 16
+.globl return_from_fork
+.type return_from_fork, @function
+return_from_fork:
+    mov %rdi, %rsp
+    jmp .Ldo_irq_ret
+.size return_from_fork, . - return_from_fork
 
 .macro idt_stub vector, errc=0
 1:

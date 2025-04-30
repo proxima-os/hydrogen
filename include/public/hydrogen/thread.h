@@ -28,18 +28,25 @@ hydrogen_ret_t hydrogen_thread_create(hydrogen_handle_t namespace, hydrogen_hand
 /**
  * Reinitialize the current thread.
  *
- * \param[in] namespace The namespace used for resolving handles in the thread. If `NULL`, use the current namespace.
- *                      Requires #HYDROGEN_NAMESPACE_RIGHT_CREATE, #HYDROGEN_NAMESPACE_RIGHT_CLOSE,
- *                      #HYDROGEN_NAMESPACE_RIGHT_CLONE, and #HYDROGEN_NAMESPACE_RIGHT_RESOLVE.
- * \param[in] vm The address space the thread will run in. If `NULL`, use the current address space.
- *               Requires #HYDROGEN_VM_RIGHT_MAP, #HYDROGEN_VM_RIGHT_REMAP, #HYDROGEN_VM_RIGHT_UNMAP,
- *               #HYDROGEN_VM_RIGHT_CLONE, #HYDROGEN_VM_RIGHT_WRITE, and #HYDROGEN_VM_RIGHT_READ.
- * \param[in] pc The value of the program counter.
- * \param[in] sp The value of the stack pointer.
+ * \param[in] namespace See #hydrogen_thread_create.
+ * \param[in] vm See #hydrogen_thread_create.
+ * \param[in] pc See #hydrogen_thread_create.
+ * \param[in] sp See #hydrogen_thread_create.
  * \return This function will not return if successful.
  */
 int hydrogen_thread_reinit(hydrogen_handle_t namespace, hydrogen_handle_t vm, void *pc, void *sp) __asm__(
         "__hydrogen_thread_reinit"
+);
+
+/**
+ * Create a new thread by cloning the current thread.
+ *
+ * \param[in] namespace See #hydrogen_thread_create.
+ * \param[in] vm See #hydrogen_thread_create.
+ * \return The created thread, or `NULL` if running in the created thread.
+ */
+hydrogen_ret_t hydrogen_thread_clone(hydrogen_handle_t namespace, hydrogen_handle_t vm) __asm__(
+        "__hydrogen_thread_clone"
 );
 
 /**

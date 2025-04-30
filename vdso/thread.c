@@ -15,6 +15,10 @@ EXPORT int hydrogen_thread_reinit(hydrogen_handle_t namespace, hydrogen_handle_t
     return SYSCALL4(SYSCALL_THREAD_REINIT, namespace, vm, pc, sp).error;
 }
 
+EXPORT hydrogen_ret_t hydrogen_thread_clone(hydrogen_handle_t namespace, hydrogen_handle_t vm) {
+    return SYSCALL2(SYSCALL_THREAD_CLONE, namespace, vm);
+}
+
 EXPORT void hydrogen_thread_yield(void) {
     ASSERT_OK(SYSCALL0(SYSCALL_THREAD_YIELD));
 }

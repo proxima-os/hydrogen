@@ -31,6 +31,9 @@ typedef struct {
 
 typedef void (*idt_handler_t)(idt_frame_t *, void *);
 
+// `regs` must be allocated on the current stack!
+extern _Noreturn void return_from_fork(idt_frame_t *regs);
+
 void init_idt(void);
 
 void setup_idt(void);

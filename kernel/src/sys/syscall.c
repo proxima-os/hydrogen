@@ -67,6 +67,7 @@ static hydrogen_ret_t do_syscall(syscall_vec_t vec, size_t a0, size_t a1, size_t
     case SYSCALL_THREAD_YIELD: hydrogen_thread_yield(); return RET_ERROR(0);
     case SYSCALL_SLEEP: return RET_ERROR(hydrogen_sleep(a0));
     case SYSCALL_NAMESPACE_CLONE: return hydrogen_namespace_clone((hydrogen_handle_t)a0);
+    case SYSCALL_THREAD_CLONE: return hydrogen_thread_clone((hydrogen_handle_t)a0, (hydrogen_handle_t)a1);
     default: return RET_ERROR(ENOSYS);
     }
 }

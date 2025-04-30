@@ -502,6 +502,63 @@ int hydrogen_thread_reinit(hydrogen_handle_t namespace, hydrogen_handle_t vm_han
     enter_user_mode((uintptr_t)pc, (uintptr_t)sp);
 }
 
+static void launch_cloned_thread(void *ptr) {
+    idt_frame_t *ctx = ptr;
+    idt_frame_t regs = *ctx;
+    vmfree(ctx, sizeof(*ctx));
+    return_from_fork(&regs);
+}
+
+hydrogen_ret_t hydrogen_thread_clone(hydrogen_handle_t namespace, hydrogen_handle_t vm_handle) {
+    namespace_t *ns;
+    int error = get_ns(namespace, &ns, THREAD_NS_RIGHTS);
+    if (unlikely(error)) return RET_ERROR(error);
+
+    address_space_t *vm;
+    error = get_vm(vm_handle, &vm, THREAD_VM_RIGHTS);
+    if (unlikely(error)) goto ret;
+
+    idt_frame_t *regs = vmalloc(sizeof(*regs));
+    if (unlikely(!regs)) goto ret2;
+    memcpy(regs, current_thread->user_regs, sizeof(*regs));
+
+    thread_t *thread;
+    error = sched_create(&thread, launch_cloned_thread, regs, NULL);
+    if (unlikely(error)) {
+        vmfree(regs, sizeof(*regs));
+        goto ret2;
+    }
+
+    thread->address_space = vm;
+    thread->namespace = ns;
+    // don't need to copy xsave state, since the default for a newly created thread is cloned from the creator
+    thread->ds = read_ds();
+    thread->es = read_es();
+    thread->fs = read_fs();
+    thread->gs = read_gs();
+    thread->fsbase = rdmsr(MSR_FS_BASE);
+    thread->gsbase = rdmsr(MSR_KERNEL_GS_BASE);
+
+    obj_ref(&vm->base);
+    obj_ref(&ns->base);
+
+    hydrogen_handle_t handle;
+    error = create_handle(&thread->base, -1, &handle);
+    if (unlikely(error)) {
+        vmfree(regs, sizeof(*regs));
+        goto ret3;
+    }
+
+    sched_wake(thread);
+ret3:
+    obj_deref(&thread->base);
+ret2:
+    if (vm_handle) obj_deref(&vm->base);
+ret:
+    if (namespace) obj_deref(&ns->base);
+    return RET_HANDLE_MAYBE(error, handle);
+}
+
 void hydrogen_thread_yield(void) {
     sched_yield();
 }
