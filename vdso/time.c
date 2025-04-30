@@ -33,3 +33,10 @@ static uint64_t (*resolve_get_time(void))(void) {
 }
 
 __attribute__((ifunc("resolve_get_time"))) EXPORT uint64_t hydrogen_get_time(void);
+
+EXPORT int hydrogen_sleep(uint64_t deadline) {
+    UNUSED int ret;
+    int error;
+    SYSCALL1(SYSCALL_SLEEP, deadline);
+    return error;
+}

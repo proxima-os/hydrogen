@@ -14,6 +14,14 @@ extern "C" {
  */
 uint64_t hydrogen_get_time(void) __asm__("__hydrogen_get_time");
 
+/**
+ * Suspend the current thread until the system time has reached `deadline`.
+ *
+ * \param[in] deadline The system time at which the thread should wake up.
+ * \return The only error this function can return is `EINTR`.
+ */
+int hydrogen_sleep(uint64_t deadline) __asm__("__hydrogen_sleep");
+
 #ifdef __cplusplus
 };
 #endif

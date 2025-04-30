@@ -297,3 +297,9 @@ void cancel_event(timer_event_t *event) {
 uint64_t hydrogen_get_time(void) {
     return read_time();
 }
+
+int hydrogen_sleep(uint64_t deadline) {
+    // TODO: Make this interruptible
+    sched_wait(deadline, NULL);
+    return 0;
+}
