@@ -12,8 +12,13 @@ EXPORT hydrogen_ret_t hydrogen_namespace_clone(hydrogen_handle_t namespace) {
     return SYSCALL1(SYSCALL_NAMESPACE_CLONE, namespace);
 }
 
-EXPORT hydrogen_ret_t hydrogen_handle_create(hydrogen_handle_t ns, hydrogen_handle_t object, uint64_t rights) {
-    return SYSCALL3(SYSCALL_HANDLE_CREATE, ns, object, rights);
+EXPORT hydrogen_ret_t hydrogen_handle_create(
+        hydrogen_handle_t namespace,
+        hydrogen_handle_t source_ns,
+        hydrogen_handle_t object,
+        uint64_t rights
+) {
+    return SYSCALL4(SYSCALL_HANDLE_CREATE, namespace, source_ns, object, rights);
 }
 
 EXPORT int hydrogen_handle_close(hydrogen_handle_t ns, hydrogen_handle_t handle) {

@@ -41,7 +41,8 @@ static hydrogen_ret_t do_syscall(syscall_vec_t vec, size_t a0, size_t a1, size_t
     case SYSCALL_LOG_WRITE: return RET_ERROR(hydrogen_log_write((hydrogen_handle_t)a0, (const void *)a1, a2));
     case SYSCALL_GET_TIME: return RET_INTEGER(hydrogen_get_time());
     case SYSCALL_NAMESPACE_CREATE: return hydrogen_namespace_create();
-    case SYSCALL_HANDLE_CREATE: return hydrogen_handle_create((hydrogen_handle_t)a0, (hydrogen_handle_t)a1, a2);
+    case SYSCALL_HANDLE_CREATE:
+        return hydrogen_handle_create((hydrogen_handle_t)a0, (hydrogen_handle_t)a1, (hydrogen_handle_t)a2, a3);
     case SYSCALL_HANDLE_CLOSE: return RET_ERROR(hydrogen_handle_close((hydrogen_handle_t)a0, (hydrogen_handle_t)a1));
     case SYSCALL_VM_CREATE: return hydrogen_vm_create();
     case SYSCALL_VM_CLONE: return hydrogen_vm_clone((hydrogen_handle_t)a0);

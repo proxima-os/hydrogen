@@ -12,9 +12,10 @@
 extern "C" {
 #endif
 
-#define HYDROGEN_NAMESPACE_RIGHT_CREATE (1ull << 0) /**< Allow handles to be created in the namespace. */
-#define HYDROGEN_NAMESPACE_RIGHT_CLOSE (1ull << 1)  /**< Allow handles to be closed in the namespace. */
-#define HYDROGEN_NAMESPACE_RIGHT_CLONE (1ull << 2)  /**< Allow a new namespace to be created by cloning this one. */
+#define HYDROGEN_NAMESPACE_RIGHT_CREATE (1ull << 0)  /**< Allow handles to be created in the namespace. */
+#define HYDROGEN_NAMESPACE_RIGHT_CLOSE (1ull << 1)   /**< Allow handles to be closed in the namespace. */
+#define HYDROGEN_NAMESPACE_RIGHT_CLONE (1ull << 2)   /**< Allow a new namespace to be created by cloning this one. */
+#define HYDROGEN_NAMESPACE_RIGHT_RESOLVE (1ull << 3) /**< Allow handles to be resolved from the namespace. */
 
 /**
  * Create an empty namespace.
@@ -35,15 +36,20 @@ hydrogen_ret_t hydrogen_namespace_clone(hydrogen_handle_t namespace) __asm__("__
 /**
  * Create a new handle in a namespace.
  *
- * \param[in] ns The namespace to create the handle in. If `NULL`, use the current namespace.
- *               Requires the #HYDROGEN_NAMESPACE_RIGHT_CREATE right.
+ * \param[in] namespace The namespace to create the handle in. If `NULL`, use the current namespace.
+ *                      Requires the #HYDROGEN_NAMESPACE_RIGHT_CREATE right.
+ * \param[in] source_ns The namespace to resolve `object` from. If `NULL`, use the current namespace.
+ *                      Requires the #HYDROGEN_NAMESPACE_RIGHT_RESOLVE right.
  * \param[in] object The object the handle will reference. Must not be a namespace.
  * \param[in] rights The rights of the newly created handle. Masked with the rights of `object`.
  * \return The newly created handle (in `handle`).
  */
-hydrogen_ret_t hydrogen_handle_create(hydrogen_handle_t ns, hydrogen_handle_t object, uint64_t rights) __asm__(
-        "__hydrogen_handle_create"
-);
+hydrogen_ret_t hydrogen_handle_create(
+        hydrogen_handle_t namespace,
+        hydrogen_handle_t source_ns,
+        hydrogen_handle_t object,
+        uint64_t rights
+) __asm__("__hydrogen_handle_create");
 
 /**
  * Close a handle.

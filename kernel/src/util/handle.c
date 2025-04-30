@@ -9,6 +9,7 @@
 #include "string.h"
 #include "thread/mutex.h"
 #include "util/object.h"
+#include "util/panic.h"
 #include <stdint.h>
 
 static hydrogen_handle_t idx_to_handle(size_t idx) {
@@ -127,11 +128,10 @@ static bool is_idx_valid(namespace_t *ns, size_t idx) {
     return idx < ns->capacity && (ns->bitmap[idx / 64] & (1ul << (idx % 64))) != 0;
 }
 
-int basic_resolve(hydrogen_handle_t handle, handle_data_t *out) {
-    if (unlikely(!handle)) return EBADF;
+static int resolve_in_ns(namespace_t *ns, hydrogen_handle_t handle, handle_data_t *out) {
+    ASSERT(handle != NULL);
 
     size_t idx = handle_to_idx(handle);
-    namespace_t *ns = current_thread->namespace;
     mutex_lock(&ns->lock);
 
     if (unlikely(!is_idx_valid(ns, idx))) {
@@ -143,6 +143,11 @@ int basic_resolve(hydrogen_handle_t handle, handle_data_t *out) {
     obj_ref(out->object);
     mutex_unlock(&ns->lock);
     return 0;
+}
+
+int basic_resolve(hydrogen_handle_t handle, handle_data_t *out) {
+    if (unlikely(!handle)) return EBADF;
+    return resolve_in_ns(current_thread->namespace, handle, out);
 }
 
 int resolve(hydrogen_handle_t handle, handle_data_t *out, bool (*pred)(object_t *obj), uint64_t rights) {
@@ -275,14 +280,29 @@ int get_ns(hydrogen_handle_t handle, namespace_t **out, uint64_t rights) {
     return 0;
 }
 
-hydrogen_ret_t hydrogen_handle_create(hydrogen_handle_t namespace, hydrogen_handle_t object, uint64_t rights) {
+hydrogen_ret_t hydrogen_handle_create(
+        hydrogen_handle_t namespace,
+        hydrogen_handle_t source_ns,
+        hydrogen_handle_t object,
+        uint64_t rights
+) {
+    if (unlikely(!object)) return RET_ERROR(EBADF);
+
     namespace_t *ns;
     int error = get_ns(namespace, &ns, HYDROGEN_NAMESPACE_RIGHT_CREATE);
     if (unlikely(error)) return RET_ERROR(error);
 
-    handle_data_t data;
-    error = basic_resolve(object, &data);
+    namespace_t *src;
+    error = get_ns(source_ns, &src, HYDROGEN_NAMESPACE_RIGHT_RESOLVE);
     if (unlikely(error)) {
+        if (namespace) obj_deref(&ns->base);
+        return RET_ERROR(error);
+    }
+
+    handle_data_t data;
+    error = resolve_in_ns(src, object, &data);
+    if (unlikely(error)) {
+        if (source_ns) obj_deref(&src->base);
         if (namespace) obj_deref(&ns->base);
         return RET_ERROR(error);
     }
@@ -296,6 +316,7 @@ hydrogen_ret_t hydrogen_handle_create(hydrogen_handle_t namespace, hydrogen_hand
     }
 
     obj_deref(data.object);
+    if (source_ns) obj_deref(&src->base);
     if (namespace) obj_deref(&ns->base);
     return RET_HANDLE_MAYBE(error, handle);
 }
