@@ -8,7 +8,9 @@ extern "C" {
 #endif
 
 /**
- * Returns the number of nanoseconds that have elapsed since some point in the past.
+ * Get the number of nanoseconds that have elapsed since the system started.
+ *
+ * \return The number of nanoseconds that have elapsed since boot.
  */
 uint64_t hydrogen_get_time(void) __asm__("__hydrogen_get_time");
 

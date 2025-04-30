@@ -16,14 +16,14 @@ extern "C" {
 #define HYDROGEN_NAMESPACE_RIGHT_CLOSE (1ull << 1)  /**< Allow handles to be closed in the namespace. */
 
 /**
- * Creates an empty namespace.
+ * Create an empty namespace.
  *
  * \return The newly created namespace (in `handle`).
  */
 hydrogen_ret_t hydrogen_namespace_create(void) __asm__("__hydrogen_namespace_create");
 
 /**
- * Creates a new handle in a namespace.
+ * Create a new handle in a namespace.
  *
  * \param[in] ns The namespace to create the handle in. If `NULL`, use the current namespace.
  *               Requires the #HYDROGEN_NAMESPACE_RIGHT_CREATE right.
@@ -36,7 +36,7 @@ hydrogen_ret_t hydrogen_handle_create(hydrogen_handle_t ns, hydrogen_handle_t ob
 );
 
 /**
- * Closes a handle.
+ * Close a handle.
  *
  * \param[in] ns The namespace the handle is in. If `NULL`, use the current namespace.
  *               Requires the #HYDROGEN_NAMESPACE_RIGHT_CLOSE right.

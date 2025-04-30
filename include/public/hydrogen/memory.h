@@ -55,7 +55,7 @@ extern const size_t hydrogen_page_size __asm__("__hydrogen_page_size");
 hydrogen_ret_t hydrogen_vm_create(void) __asm__("__hydrogen_vm_create");
 
 /**
- * Creates a new address space by cloning an existing one.
+ * Create a new address space by cloning an existing one.
  * All anonymous mappings and non-shared object mappings are cloned using copy-on-write.
  *
  * \param[in] src The address space to clone. If `NULL`, use the current address space.

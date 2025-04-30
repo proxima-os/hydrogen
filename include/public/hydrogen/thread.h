@@ -25,7 +25,7 @@ hydrogen_ret_t hydrogen_thread_create(hydrogen_handle_t namespace, hydrogen_hand
 );
 
 /**
- * Reinitializes the current thread.
+ * Reinitialize the current thread.
  *
  * \param[in] namespace The namespace used for resolving handles in the thread. If `NULL`, use the current namespace.
  *                      Requires #HYDROGEN_NAMESPACE_RIGHT_CREATE and #HYDROGEN_NAMESPACE_RIGHT_CLOSE.
