@@ -1,6 +1,5 @@
 #include "hydrogen/thread.h"
 #include "hydrogen/types.h"
-#include "kernel/compiler.h"
 #include "kernel/syscall.h"
 #include "syscall.h"
 #include "vdso.h"
@@ -9,27 +8,19 @@
 #include <stdint.h>
 
 EXPORT hydrogen_ret_t hydrogen_thread_create(hydrogen_handle_t namespace, hydrogen_handle_t vm, void *pc, void *sp) {
-    hydrogen_handle_t ret;
-    int error;
-    SYSCALL4(SYSCALL_THREAD_CREATE, namespace, vm, pc, sp);
-    return (hydrogen_ret_t){.error = error, .handle = ret};
+    return SYSCALL4(SYSCALL_THREAD_CREATE, namespace, vm, pc, sp);
 }
 
 EXPORT int hydrogen_thread_reinit(hydrogen_handle_t namespace, hydrogen_handle_t vm, void *pc, void *sp) {
-    UNUSED int ret;
-    int error;
-    SYSCALL4(SYSCALL_THREAD_REINIT, namespace, vm, pc, sp);
-    return error;
+    return SYSCALL4(SYSCALL_THREAD_REINIT, namespace, vm, pc, sp).error;
 }
 
 EXPORT void hydrogen_thread_yield(void) {
-    UNUSED int ret, error;
-    SYSCALL0(SYSCALL_THREAD_YIELD);
+    ASSERT_OK(SYSCALL0(SYSCALL_THREAD_YIELD));
 }
 
 __attribute__((__noreturn__)) EXPORT void hydrogen_thread_exit(void) {
-    UNUSED int ret, error;
-    SYSCALL0(SYSCALL_THREAD_EXIT);
+    ASSERT_OK(SYSCALL0(SYSCALL_THREAD_EXIT));
     __builtin_trap();
 }
 
@@ -52,31 +43,19 @@ __attribute__((target("fsgsbase"))) static int set_gs_base_fsgsbase(uintptr_t ba
 }
 
 static uintptr_t get_fs_base_syscall(void) {
-    uintptr_t ret;
-    UNUSED int error;
-    SYSCALL0(SYSCALL_X86_64_GET_FS_BASE);
-    return ret;
+    return ASSERT_OK(SYSCALL0(SYSCALL_X86_64_GET_FS_BASE)).integer;
 }
 
 static uintptr_t get_gs_base_syscall(void) {
-    uintptr_t ret;
-    UNUSED int error;
-    SYSCALL0(SYSCALL_X86_64_GET_GS_BASE);
-    return ret;
+    return ASSERT_OK(SYSCALL0(SYSCALL_X86_64_GET_GS_BASE)).integer;
 }
 
 static int set_fs_base_syscall(uintptr_t base) {
-    UNUSED int ret;
-    int error;
-    SYSCALL1(SYSCALL_X86_64_SET_FS_BASE, base);
-    return error;
+    return SYSCALL1(SYSCALL_X86_64_SET_FS_BASE, base).error;
 }
 
 static int set_gs_base_syscall(uintptr_t base) {
-    UNUSED int ret;
-    int error;
-    SYSCALL1(SYSCALL_X86_64_SET_GS_BASE, base);
-    return error;
+    return SYSCALL1(SYSCALL_X86_64_SET_GS_BASE, base).error;
 }
 
 static bool have_fsgsbase(void) {

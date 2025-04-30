@@ -1,6 +1,5 @@
 #include "kernel/time.h"
 #include "hydrogen/time.h"
-#include "kernel/compiler.h"
 #include "kernel/kvmclock.h"
 #include "kernel/syscall.h"
 #include "kernel/vdso.h"
@@ -9,10 +8,7 @@
 #include <stdint.h>
 
 static uint64_t get_time_syscall(void) {
-    uint64_t ret;
-    UNUSED int error;
-    SYSCALL0(SYSCALL_GET_TIME);
-    return ret;
+    return ASSERT_OK(SYSCALL0(SYSCALL_GET_TIME)).integer;
 }
 
 static uint64_t get_time_kvmclock(void) {
@@ -35,8 +31,5 @@ static uint64_t (*resolve_get_time(void))(void) {
 __attribute__((ifunc("resolve_get_time"))) EXPORT uint64_t hydrogen_get_time(void);
 
 EXPORT int hydrogen_sleep(uint64_t deadline) {
-    UNUSED int ret;
-    int error;
-    SYSCALL1(SYSCALL_SLEEP, deadline);
-    return error;
+    return SYSCALL1(SYSCALL_SLEEP, deadline).error;
 }
