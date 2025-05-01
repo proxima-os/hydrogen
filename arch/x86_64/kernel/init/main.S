@@ -15,6 +15,7 @@ _entry:
     .cfi_undefined rsp
     popfq # bootloader pushes 0 to stack, use it to reset flags
     lea .Lstack_top(%rip), %rsp
+    call x86_64_prepare_main
     call kernel_main
     ud2
     .cfi_endproc

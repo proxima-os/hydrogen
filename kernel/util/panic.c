@@ -1,4 +1,5 @@
 #include "util/panic.h"
+#include "arch/cpudata.h"
 #include "arch/idle.h"
 #include "arch/irq.h"
 #include "kernel/compiler.h"
@@ -15,7 +16,7 @@ _Noreturn void panic(const char *format, ...) {
 
         va_list args;
         va_start(args, format);
-        printk_raw_format("kernel panic: ");
+        printk_raw_format("kernel panic on cpu %U: ", this_cpu_read(id));
         printk_raw_formatv(format, args);
         printk_raw_format("\n");
         printk_raw_flush();
