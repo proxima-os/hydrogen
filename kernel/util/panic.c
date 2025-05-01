@@ -1,0 +1,32 @@
+#include "util/panic.h"
+#include "arch/idle.h"
+#include "arch/irq.h"
+#include "kernel/compiler.h"
+#include "util/printk.h"
+#include <stdbool.h>
+
+_Noreturn void panic(const char *format, ...) {
+    static bool panicking;
+
+    disable_irq();
+
+    if (!__atomic_exchange_n(&panicking, true, __ATOMIC_RELAXED)) {
+        printk_lock(); // never unlock it after this
+
+        va_list args;
+        va_start(args, format);
+        printk_raw_format("kernel panic: ");
+        printk_raw_formatv(format, args);
+        printk_raw_format("\n");
+        printk_raw_flush();
+        va_end(args);
+    }
+
+    for (;;) {
+        cpu_idle();
+    }
+}
+
+_Noreturn void hydrogen_assert_fail(const char *expr, const char *func, const char *file, int line) {
+    panic("assertion `%s` failed in %s at %s:%d", expr, func, file, line);
+}

@@ -3,6 +3,9 @@ kernel_include += include_directories('include')
 kernel_sources += files(
     'init/cmdline.c',
     'init/main.c',
+    'util/panic.c',
+    'util/printk.c',
+    'util/spinlock.c',
 )
 
 linker_script = files('kernel.lds')[0]
