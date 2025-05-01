@@ -1,11 +1,13 @@
 #pragma once
 
 #include "cpu/cpudata.h"
+#include "x86_64/tss.h"
 #include <stddef.h>
 #include <stdint.h>
 
 typedef struct x86_64_cpu {
     uintptr_t syscall_entry_tmp; // must be the 1st field in the struct
+    x86_64_tss_t tss;            // must be the 2nd field in the struct
     struct x86_64_cpu *self;
     cpu_t base;
 } x86_64_cpu_t;

@@ -2,6 +2,21 @@
 
 #include <stdint.h>
 
+#define X86_64_MSR_MCG_CAP 0x179
+#define X86_64_MSR_MSG_CAP_COUNT 0xff
+#define X86_64_MSR_MCG_CAP_MCG_CTL_P (1ul << 8)
+#define X86_64_MSR_MCG_CAP_MCG_LMCE_P (1ul << 27)
+
+#define X86_64_MSR_MCG_CTL 0x17b
+
+#define X86_64_MSR_MCi_CTL(i) (0x400 + (i) * 2)
+#define X86_64_MSR_MCi_STATUS(i) (0x401 + (i) * 2)
+
+#define X86_64_MSR_EFER 0xc0000080
+#define X86_64_MSR_EFER_SCE (1ul << 0)
+#define X86_64_MSR_EFER_LME (1ul << 8)
+#define X86_64_MSR_EFER_NXE (1ul << 11)
+
 #define X86_64_MSR_GS_BASE 0xc0000101
 
 static inline uint64_t x86_64_rdmsr(uint32_t msr) {
