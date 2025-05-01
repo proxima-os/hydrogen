@@ -1,0 +1,2 @@
+option('log_buf_shift', type: 'integer', min: 8, value: 14,
+    description: 'The power-of-two size of the kernel log buffer (size = 2^n)')
