@@ -15,6 +15,8 @@ SECTIONS {
         *(.rodata .rodata.*)
     } :rodata
 
+    .cmdline : { __cmdline_start = .; KEEP(*(SORT_BY_NAME(.cmdline.*))) __cmdline_end = .; }
+
     . = ALIGN(CONSTANT(MAXPAGESIZE));
     _erodata = .;
     .text : { *(.text .text.*) } :text

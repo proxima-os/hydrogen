@@ -1,5 +1,7 @@
+kernel_c_flags += ['-DLIMINE_API_REVISION=3']
 kernel_include += include_directories('include')
 kernel_sources += files(
+    'init/cmdline.c',
     'init/main.c',
 )
 
