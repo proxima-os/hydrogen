@@ -45,7 +45,6 @@ void x86_64_cpu_detect(void) {
         }
 
         if (feat->de) cr4_value |= X86_64_CR4_DE;
-        if (feat->pge) cr4_value |= X86_64_CR4_PGE;
     }
 
     if (feat->cpuid_low >= 7) {
