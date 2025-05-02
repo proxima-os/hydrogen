@@ -25,16 +25,16 @@ static inline void cpu_mask_fill(cpu_mask_t *mask) {
 }
 
 static inline bool cpu_mask_get(cpu_mask_t *mask, size_t cpu) {
-    return mask->data & (1ul << cpu);
+    return mask->data & (1ull << cpu);
 }
 
 static inline bool cpu_mask_get_atomic(cpu_mask_t *mask, size_t cpu) {
-    return __atomic_load_n(&mask->data, __ATOMIC_RELAXED) & (1ul << cpu);
+    return __atomic_load_n(&mask->data, __ATOMIC_RELAXED) & (1ull << cpu);
 }
 
 static inline void cpu_mask_set(cpu_mask_t *mask, size_t cpu, bool value) {
-    if (value) mask->data |= 1ul << cpu;
-    else mask->data &= ~(1ul << cpu);
+    if (value) mask->data |= 1ull << cpu;
+    else mask->data &= ~(1ull << cpu);
 }
 
 // set a cpu's bit without tearing
@@ -43,6 +43,6 @@ static inline void cpu_mask_set(cpu_mask_t *mask, size_t cpu, bool value) {
 static inline void cpu_mask_set_notear(cpu_mask_t *mask, size_t cpu, bool value) {
     size_t cur = __atomic_load_n(&mask->data, __ATOMIC_RELAXED);
 
-    if (value) __atomic_store_n(&mask->data, cur | (1ul << cpu), __ATOMIC_RELAXED);
-    else __atomic_store_n(&mask->data, cur & ~(1ul << cpu), __ATOMIC_RELAXED);
+    if (value) __atomic_store_n(&mask->data, cur | (1ull << cpu), __ATOMIC_RELAXED);
+    else __atomic_store_n(&mask->data, cur & ~(1ull << cpu), __ATOMIC_RELAXED);
 }

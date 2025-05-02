@@ -30,7 +30,7 @@ void x86_64_idt_init(void) {
         uintptr_t thunk = x86_64_idt_thunks[i];
         if (!thunk) continue;
 
-        idt[i].low = (thunk & 0xffff) | (X86_64_KERN_CS << 16) | ((thunk & 0xffff0000) << 32) | (0x8eul << 40);
+        idt[i].low = (thunk & 0xffff) | (X86_64_KERN_CS << 16) | ((thunk & 0xffff0000) << 32) | (0x8eull << 40);
         idt[i].high = thunk >> 32;
     }
 

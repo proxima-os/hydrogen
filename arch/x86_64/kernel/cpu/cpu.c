@@ -19,7 +19,7 @@ void x86_64_cpu_detect(void) {
     cr4_value |= x86_64_read_cr4() & X86_64_CR4_LA57;
 
     x86_64_cpu_features_t *feat = &x86_64_cpu_features;
-    feat->paddr_mask = (1ul << 36) - 1;
+    feat->paddr_mask = (1ull << 36) - 1;
 
     unsigned eax, ebx, ecx, edx;
     cpuid(0, &feat->cpuid_low, &feat->cpu_vendor.ebx, &feat->cpu_vendor.ecx, &feat->cpu_vendor.edx);
@@ -82,7 +82,7 @@ void x86_64_cpu_detect(void) {
 
     if (feat->cpuid_high >= 0x80000008) {
         cpuid(0x80000008, &eax, &ebx, &ecx, &edx);
-        feat->paddr_mask = (1ul << (eax & 0xff)) - 1;
+        feat->paddr_mask = (1ull << (eax & 0xff)) - 1;
     }
 
     feat->la57 = cr4_value & X86_64_CR4_LA57;
@@ -134,7 +134,7 @@ static void init_gdt(cpu_t *self) {
 
     uintptr_t tss_base = (uintptr_t)tss;
     uint64_t tss_low = (sizeof(*tss) - 1) | ((tss_base & 0xffffff) << 16) | ((tss_base & 0xff000000) << 32) |
-                       (0x89ul << 40);
+                       (0x89ull << 40);
     uint64_t tss_high = tss_base >> 32;
 
     irq_state_t state = spin_acq(&gdt_lock);
