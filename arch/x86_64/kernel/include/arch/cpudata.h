@@ -18,10 +18,10 @@ typedef struct {
         asm volatile("mov %%gs:%c1, %0" : "=r"(_val) : "i"(offsetof(cpu_t, name))); \
         _val;                                                                       \
     })
-#define this_cpu_write(name, value)                                               \
-    ({                                                                            \
-        __this_cpu_type(name) _val = (value);                                     \
-        asm volatile("mov %0, %%gs:%c1" ::"r"(_val), "i"(offsetof(cpu_t, name))); \
+#define this_cpu_write(name, value)                                                \
+    ({                                                                             \
+        __this_cpu_type(name) _val = (value);                                      \
+        asm volatile("mov %0, %%gs:%c1" ::"ir"(_val), "i"(offsetof(cpu_t, name))); \
     })
 #define this_cpu_read_tl(name) (*(__seg_gs __this_cpu_type(name) *)offsetof(cpu_t, name))
 #define this_cpu_write_tl(name, value) (this_cpu_read_tl(name) = (value))
