@@ -61,7 +61,7 @@ static void do_early_map(void *table, unsigned level, uintptr_t virt, uint64_t p
 }
 
 void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags) {
-    ASSERT(((virt | phys | size) & PAGE_MASK) == 0);
+    ASSERT(arch_pt_get_offset(virt | phys | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
     ASSERT(is_kernel_address(virt));
@@ -115,7 +115,7 @@ static void do_early_alloc(void *table, unsigned level, uintptr_t virt, size_t s
 }
 
 void pmap_early_alloc(uintptr_t virt, size_t size, int flags) {
-    ASSERT(((virt | size) & PAGE_MASK) == 0);
+    ASSERT(arch_pt_get_offset(virt | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
     ASSERT(is_kernel_address(virt));

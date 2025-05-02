@@ -1,12 +1,15 @@
 #include "arch/stack.h"
 #include "init/cmdline.h"
 #include "kernel/compiler.h"
+#include "kernel/pgsize.h"
 #include "limine.h"
 #include "mem/memmap.h"
+#include "mem/pmem.h"
 #include "proc/rcu.h"
 #include "proc/sched.h"
 #include "sections.h"
 #include "util/panic.h"
+#include "util/printk.h"
 #include <stddef.h>
 
 __attribute__((used, section(".requests0"))) static LIMINE_REQUESTS_START_MARKER;
@@ -17,6 +20,13 @@ LIMINE_REQ LIMINE_BASE_REVISION(3);
 _Alignas(KERNEL_STACK_ALIGN) static unsigned char init_stack[KERNEL_STACK_SIZE];
 
 static void kernel_init(void *ctx) {
+    memmap_reclaim_loader(); // don't move below anything that can create threads, see memmap.h
+
+    pmem_stats_t stats = pmem_get_stats();
+    printk("mem: %zK total, %zK available, %zK free\n",
+           stats.total * (PAGE_SIZE / 1024),
+           stats.available * (PAGE_SIZE / 1024),
+           stats.free * (PAGE_SIZE / 1024));
 }
 
 USED _Noreturn void kernel_main(void) {

@@ -1,18 +1,30 @@
 #pragma once
 
 #include "kernel/pgsize.h"
+#include "util/shlist.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 typedef struct {
     bool is_free : 1;
-} page_t;
+    union {
+        struct {
+            shlist_node_t node;
+            size_t count;
+        } free;
+    };
+} __attribute__((aligned(64))) page_t;
 
 extern uintptr_t hhdm_base;
 extern uintptr_t page_array_base;
 
 void memmap_init(void);
+
+// NOTE: This must be called BEFORE any thread other than the init thread is created!
+// Otherwise, race conditions could cause a UAF.
+void memmap_reclaim_loader(void);
+
 void *early_alloc_page(void);
 
 static inline uint64_t page_to_phys(page_t *page) {

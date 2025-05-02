@@ -50,8 +50,8 @@ static inline size_t arch_pt_get_index(uintptr_t virt, unsigned level) {
     return (virt >> arch_pt_entry_bits(level)) & 511;
 }
 
-static inline uintptr_t arch_pt_get_offset(uintptr_t virt) {
-    return virt & 0xfff;
+static inline uint64_t arch_pt_get_offset(uint64_t value) {
+    return value & 0xfff;
 }
 
 static inline pte_t arch_pt_read(void *table, unsigned level, size_t index) {

@@ -5,9 +5,11 @@
 #include "limine.h"
 #include "mem/pmap-flags.h"
 #include "mem/pmap.h"
+#include "mem/pmem.h"
 #include "sections.h"
 #include "string.h"
 #include "util/panic.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -28,16 +30,18 @@ static void bounds_func(uint64_t head, uint64_t tail, void *ctx) {
     if (head > max_page_tail) max_page_tail = tail;
 }
 
-static void align_and_invoke(uint64_t head, uint64_t tail, void (*func)(uint64_t, uint64_t, void *), void *ctx) {
-    uint64_t aligned_head = (head + PAGE_MASK) & ~PAGE_MASK;
-    if (aligned_head < head) return;
+static bool align_bounds(uint64_t *head, uint64_t *tail) {
+    uint64_t aligned_head = (*head + PAGE_MASK) & ~PAGE_MASK;
+    if (aligned_head < *head) return false;
 
-    uint64_t aligned_tail = tail | PAGE_MASK;
-    if (aligned_tail < aligned_head) aligned_tail = UINT64_MAX;
+    uint64_t aligned_tail = (*tail - PAGE_MASK) | PAGE_MASK;
+    if (aligned_tail > *tail) return false;
     if (aligned_tail > max_phys_addr) aligned_tail = max_phys_addr;
-    if (aligned_tail < aligned_head) return;
+    if (aligned_tail < aligned_head) return false;
 
-    func(aligned_head, aligned_tail, ctx);
+    *head = aligned_head;
+    *tail = aligned_tail;
+    return true;
 }
 
 static void iter_ram_areas(void (*func)(uint64_t, uint64_t, void *), void *ctx) {
@@ -64,7 +68,9 @@ static void iter_ram_areas(void (*func)(uint64_t, uint64_t, void *), void *ctx) 
 
         if (in_area) {
             if (area_tail + 1 < head) {
-                align_and_invoke(area_head, area_tail, func, ctx);
+                if (align_bounds(&area_head, &area_tail)) {
+                    func(area_head, area_tail, ctx);
+                }
             } else {
                 if (area_tail < tail) area_tail = tail;
                 continue;
@@ -76,7 +82,9 @@ static void iter_ram_areas(void (*func)(uint64_t, uint64_t, void *), void *ctx) 
         in_area = true;
     }
 
-    if (in_area) align_and_invoke(area_head, area_tail, func, ctx);
+    if (in_area && align_bounds(&area_head, &area_tail)) {
+        func(area_head, area_tail, ctx);
+    }
 }
 
 static void determine_memory_bounds(void) {
@@ -186,6 +194,66 @@ static void map_segment(
     pmap_early_map((uintptr_t)start, phys, size, flags);
 }
 
+static void commit_usable(uint64_t head, uint64_t tail) {
+    if (head < early_alloc_max) {
+        if (tail <= early_alloc_max) {
+            pmem_add_area(head, tail, true);
+            return;
+        } else {
+            pmem_add_area(head, early_alloc_max, true);
+            head = early_alloc_max + 1;
+        }
+    }
+
+    pmem_add_area(head, tail, false);
+}
+
+static void add_areas(bool free) {
+    uint64_t wanted_type = free ? LIMINE_MEMMAP_USABLE : LIMINE_MEMMAP_EXECUTABLE_AND_MODULES;
+
+    uint64_t area_head = 0;
+    uint64_t area_tail = 0;
+    bool in_area = false;
+
+    for (uint64_t i = 0; i < loader_map->entry_count; i++) {
+        struct limine_memmap_entry *entry = loader_map->entries[i];
+        if (entry->type != wanted_type || entry->length == 0) continue;
+
+        uint64_t head = entry->base;
+        uint64_t tail = head + (entry->length - 1);
+        if (tail < head) tail = UINT64_MAX;
+        if (tail > max_page_tail) tail = max_page_tail;
+        if (tail <= head) continue;
+
+        if (in_area) {
+            if (area_tail + 1 < head) {
+                if (align_bounds(&area_head, &area_tail)) {
+                    if (free) {
+                        commit_usable(area_head, area_tail);
+                    } else {
+                        pmem_add_area(area_head, area_tail, false);
+                    }
+                }
+            } else {
+                area_tail = tail;
+                continue;
+            }
+        }
+
+        area_head = head;
+        area_tail = tail;
+        in_area = true;
+    }
+
+    if (in_area && align_bounds(&area_head, &area_tail)) {
+        if (free) {
+            commit_usable(area_head, area_tail);
+        } else {
+            pmem_add_area(area_head, area_tail, false);
+        }
+    }
+}
+
 void memmap_init(void) {
     extern const void _start, _erodata, _etext, _end;
 
@@ -223,7 +291,7 @@ void memmap_init(void) {
     max_phys_addr = (max_phys_addr - PAGE_MASK) | PAGE_MASK;
     determine_memory_bounds();
 
-    early_alloc_max = max_phys_addr;
+    early_alloc_max = max_page_tail;
     early_alloc_idx = loader_map->entry_count;
 
     pmap_init();
@@ -253,7 +321,84 @@ void memmap_init(void) {
     struct create_page_array_ctx ctx = {};
     iter_ram_areas(create_page_array_func, &ctx);
     create_page_array_finalize(&ctx);
+
+    early_alloc_idx = 0; // disable early allocator
+
+    add_areas(false);
+    add_areas(true);
 }
+
+struct reclaim_ctx {
+    uint64_t reclaim_head;
+    uint64_t reclaim_tail;
+    uint64_t usable_head;
+    uint64_t usable_tail;
+    bool in_reclaim;
+    bool in_usable;
+};
+
+#define ADD_TO_TYPE(type, ctx, head, tail)           \
+    ({                                               \
+        uint64_t _head = (head);                     \
+        uint64_t _tail = (tail);                     \
+        struct reclaim_ctx *_ctx = &(ctx);           \
+        do {                                         \
+            if (_ctx->in_##type) {                   \
+                if (_ctx->type##_tail + 1 < _head) { \
+                    type##_commit(_ctx);             \
+                } else {                             \
+                    _ctx->type##_tail = _tail;       \
+                    break;                           \
+                }                                    \
+            }                                        \
+                                                     \
+            _ctx->type##_head = _head;               \
+            _ctx->type##_tail = _tail;               \
+            _ctx->in_##type = true;                  \
+        } while (0);                                 \
+    })
+
+static void reclaim_commit(struct reclaim_ctx *ctx) {
+    if (ctx->in_reclaim && align_bounds(&ctx->reclaim_head, &ctx->reclaim_tail)) {
+        pmem_add_area(ctx->reclaim_head, ctx->reclaim_tail, true);
+    }
+}
+
+static void usable_commit(struct reclaim_ctx *ctx) {
+    uint64_t ahead = ctx->usable_head, atail = ctx->usable_tail;
+    if (ctx->in_usable && align_bounds(&ahead, &atail)) {
+        if (ahead != ctx->usable_head) ADD_TO_TYPE(reclaim, *ctx, ctx->usable_head, ahead - 1);
+        if (ctx->usable_tail != atail) ADD_TO_TYPE(reclaim, *ctx, atail + 1, ctx->usable_tail);
+    }
+}
+
+void memmap_reclaim_loader(void) {
+    struct reclaim_ctx ctx = {};
+
+    for (uint64_t i = 0; i < loader_map->entry_count; i++) {
+        struct limine_memmap_entry *entry = loader_map->entries[i];
+        if (entry->type != LIMINE_MEMMAP_USABLE && entry->type != LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE) continue;
+        if (entry->length == 0) continue;
+
+        uint64_t head = entry->base;
+        uint64_t tail = head + (entry->length - 1);
+        if (tail < head) tail = UINT64_MAX;
+        if (tail > max_page_tail) tail = max_page_tail;
+        if (tail <= head) continue;
+
+        if (entry->type == LIMINE_MEMMAP_USABLE) {
+            ADD_TO_TYPE(usable, ctx, head, tail);
+            continue;
+        }
+
+        ADD_TO_TYPE(reclaim, ctx, head, tail);
+    }
+
+    usable_commit(&ctx);
+    reclaim_commit(&ctx);
+}
+
+#undef ADD_TO_TYPE
 
 void *early_alloc_page(void) {
     for (; early_alloc_idx > 0; early_alloc_idx--) {
