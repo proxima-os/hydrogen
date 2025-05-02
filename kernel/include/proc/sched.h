@@ -22,6 +22,7 @@ typedef struct thread {
     refcnt_t references;
     struct cpu *cpu;
     list_node_t queue_node;
+    list_node_t wait_node;
     arch_thread_t arch;
     thread_state_t state;
     int wake_status;
