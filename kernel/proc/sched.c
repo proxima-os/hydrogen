@@ -75,7 +75,7 @@ static void do_yield(cpu_t *cpu) {
 static void queue_yield(cpu_t *cpu) {
     ASSERT(cpu == get_current_cpu());
     ASSERT(this_cpu_read_tl(sched.preempt_state) == PREEMPT_DISABLED);
-    cpu->sched.preempt_queued = true;
+    __atomic_store_n(&cpu->sched.preempt_queued, true, __ATOMIC_RELAXED);
 }
 
 preempt_state_t preempt_lock(void) {
@@ -100,8 +100,8 @@ void preempt_unlock(preempt_state_t state) {
 
         spin_acq_noirq(&cpu->sched.lock);
 
-        if (cpu->sched.preempt_queued) {
-            cpu->sched.preempt_queued = false;
+        if (__atomic_load_n(&cpu->sched.preempt_queued, __ATOMIC_RELAXED)) {
+            __atomic_store_n(&cpu->sched.preempt_queued, true, __ATOMIC_RELAXED);
             do_yield(cpu);
             cpu = get_current_cpu();
         }
