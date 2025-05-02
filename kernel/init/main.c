@@ -2,6 +2,7 @@
 #include "init/cmdline.h"
 #include "kernel/compiler.h"
 #include "limine.h"
+#include "mem/memmap.h"
 #include "proc/rcu.h"
 #include "proc/sched.h"
 #include "sections.h"
@@ -22,6 +23,7 @@ USED _Noreturn void kernel_main(void) {
     parse_command_line();
     sched_init();
     rcu_init();
+    memmap_init();
 
     thread_t init_thread;
     int error = sched_create_thread(&init_thread, kernel_init, NULL, init_stack, sizeof(init_stack));
