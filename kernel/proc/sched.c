@@ -9,6 +9,9 @@
 #include "util/refcount.h"
 #include "util/spinlock.h"
 
+#define PREEMPT_ENABLED 0
+#define PREEMPT_DISABLED 1
+
 void sched_init(void) {
     cpu_t *cpu = get_current_cpu();
     sched_t *sched = &cpu->sched;
@@ -57,11 +60,6 @@ static thread_t *dequeue(cpu_t *cpu) {
 static void do_yield(cpu_t *cpu) {
     ASSERT(cpu == get_current_cpu());
 
-    if (cpu->sched.preempt_state) {
-        cpu->sched.preempt_queued = true;
-        return;
-    }
-
     thread_t *prev = cpu->sched.current;
     if (prev->state == THREAD_RUNNING && prev != &cpu->sched.idle_thread) enqueue(cpu, prev);
 
@@ -74,43 +72,58 @@ static void do_yield(cpu_t *cpu) {
     post_switch(CONTAINER(thread_t, arch, arch_switch_thread(&prev->arch, &next->arch)));
 }
 
+static void queue_yield(cpu_t *cpu) {
+    ASSERT(cpu == get_current_cpu());
+    ASSERT(this_cpu_read_tl(sched.preempt_state) == PREEMPT_DISABLED);
+    cpu->sched.preempt_queued = true;
+}
+
 preempt_state_t preempt_lock(void) {
     preempt_state_t state = this_cpu_read_tl(sched.preempt_state);
     // can't use _tl for the write here, since that is allowed to use torn writes
-    this_cpu_write(sched.preempt_state, true);
+    this_cpu_write(sched.preempt_state, PREEMPT_DISABLED);
     return state;
 }
 
-void preempt_unlock(preempt_state_t prev) {
-    // preemption is currently disabled, so we can't get migrated
-    cpu_t *cpu = get_current_cpu();
+void preempt_unlock(preempt_state_t state) {
+    if (state == PREEMPT_ENABLED) {
+        // preemption is disabled, so we don't need to worry about migration
+        cpu_t *cpu = get_current_cpu();
 
-    if (!prev && unlikely(cpu->sched.preempt_queued)) {
-        irq_state_t state = spin_acq(&cpu->sched.lock);
-        cpu->sched.preempt_queued = false;
-        cpu->sched.preempt_state = prev;
-        do_yield(cpu);
-        cpu = get_current_cpu();
-        spin_rel(&cpu->sched.lock, state);
-    } else {
-        // use an atomic store to ensure there's no torn writes
-        __atomic_store_n(&cpu->sched.preempt_state, prev, __ATOMIC_RELAXED);
+        task_t *task = cpu->sched.task_head;
+
+        while (task) {
+            cpu->sched.task_head = task->next;
+            task->func(task);
+            task = cpu->sched.task_head;
+        }
+
+        spin_acq_noirq(&cpu->sched.lock);
+
+        if (cpu->sched.preempt_queued) {
+            cpu->sched.preempt_queued = false;
+            do_yield(cpu);
+            cpu = get_current_cpu();
+        }
+
+        spin_rel_noirq(&cpu->sched.lock);
+        __atomic_store_n(&cpu->sched.preempt_state, state, __ATOMIC_RELAXED); // avoid torn writes by using atmoics
     }
 }
 
 void sched_yield(void) {
-    // We have to disable IRQs separately from acquiring the lock,
-    // otherwise we might get migrated between getting the lock pointer
-    // and disabling IRQs
-    irq_state_t state = save_disable_irq();
+    preempt_state_t state = preempt_lock();
+    ASSERT(state == PREEMPT_ENABLED);
+
     cpu_t *cpu = get_current_cpu();
     spin_acq_noirq(&cpu->sched.lock);
-    ASSERT(!cpu->sched.preempt_state);
+
     ASSERT(cpu->sched.current->state == THREAD_RUNNING);
     do_yield(cpu);
     cpu = get_current_cpu();
+
     spin_rel_noirq(&cpu->sched.lock);
-    restore_irq(state);
+    preempt_unlock(state);
 }
 
 static bool should_preempt(cpu_t *cpu) {
@@ -121,14 +134,14 @@ static void remote_maybe_preempt(void *ctx) {
     cpu_t *cpu = ctx;
     ASSERT(cpu == get_current_cpu());
 
-    if (should_preempt(cpu)) do_yield(cpu);
+    if (should_preempt(cpu)) queue_yield(cpu);
 }
 
 static void maybe_preempt(cpu_t *cpu) {
     if (!should_preempt(cpu)) return;
 
     if (cpu == get_current_cpu()) {
-        do_yield(cpu);
+        queue_yield(cpu);
     } else {
         smp_call_remote_async(cpu, remote_maybe_preempt, cpu);
     }
@@ -145,8 +158,11 @@ static void do_wake(cpu_t *cpu, thread_t *thread, int status) {
 }
 
 bool sched_wake(thread_t *thread) {
+    // need both preempt and irq lock here because sched_wake and sched_interrupt
+    // are allowed to be called from irq context
     preempt_state_t pstate = preempt_lock();
     irq_state_t state = spin_acq(&thread->cpu_lock);
+
     cpu_t *cpu = thread->cpu;
     spin_acq_noirq(&cpu->sched.lock);
 
@@ -168,8 +184,10 @@ bool sched_wake(thread_t *thread) {
 }
 
 bool sched_interrupt(thread_t *thread) {
+    // see comment in sched_wake
     preempt_state_t pstate = preempt_lock();
     irq_state_t state = spin_acq(&thread->cpu_lock);
+
     cpu_t *cpu = thread->cpu;
     spin_acq_noirq(&cpu->sched.lock);
 
@@ -186,7 +204,8 @@ bool sched_interrupt(thread_t *thread) {
 }
 
 void sched_prepare_wait(bool interruptible) {
-    irq_state_t state = save_disable_irq();
+    preempt_state_t state = preempt_lock();
+
     cpu_t *cpu = get_current_cpu();
     spin_acq_noirq(&cpu->sched.lock);
 
@@ -195,14 +214,15 @@ void sched_prepare_wait(bool interruptible) {
     thread->state = interruptible ? THREAD_BLOCKED_INTERRUPTIBLE : THREAD_BLOCKED;
 
     spin_rel_noirq(&cpu->sched.lock);
-    restore_irq(state);
+    preempt_unlock(state);
 }
 
 int sched_perform_wait(void) {
-    irq_state_t state = save_disable_irq();
+    preempt_state_t state = preempt_lock();
+    ASSERT(state == PREEMPT_ENABLED);
+
     cpu_t *cpu = get_current_cpu();
     spin_acq_noirq(&cpu->sched.lock);
-    ASSERT(!cpu->sched.preempt_state);
 
     thread_t *thread = cpu->sched.current;
     ASSERT(thread->state == THREAD_BLOCKED || thread->state == THREAD_BLOCKED_INTERRUPTIBLE);
@@ -212,14 +232,15 @@ int sched_perform_wait(void) {
     cpu = get_current_cpu();
 
     spin_rel_noirq(&cpu->sched.lock);
-    restore_irq(state);
+    preempt_unlock(state);
 
     ASSERT(thread->wake_status != -1);
     return thread->wake_status;
 }
 
 void sched_cancel_wait(void) {
-    irq_state_t state = save_disable_irq();
+    preempt_state_t state = preempt_lock();
+
     cpu_t *cpu = get_current_cpu();
     spin_acq_noirq(&cpu->sched.lock);
 
@@ -228,14 +249,15 @@ void sched_cancel_wait(void) {
     thread->state = THREAD_RUNNING;
 
     spin_rel_noirq(&cpu->sched.lock);
-    restore_irq(state);
+    preempt_unlock(state);
 }
 
 _Noreturn void sched_exit(void) {
-    disable_irq();
+    preempt_state_t state = preempt_lock();
+    ASSERT(state == PREEMPT_ENABLED);
+
     cpu_t *cpu = get_current_cpu();
     spin_acq_noirq(&cpu->sched.lock);
-    ASSERT(!cpu->sched.preempt_state);
 
     thread_t *thread = cpu->sched.current;
     ASSERT(thread->state == THREAD_RUNNING);
@@ -249,6 +271,7 @@ _Noreturn void sched_exit(void) {
 _Noreturn void sched_init_thread(arch_thread_t *prev, void (*func)(void *), void *ctx) {
     post_switch(CONTAINER(thread_t, arch, prev));
     spin_rel_noirq(&get_current_cpu()->sched.lock);
+    preempt_unlock(PREEMPT_ENABLED);
     func(ctx);
     sched_exit();
 }
@@ -266,4 +289,17 @@ void thread_deref(thread_t *thread) {
         ASSERT(thread->state == THREAD_EXITED);
         // TODO
     }
+}
+
+void queue_task(task_t *task) {
+    task->next = NULL;
+
+    preempt_state_t state = preempt_lock();
+    cpu_t *cpu = get_current_cpu();
+
+    if (cpu->sched.task_head) cpu->sched.task_tail->next = task;
+    else cpu->sched.task_head = task;
+    cpu->sched.task_tail = task;
+
+    preempt_unlock(state);
 }

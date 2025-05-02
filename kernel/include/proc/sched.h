@@ -28,6 +28,11 @@ typedef struct thread {
     spinlock_t cpu_lock;
 } thread_t;
 
+typedef struct task {
+    struct task *next;
+    void (*func)(struct task *self);
+} task_t;
+
 typedef struct {
     list_t queue;
     thread_t *current;
@@ -35,6 +40,8 @@ typedef struct {
     preempt_state_t preempt_state;
     bool preempt_queued;
     spinlock_t lock;
+    task_t *task_head;
+    task_t *task_tail; // only valid if task_head != NULL
 } sched_t;
 
 void sched_init(void);
@@ -43,7 +50,7 @@ void sched_init(void);
 int sched_create_thread(thread_t *thread, void (*func)(void *), void *ctx, void *stack, size_t stack_size);
 
 preempt_state_t preempt_lock(void);
-void preempt_unlock(preempt_state_t prev);
+void preempt_unlock(preempt_state_t state);
 
 void sched_yield(void);
 bool sched_wake(thread_t *thread); // if thread is in THREAD_CREATED, increments its reference count
@@ -56,6 +63,8 @@ _Noreturn void sched_exit(void);
 
 void thread_ref(thread_t *thread);
 void thread_deref(thread_t *thread);
+
+void queue_task(task_t *task);
 
 // the following functions are internal to the scheduler
 
