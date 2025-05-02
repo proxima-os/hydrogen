@@ -51,10 +51,13 @@ static void enqueue(cpu_t *cpu, thread_t *thread) {
     ASSERT(cpu == thread->cpu);
 
     list_insert_tail(&cpu->sched.queue, &thread->queue_node);
+    thread->queued = false;
 }
 
 static thread_t *dequeue(cpu_t *cpu) {
-    return LIST_REMOVE_HEAD(cpu->sched.queue, thread_t, queue_node);
+    thread_t *thread = LIST_REMOVE_HEAD(cpu->sched.queue, thread_t, queue_node);
+    if (thread) thread->queued = false;
+    return thread;
 }
 
 static void do_yield(cpu_t *cpu) {
@@ -153,7 +156,7 @@ static void do_wake(cpu_t *cpu, thread_t *thread, int status) {
 
     thread->state = THREAD_RUNNING;
     thread->wake_status = status;
-    enqueue(cpu, thread);
+    if (!thread->queued) enqueue(cpu, thread);
     maybe_preempt(cpu);
 }
 

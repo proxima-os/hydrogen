@@ -26,6 +26,7 @@ typedef struct thread {
     thread_state_t state;
     int wake_status;
     spinlock_t cpu_lock;
+    bool queued;
 } thread_t;
 
 typedef struct task {
