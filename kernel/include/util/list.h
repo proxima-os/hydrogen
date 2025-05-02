@@ -74,6 +74,8 @@ static inline void list_insert_head(list_t *list, list_node_t *node) {
 
     if (node->next) node->next->prev = node;
     else list->tail = node;
+
+    list->head = node;
 }
 
 static inline void list_insert_tail(list_t *list, list_node_t *node) {
@@ -82,6 +84,8 @@ static inline void list_insert_tail(list_t *list, list_node_t *node) {
 
     if (node->prev) node->prev->next = node;
     else list->head = node;
+
+    list->tail = node;
 }
 
 static inline void list_insert_before(list_t *list, list_node_t *anchor, list_node_t *node) {
