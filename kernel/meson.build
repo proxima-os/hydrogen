@@ -1,8 +1,11 @@
 kernel_c_flags += ['-DLIMINE_API_REVISION=3']
 kernel_include += include_directories('include')
 kernel_sources += files(
+    'cpu/cpudata.c',
+    'cpu/smp.c',
     'init/cmdline.c',
     'init/main.c',
+    'proc/sched.c',
     'util/panic.c',
     'util/printk.c',
     'util/spinlock.c',

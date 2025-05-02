@@ -9,5 +9,7 @@ kernel_sources += files(
     'cpu/mca.c',
     'drv/debugcon.c',
     'init/main.c',
-    'init/main.S'
+    'init/main.S',
+    'proc/sched.c',
+    'proc/sched.S',
 )

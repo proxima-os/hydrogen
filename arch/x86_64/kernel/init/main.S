@@ -23,7 +23,7 @@ _entry:
 
 .section ".bss.bsp_idle_stack", "aw", @nobits
 
-.balign 16
+.balign KERNEL_STACK_ALIGN
 .type bsp_idle_stack, @object
 bsp_idle_stack: .space KERNEL_STACK_SIZE
 .Lstack_top:

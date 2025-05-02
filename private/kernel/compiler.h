@@ -32,3 +32,9 @@ extern _Noreturn void hydrogen_assert_fail(const char *expr, const char *func, c
         void *_ptr = (value);                                \
         _ptr ? (type *)(_ptr - offsetof(type, name)) : NULL; \
     })
+
+#ifndef NDEBUG
+#define UNREACHABLE() ENSURE(!"unreachable")
+#else
+#define UNREACHABLE() __builtin_unreachable()
+#endif

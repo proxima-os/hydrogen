@@ -1,6 +1,6 @@
 #pragma once
 
-#include "arch/cpudata.h"
+#include "cpu/cpudata.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -51,4 +51,4 @@ typedef struct {
 extern x86_64_cpu_features_t x86_64_cpu_features;
 
 void x86_64_cpu_detect(void);
-void x86_64_cpu_init(x86_64_cpu_t *self);
+void x86_64_cpu_init(cpu_t *self);

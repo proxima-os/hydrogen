@@ -1,6 +1,6 @@
 #include "x86_64/cpu.h"
-#include "arch/cpudata.h"
 #include "arch/irq.h"
+#include "cpu/cpudata.h"
 #include "util/spinlock.h"
 #include "x86_64/cpuid.h"
 #include "x86_64/cr.h"
@@ -10,7 +10,6 @@
 #include "x86_64/tss.h"
 #include <stdint.h>
 
-x86_64_cpu_t x86_64_boot_cpu;
 x86_64_cpu_features_t x86_64_cpu_features;
 
 static size_t cr4_value = X86_64_CR4_OSXMMEXCEPT | X86_64_CR4_OSFXSR | X86_64_CR4_PAE;
@@ -100,7 +99,7 @@ static uint64_t gdt[7] = {
 };
 static spinlock_t gdt_lock;
 
-static void init_gdt(x86_64_cpu_t *self) {
+static void init_gdt(cpu_t *self) {
     struct {
         uint16_t limit;
         void *base;
@@ -121,7 +120,7 @@ static void init_gdt(x86_64_cpu_t *self) {
         : "rax");
     x86_64_wrmsr(X86_64_MSR_GS_BASE, (uintptr_t)self);
 
-    x86_64_tss_t *tss = &self->tss;
+    x86_64_tss_t *tss = &self->arch.tss;
     tss->iopb_base = sizeof(*tss);
 
     for (size_t i = 0; i < 7; i++) {
@@ -145,7 +144,7 @@ static void init_gdt(x86_64_cpu_t *self) {
     spin_rel(&gdt_lock, state);
 }
 
-void x86_64_cpu_init(x86_64_cpu_t *self) {
+void x86_64_cpu_init(cpu_t *self) {
     x86_64_write_cr0(
             X86_64_CR0_PG | X86_64_CR0_AM | X86_64_CR0_WP | X86_64_CR0_NE | X86_64_CR0_ET | X86_64_CR0_MP |
             X86_64_CR0_PE
@@ -153,7 +152,7 @@ void x86_64_cpu_init(x86_64_cpu_t *self) {
     x86_64_write_cr4(cr4_value);
     x86_64_wrmsr(X86_64_MSR_EFER, efer_value);
 
-    self->self = self;
+    self->arch.self = self;
     init_gdt(self);
     x86_64_idt_init();
     x86_64_mca_init();
