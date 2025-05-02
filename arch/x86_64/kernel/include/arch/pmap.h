@@ -10,14 +10,17 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define PTE_PRESENT (1ul << 0)
-#define PTE_WRITABLE (1ul << 1)
-#define PTE_USER (1ul << 2)
-#define PTE_ACCESSED (1ul << 5)
-#define PTE_DIRTY (1ul << 6)
-#define PTE_HUGE (1ul << 7)
-#define PTE_GLOBAL (1ul << 8)
-#define PTE_NX (1ul << 63)
+#define X86_64_PTE_PRESENT (1ul << 0)
+#define X86_64_PTE_WRITABLE (1ul << 1)
+#define X86_64_PTE_USER (1ul << 2)
+#define X86_64_PTE_ACCESSED (1ul << 5)
+#define X86_64_PTE_DIRTY (1ul << 6)
+#define X86_64_PTE_HUGE (1ul << 7)
+#define X86_64_PTE_GLOBAL (1ul << 8)
+#define X86_64_PTE_NX (1ul << 63)
+
+/* the highest value arch_pt_levels() can return */
+#define ARCH_PT_MAX_LEVELS 5
 
 typedef uint64_t pte_t;
 
@@ -67,24 +70,24 @@ static inline void arch_pt_write(void *table, unsigned level, size_t index, pte_
 }
 
 static inline pte_t arch_pt_create_edge(unsigned level, void *target) {
-    return virt_to_phys(target) | PTE_DIRTY | PTE_ACCESSED | PTE_WRITABLE | PTE_PRESENT;
+    return virt_to_phys(target) | X86_64_PTE_ACCESSED | X86_64_PTE_WRITABLE | X86_64_PTE_PRESENT;
 }
 
 static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int flags, bool user) {
-    pte_t pte = target | PTE_DIRTY | PTE_ACCESSED | PTE_PRESENT;
-    if (level != 0) pte |= PTE_HUGE;
+    pte_t pte = target | X86_64_PTE_DIRTY | X86_64_PTE_ACCESSED | X86_64_PTE_PRESENT;
+    if (level != 0) pte |= X86_64_PTE_HUGE;
 
-    if (flags & PMAP_WRITABLE) pte |= PTE_WRITABLE;
-    if (!(flags & PMAP_EXECUTABLE) && x86_64_cpu_features.nx) pte |= PTE_NX;
+    if (flags & PMAP_WRITABLE) pte |= X86_64_PTE_WRITABLE;
+    if (!(flags & PMAP_EXECUTABLE) && x86_64_cpu_features.nx) pte |= X86_64_PTE_NX;
 
-    if (user) pte |= PTE_USER;
-    else if (x86_64_cpu_features.pge) pte |= PTE_GLOBAL;
+    if (user) pte |= X86_64_PTE_USER;
+    else if (x86_64_cpu_features.pge) pte |= X86_64_PTE_GLOBAL;
 
     return pte;
 }
 
 static inline bool arch_pt_is_edge(unsigned level, pte_t pte) {
-    return level != 0 && (pte & PTE_HUGE) == 0;
+    return level != 0 && (pte & X86_64_PTE_HUGE) == 0;
 }
 
 static inline void *arch_pt_edge_target(unsigned level, pte_t pte) {

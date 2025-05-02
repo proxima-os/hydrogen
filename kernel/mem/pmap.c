@@ -12,16 +12,17 @@ static void *kernel_page_table;
 static mutex_t kernel_pt_lock;
 
 static void *early_alloc_table(unsigned level) {
-    static void *next;
+    static void *next[ARCH_PT_MAX_LEVELS];
+
     size_t size = arch_pt_table_size(level);
 
-    if (!next || ((uintptr_t)next & (size - 1)) == 0) {
-        next = early_alloc_page();
-        memset(next, 0, PAGE_SIZE);
+    if (!next[level] || ((uintptr_t)next & (size - 1)) == 0) {
+        next[level] = early_alloc_page();
+        memset(next[level], 0, PAGE_SIZE);
     }
 
     void *table = next;
-    next += size;
+    next[level] += size;
     return table;
 }
 
