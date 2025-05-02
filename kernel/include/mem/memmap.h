@@ -1,6 +1,7 @@
 #pragma once
 
 #include "kernel/pgsize.h"
+#include "util/list.h"
 #include "util/shlist.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -13,6 +14,11 @@ typedef struct {
             shlist_node_t node;
             size_t count;
         } free;
+        struct {
+            list_node_t node;
+            shlist_t objects;
+            size_t num_free;
+        } slab;
     };
 } __attribute__((aligned(64))) page_t;
 
