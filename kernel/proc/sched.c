@@ -1,13 +1,17 @@
 #include "proc/sched.h"
+#include "arch/idle.h"
 #include "arch/irq.h"
 #include "cpu/cpudata.h"
 #include "cpu/smp.h"
 #include "errno.h"
 #include "kernel/compiler.h"
+#include "proc/rcu.h"
 #include "string.h"
 #include "util/list.h"
 #include "util/refcount.h"
+#include "util/slist.h"
 #include "util/spinlock.h"
+#include <stdbool.h>
 
 #define PREEMPT_ENABLED 0
 #define PREEMPT_DISABLED 1
@@ -63,6 +67,8 @@ static thread_t *dequeue(cpu_t *cpu) {
 static void do_yield(cpu_t *cpu) {
     ASSERT(cpu == get_current_cpu());
 
+    rcu_quiet(cpu);
+
     thread_t *prev = cpu->sched.current;
     if (prev->state == THREAD_RUNNING && prev != &cpu->sched.idle_thread) enqueue(cpu, prev);
 
@@ -88,30 +94,33 @@ preempt_state_t preempt_lock(void) {
     return state;
 }
 
-void preempt_unlock(preempt_state_t state) {
+bool preempt_unlock(preempt_state_t state) {
     if (state == PREEMPT_ENABLED) {
         // preemption is disabled, so we don't need to worry about migration
         cpu_t *cpu = get_current_cpu();
 
-        task_t *task = cpu->sched.task_head;
-
-        while (task) {
-            cpu->sched.task_head = task->next;
+        for (;;) {
+            task_t *task = SLIST_REMOVE_HEAD(cpu->sched.tasks, task_t, node);
+            if (!task) break;
             task->func(task);
-            task = cpu->sched.task_head;
         }
 
         spin_acq_noirq(&cpu->sched.lock);
 
-        if (__atomic_load_n(&cpu->sched.preempt_queued, __ATOMIC_RELAXED)) {
-            __atomic_store_n(&cpu->sched.preempt_queued, true, __ATOMIC_RELAXED);
+        bool yield = __atomic_load_n(&cpu->sched.preempt_queued, __ATOMIC_RELAXED);
+
+        if (yield) {
+            __atomic_store_n(&cpu->sched.preempt_queued, false, __ATOMIC_RELAXED);
             do_yield(cpu);
             cpu = get_current_cpu();
         }
 
         spin_rel_noirq(&cpu->sched.lock);
         __atomic_store_n(&cpu->sched.preempt_state, state, __ATOMIC_RELAXED); // avoid torn writes by using atmoics
+        return yield;
     }
+
+    return false;
 }
 
 void sched_yield(void) {
@@ -294,15 +303,24 @@ void thread_deref(thread_t *thread) {
     }
 }
 
-void queue_task(task_t *task) {
-    task->next = NULL;
-
+void sched_queue_task(task_t *task) {
     preempt_state_t state = preempt_lock();
     cpu_t *cpu = get_current_cpu();
-
-    if (cpu->sched.task_head) cpu->sched.task_tail->next = task;
-    else cpu->sched.task_head = task;
-    cpu->sched.task_tail = task;
-
+    slist_insert_tail(&cpu->sched.tasks, &task->node);
     preempt_unlock(state);
+}
+
+_Noreturn void sched_idle(void) {
+    cpu_t *cpu = get_current_cpu();
+    ASSERT(current_thread == &cpu->sched.idle_thread);
+
+    for (;;) {
+        preempt_state_t state = preempt_lock();
+
+        rcu_quiet(cpu);
+
+        if (!preempt_unlock(state)) {
+            cpu_idle();
+        }
+    }
 }

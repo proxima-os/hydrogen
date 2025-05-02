@@ -1,8 +1,8 @@
-#include "arch/idle.h"
 #include "arch/stack.h"
 #include "init/cmdline.h"
 #include "kernel/compiler.h"
 #include "limine.h"
+#include "proc/rcu.h"
 #include "proc/sched.h"
 #include "sections.h"
 #include "util/panic.h"
@@ -21,6 +21,7 @@ static void kernel_init(void *ctx) {
 USED _Noreturn void kernel_main(void) {
     parse_command_line();
     sched_init();
+    rcu_init();
 
     thread_t init_thread;
     int error = sched_create_thread(&init_thread, kernel_init, NULL, init_stack, sizeof(init_stack));
@@ -28,7 +29,5 @@ USED _Noreturn void kernel_main(void) {
     sched_wake(&init_thread);
     thread_deref(&init_thread);
 
-    for (;;) {
-        cpu_idle();
-    }
+    sched_idle();
 }

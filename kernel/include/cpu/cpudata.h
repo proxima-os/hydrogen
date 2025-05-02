@@ -1,6 +1,7 @@
 #pragma once
 
 #include "arch/cpudata.h" /* IWYU pragma: export */
+#include "proc/rcu.h"
 #include "proc/sched.h"
 #include <stddef.h>
 
@@ -8,6 +9,7 @@ typedef struct cpu {
     arch_cpu_t arch; // must be the 1st field in the struct
     size_t id;
     sched_t sched;
+    rcu_cpu_state_t rcu;
 } cpu_t;
 
 extern cpu_t boot_cpu;

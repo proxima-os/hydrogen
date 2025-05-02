@@ -1,0 +1,48 @@
+#pragma once
+
+#include "string.h"
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#define MAX_CPUS 64
+
+typedef struct {
+    uint64_t data;
+} cpu_mask_t;
+
+static inline bool cpu_mask_empty(cpu_mask_t *mask) {
+    return mask->data == 0;
+}
+
+static inline void cpu_mask_clear(cpu_mask_t *mask) {
+    mask->data = 0;
+}
+
+static inline void cpu_mask_fill(cpu_mask_t *mask) {
+    // TODO
+    mask->data = 1;
+}
+
+static inline bool cpu_mask_get(cpu_mask_t *mask, size_t cpu) {
+    return mask->data & (1ul << cpu);
+}
+
+static inline bool cpu_mask_get_atomic(cpu_mask_t *mask, size_t cpu) {
+    return __atomic_load_n(&mask->data, __ATOMIC_RELAXED) & (1ul << cpu);
+}
+
+static inline void cpu_mask_set(cpu_mask_t *mask, size_t cpu, bool value) {
+    if (value) mask->data |= 1ul << cpu;
+    else mask->data &= ~(1ul << cpu);
+}
+
+// set a cpu's bit without tearing
+// this only guarantees that the individual reads/writes are atomic,
+// not that the overall operation is
+static inline void cpu_mask_set_notear(cpu_mask_t *mask, size_t cpu, bool value) {
+    size_t cur = __atomic_load_n(&mask->data, __ATOMIC_RELAXED);
+
+    if (value) __atomic_store_n(&mask->data, cur | (1ul << cpu), __ATOMIC_RELAXED);
+    else __atomic_store_n(&mask->data, cur & ~(1ul << cpu), __ATOMIC_RELAXED);
+}

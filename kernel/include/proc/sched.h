@@ -3,6 +3,7 @@
 #include "arch/sched.h"
 #include "util/list.h"
 #include "util/refcount.h"
+#include "util/slist.h"
 #include "util/spinlock.h"
 #include <stdbool.h>
 #include <stdint.h>
@@ -31,7 +32,7 @@ typedef struct thread {
 } thread_t;
 
 typedef struct task {
-    struct task *next;
+    slist_node_t node;
     void (*func)(struct task *self);
 } task_t;
 
@@ -42,8 +43,7 @@ typedef struct {
     preempt_state_t preempt_state;
     bool preempt_queued;
     spinlock_t lock;
-    task_t *task_head;
-    task_t *task_tail; // only valid if task_head != NULL
+    slist_t tasks;
 } sched_t;
 
 void sched_init(void);
@@ -52,7 +52,7 @@ void sched_init(void);
 int sched_create_thread(thread_t *thread, void (*func)(void *), void *ctx, void *stack, size_t stack_size);
 
 preempt_state_t preempt_lock(void);
-void preempt_unlock(preempt_state_t state);
+bool preempt_unlock(preempt_state_t state);
 
 void sched_yield(void);
 bool sched_wake(thread_t *thread); // if thread is in THREAD_CREATED, increments its reference count
@@ -66,7 +66,8 @@ _Noreturn void sched_exit(void);
 void thread_ref(thread_t *thread);
 void thread_deref(thread_t *thread);
 
-void queue_task(task_t *task);
+void sched_queue_task(task_t *task);
+_Noreturn void sched_idle(void);
 
 // the following functions are internal to the scheduler
 
@@ -75,4 +76,3 @@ _Noreturn void sched_init_thread(arch_thread_t *prev, void (*func)(void *), void
 // returns the thread that was switched from
 arch_thread_t *arch_switch_thread(arch_thread_t *from, arch_thread_t *to);
 int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, void *stack, size_t stack_size);
-
