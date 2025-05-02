@@ -11,9 +11,22 @@
 static void *kernel_page_table;
 static mutex_t kernel_pt_lock;
 
+static void *early_alloc_table(unsigned level) {
+    static void *next;
+    size_t size = arch_pt_table_size(level);
+
+    if (!next || ((uintptr_t)next & (size - 1)) == 0) {
+        next = early_alloc_page();
+        memset(next, 0, PAGE_SIZE);
+    }
+
+    void *table = next;
+    next += size;
+    return table;
+}
+
 void pmap_init(void) {
-    kernel_page_table = early_alloc_page();
-    memset(kernel_page_table, 0, PAGE_SIZE);
+    kernel_page_table = early_alloc_table(arch_pt_levels() - 1);
 }
 
 void pmap_init_switch(void) {
@@ -43,8 +56,7 @@ static void do_early_map(void *table, unsigned level, uintptr_t virt, uint64_t p
             ASSERT(arch_pt_is_edge(level, pte));
             child = arch_pt_edge_target(level, pte);
         } else {
-            child = early_alloc_page();
-            memset(child, 0, PAGE_SIZE);
+            child = early_alloc_table(level - 1);
             arch_pt_write(table, level, index, arch_pt_create_edge(level, child));
         }
 
