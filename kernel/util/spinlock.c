@@ -17,7 +17,7 @@ void spin_rel(spinlock_t *lock, irq_state_t state) {
 void spin_acq_noirq(spinlock_t *lock) {
     unsigned char expected = 0;
 
-    while (!__atomic_compare_exchange_n(&lock->state, &expected, 1, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
+    while (!__atomic_compare_exchange_n(&lock->state, &expected, 1, true, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)) {
         cpu_relax();
         expected = 0;
     }
