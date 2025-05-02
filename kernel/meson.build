@@ -7,6 +7,7 @@ kernel_sources += files(
     'init/main.c',
     'mem/memmap.c',
     'proc/event.c',
+    'proc/mutex.c',
     'proc/rcu.c',
     'proc/sched.c',
     'util/panic.c',
