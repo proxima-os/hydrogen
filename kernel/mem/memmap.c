@@ -3,6 +3,7 @@
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "limine.h"
+#include "mem/kvmm.h"
 #include "mem/pmap-flags.h"
 #include "mem/pmap.h"
 #include "mem/pmem.h"
@@ -254,6 +255,22 @@ static void add_areas(bool free) {
     }
 }
 
+struct add_hhdm_gaps_ctx {
+    uint64_t next_head;
+};
+
+static void add_hhdm_gaps(uint64_t head, uint64_t tail, void *ptr) {
+    struct add_hhdm_gaps_ctx *ctx = ptr;
+
+    if (ctx->next_head < head) {
+        uint64_t gap_tail = head - 1;
+        ASSERT(gap_tail <= max_page_tail);
+        kvmm_add_range(hhdm_base + ctx->next_head, hhdm_base + gap_tail);
+    }
+
+    ctx->next_head = tail + 1;
+}
+
 void memmap_init(void) {
     extern const void _start, _erodata, _etext, _end;
 
@@ -326,6 +343,15 @@ void memmap_init(void) {
 
     add_areas(false);
     add_areas(true);
+
+    for (size_t i = 0; i < num_early_vm_areas; i++) {
+        kvmm_add_range(early_vm_areas[i].head, early_vm_areas[i].tail);
+    }
+
+    num_early_vm_areas = 0;
+
+    struct add_hhdm_gaps_ctx ctx2 = {.next_head = min_page_head};
+    iter_ram_areas(add_hhdm_gaps, &ctx2);
 }
 
 struct reclaim_ctx {
@@ -373,6 +399,8 @@ static void usable_commit(struct reclaim_ctx *ctx) {
 }
 
 void memmap_reclaim_loader(void) {
+    ASSERT(loader_map != NULL);
+
     struct reclaim_ctx ctx = {};
 
     for (uint64_t i = 0; i < loader_map->entry_count; i++) {
@@ -396,11 +424,15 @@ void memmap_reclaim_loader(void) {
 
     usable_commit(&ctx);
     reclaim_commit(&ctx);
+
+    loader_map = NULL;
 }
 
 #undef ADD_TO_TYPE
 
 void *early_alloc_page(void) {
+    ASSERT(loader_map != NULL);
+
     for (; early_alloc_idx > 0; early_alloc_idx--) {
         struct limine_memmap_entry *entry = loader_map->entries[early_alloc_idx - 1];
         if (entry->type != LIMINE_MEMMAP_USABLE) continue;
