@@ -1,6 +1,7 @@
 #include "mem/memmap.h"
 #include "arch/memmap.h"
 #include "arch/pmap.h"
+#include "cpu/cpudata.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "limine.h"
@@ -352,6 +353,8 @@ void memmap_init(void) {
 
     struct add_hhdm_gaps_ctx ctx2 = {.next_head = min_page_head};
     iter_ram_areas(add_hhdm_gaps, &ctx2);
+
+    pmap_init_cpu(get_current_cpu());
 }
 
 struct reclaim_ctx {

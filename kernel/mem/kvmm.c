@@ -2,6 +2,7 @@
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "mem/kmalloc.h"
+#include "mem/pmap.h"
 #include "proc/mutex.h"
 #include "string.h"
 #include "util/hash.h"
@@ -166,11 +167,11 @@ static kvmm_range_t *select_range(size_t size) {
     size_t bitmap = kvmm_free_bitmap >> min_order;
     if (unlikely(!bitmap)) return NULL;
 
-    size_t guarantee_bitmap = bitmap >> !is_power_of_two(size);
+    size_t guarantee_offset = is_power_of_two(size) ? 0 : 1;
+    size_t guarantee_bitmap = bitmap >> guarantee_offset;
 
     if (likely(guarantee_bitmap != 0)) {
-        // __builtin_ffsl returns the index + 1, so we don't need to add 1
-        size_t order = min_order + __builtin_ffsl(guarantee_bitmap);
+        size_t order = min_order + guarantee_offset + __builtin_ctzl(guarantee_bitmap);
         kvmm_range_t *range = HLIST_HEAD(kvmm_free_ranges[order], kvmm_range_t, kind_node);
         ASSERT(range->free);
         return range;
@@ -231,7 +232,7 @@ uintptr_t kvmm_alloc(size_t size) {
     return addr;
 }
 
-bool kvmm_resize(uintptr_t address, size_t old_size, size_t new_size) {
+bool kvmm_resize(uintptr_t address, size_t old_size, size_t new_size, bool resize_mapping) {
     ASSERT((new_size & PAGE_MASK) == 0);
     ASSERT(new_size != 0);
 
@@ -246,13 +247,22 @@ bool kvmm_resize(uintptr_t address, size_t old_size, size_t new_size) {
 
     if (old_size > new_size) {
         bool ok = merge_or_insert(range, next, range->head + new_size, old_size - new_size);
-        if (likely(ok)) range->size = new_size;
+
+        if (likely(ok)) {
+            range->size = new_size;
+            if (resize_mapping) pmap_unmap(NULL, range->head + new_size, old_size - new_size);
+        }
+
         mutex_rel(&kvmm_lock);
         return ok;
     }
 
     size_t extra = new_size - old_size;
     bool ok = next != NULL && next->free && range->head + old_size == next->head && next->size >= extra;
+
+    if (resize_mapping && likely(ok)) {
+        ok = pmap_prepare(NULL, range->head + old_size, extra);
+    }
 
     if (likely(ok)) {
         range->size += extra;

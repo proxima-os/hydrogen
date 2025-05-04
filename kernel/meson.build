@@ -10,6 +10,7 @@ kernel_sources += files(
     'mem/memmap.c',
     'mem/pmap.c',
     'mem/pmem.c',
+    'mem/vmalloc.c',
     'proc/event.c',
     'proc/mutex.c',
     'proc/rcu.c',

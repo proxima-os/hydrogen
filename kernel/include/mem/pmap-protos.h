@@ -9,6 +9,8 @@
 #define PMAP_READABLE 1
 #define PMAP_WRITABLE 2
 #define PMAP_EXECUTABLE 4
+#define PMAP_USER 8 /* internal */
+#define PMAP_ANONYMOUS 16 /* internal */
 
 /* definitions that need to be provided by arch code:
  * #define ARCH_PT_MAX_LEVEL ...
@@ -26,10 +28,10 @@ static inline int arch_pt_max_asid(void);
  * if `current` is true, there were no other page tables using this asid switched
  * to between now and the last time this page table was switched to on this core.
  * always called with preemption disabled. */
-static inline void arch_switch_pt(void *target, int asid, bool current);
+static inline void arch_pt_switch(void *target, int asid, bool current);
 
 /* the same as arch_switch_pt, except do any extra processing that is required for the first switch */
-static inline void arch_switch_pt_init(void *target, int asid, bool current);
+static inline void arch_pt_switch_init(void *target, int asid, bool current);
 
 /* return the number of page table levels. must be constant. */
 static inline unsigned arch_pt_levels(void);
@@ -56,7 +58,7 @@ static inline void arch_pt_write(void *table, unsigned level, size_t index, pte_
 static inline pte_t arch_pt_create_edge(unsigned level, void *target);
 
 /* create a pte that maps a page */
-static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int flags, bool user);
+static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int flags);
 
 /* return true if the given pte points to another page table */
 static inline bool arch_pt_is_edge(unsigned level, pte_t pte);
@@ -66,6 +68,9 @@ static inline void *arch_pt_edge_target(unsigned level, pte_t pte);
 
 /* get the physical address the given pte points to */
 static inline uint64_t arch_pt_leaf_target(unsigned level, pte_t pte);
+
+/* returns the PMAP_* flags for the given leaf pte */
+static inline int arch_pt_get_leaf_flags(unsigned level, pte_t pte);
 
 /* return true if the given address is canonical */
 static inline bool arch_pt_is_canonical(uintptr_t virt);
@@ -78,10 +83,6 @@ static inline bool arch_pt_new_edge_needs_flush(void);
 
 /* return true if arch_pt_flush_* honors the broadcast parameter. must be constant. */
 static inline bool arch_pt_flush_can_broadcast(void);
-
-/* return true if arch_pt_switch assumes caches do not need to be flushed if its `current` parameter is true.
- * must be constant. */
-static inline bool arch_pt_switch_assumes_clean_if_current(void);
 
 /* return true if arch_pt_flush_edge flushes all edge pte(s) for the given asid. must be constant. */
 static inline bool arch_pt_flush_edge_coarse(void);
@@ -108,3 +109,11 @@ static inline void arch_pt_flush(void *table, int asid);
 /* wait for tlb flushes broadcasted by the current processor to complete */
 static inline void arch_pt_flush_wait(void);
 
+/* return the highest valid userspace address */
+static inline uintptr_t arch_pt_max_user_addr(void);
+
+/* return the highest valid index for the given level */
+static inline size_t arch_pt_max_index(unsigned level);
+
+/* initialize a new table for the given level. return false on failure. */
+static inline bool arch_pt_init_table(void *table, unsigned level);

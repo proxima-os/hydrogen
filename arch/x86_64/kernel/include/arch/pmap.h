@@ -7,6 +7,7 @@
 #include "mem/memmap.h"
 #include "mem/pmap-protos.h"
 #include "proc/sched.h"
+#include "string.h"
 #include "x86_64/cpu.h"
 #include "x86_64/cr.h"
 #include <stdbool.h>
@@ -20,6 +21,7 @@
 #define X86_64_PTE_DIRTY (1ul << 6)
 #define X86_64_PTE_HUGE (1ul << 7)
 #define X86_64_PTE_GLOBAL (1ul << 8)
+#define X86_64_PTE_ANON (1ul << 9)
 #define X86_64_PTE_NX (1ul << 63)
 
 _Static_assert(PAGE_SHIFT >= 12, "PAGE_SHIFT too small");
@@ -31,10 +33,10 @@ static inline int arch_pt_max_asid(void) {
     return x86_64_cpu_features.pcid ? 4095 : 0;
 }
 
-static inline void arch_switch_pt(void *target, int asid, bool current) {
+static inline void arch_pt_switch(void *target, int asid, bool current) {
     size_t cr3_value = virt_to_phys(target);
 
-    if (x86_64_cpu_features.pcid && (asid < 0 || current)) {
+    if (x86_64_cpu_features.pcid && current) {
         // don't clear the tlb
         cr3_value |= 1ul << 63;
     }
@@ -47,8 +49,8 @@ static inline void arch_switch_pt(void *target, int asid, bool current) {
     x86_64_write_cr3(cr3_value);
 }
 
-static inline void arch_switch_pt_init(void *target, int asid, bool current) {
-    arch_switch_pt(target, asid, current);
+static inline void arch_pt_switch_init(void *target, int asid, bool current) {
+    arch_pt_switch(target, asid, current);
 
     size_t cr4 = x86_64_read_cr4();
     if (x86_64_cpu_features.pcid) cr4 |= X86_64_CR4_PCIDE;
@@ -89,14 +91,14 @@ static inline pte_t arch_pt_create_edge(unsigned level, void *target) {
     return virt_to_phys(target) | X86_64_PTE_ACCESSED | X86_64_PTE_WRITABLE | X86_64_PTE_PRESENT;
 }
 
-static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int flags, bool user) {
+static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int flags) {
     pte_t pte = target | X86_64_PTE_DIRTY | X86_64_PTE_ACCESSED | X86_64_PTE_PRESENT;
     if (level != 0) pte |= X86_64_PTE_HUGE;
 
     if (flags & PMAP_WRITABLE) pte |= X86_64_PTE_WRITABLE;
     if (!(flags & PMAP_EXECUTABLE) && x86_64_cpu_features.nx) pte |= X86_64_PTE_NX;
 
-    if (user) pte |= X86_64_PTE_USER;
+    if (flags & PMAP_USER) pte |= X86_64_PTE_USER;
     else if (x86_64_cpu_features.pge) pte |= X86_64_PTE_GLOBAL;
 
     return pte;
@@ -116,6 +118,17 @@ static inline uint64_t arch_pt_leaf_target(unsigned level, pte_t pte) {
     return (pte & ~((1ul << arch_pt_entry_bits(level)) - 1)) & x86_64_cpu_features.paddr_mask;
 }
 
+static inline int arch_pt_get_leaf_flags(unsigned level, pte_t pte) {
+    ASSERT(!arch_pt_is_edge(level, pte));
+    int flags = PMAP_READABLE;
+
+    if (pte & X86_64_PTE_WRITABLE) flags |= PMAP_WRITABLE;
+    if (pte & X86_64_PTE_ANON) flags |= PMAP_ANONYMOUS;
+    if (!x86_64_cpu_features.nx || (pte & X86_64_PTE_NX) == 0) flags |= PMAP_EXECUTABLE;
+
+    return flags;
+}
+
 static inline bool arch_pt_is_canonical(uintptr_t virt) {
     unsigned bits = cpu_vaddr_bits() - 1;
     uintptr_t top = virt >> bits;
@@ -132,10 +145,6 @@ static inline bool arch_pt_new_edge_needs_flush(void) {
 
 static inline bool arch_pt_flush_can_broadcast(void) {
     return x86_64_cpu_features.invlpgb;
-}
-
-static inline bool arch_pt_switch_assumes_clean_if_current(void) {
-    return false;
 }
 
 static inline bool arch_pt_flush_edge_coarse(void) {
@@ -235,12 +244,14 @@ static inline void arch_pt_flush_edge(uintptr_t virt, void *table, int asid, boo
 }
 
 static inline void arch_pt_flush(void *table, int asid) {
-    if (asid >= 0 || !x86_64_cpu_features.pge) {
+    if (asid >= 0) {
         if (x86_64_cpu_features.invpcid) {
             x86_64_invpcid(0, asid, X86_64_INVPCID_SINGLE_CONTEXT);
         } else {
             x86_64_write_cr3(virt_to_phys(table) | asid);
         }
+    } else if (!x86_64_cpu_features.pge) {
+        x86_64_write_cr3(virt_to_phys(table));
     } else if (x86_64_cpu_features.invpcid) {
         x86_64_invpcid(0, 0, X86_64_INVPCID_ALL_CONTEXTS_GLOBAL);
     } else {
@@ -252,4 +263,17 @@ static inline void arch_pt_flush(void *table, int asid) {
 
 static inline void arch_pt_flush_wait(void) {
     if (x86_64_cpu_features.invlpgb) asm("tlbsync" ::: "memory");
+}
+
+static inline uintptr_t arch_pt_max_user_addr(void) {
+    return (1ul << (cpu_vaddr_bits() - 1)) - 0x1001;
+}
+
+static inline size_t arch_pt_max_index(unsigned level) {
+    return 511;
+}
+
+static inline bool arch_pt_init_table(void *table, unsigned level) {
+    memset(table, 0, PAGE_SIZE);
+    return true;
 }

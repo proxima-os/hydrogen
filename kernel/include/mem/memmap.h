@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arch/memmap.h"
 #include "kernel/pgsize.h"
 #include "util/list.h"
 #include "util/shlist.h"
@@ -19,6 +20,10 @@ typedef struct {
             shlist_t objects;
             size_t num_free;
         } slab;
+        struct {
+            size_t references; // used as a leaf counter in page table pages
+            shlist_node_t free_node;
+        } anon;
     };
 } __attribute__((aligned(64))) page_t;
 
@@ -57,3 +62,6 @@ static inline uint64_t virt_to_phys(void *virt) {
     return (uintptr_t)virt - hhdm_base;
 }
 
+static inline bool is_kernel_address(uintptr_t virt) {
+    return virt & (1ul << (cpu_vaddr_bits() - 1));
+}
