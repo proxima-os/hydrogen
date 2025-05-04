@@ -539,6 +539,7 @@ void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t
     ASSERT(is_kernel_address(dest) == is_kernel_address(dest + (size - 1)));
     ASSERT(is_kernel_address(dest) == (dmap == NULL));
     ASSERT((smap != NULL) == (dmap != NULL));
+    ASSERT(smap != dmap || src + (size - 1) < dest || src > dest + (size - 1));
 
     if (!smap) mutex_acq(&kernel_pt_lock, false);
     migrate_state_t state = migrate_lock();
