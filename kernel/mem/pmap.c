@@ -12,17 +12,8 @@ static void *kernel_page_table;
 static mutex_t kernel_pt_lock;
 
 static void *early_alloc_table(unsigned level) {
-    static void *next[ARCH_PT_MAX_LEVELS];
-
-    size_t size = arch_pt_table_size(level);
-
-    if (!next[level] || ((uintptr_t)next[level] & (size - 1)) == 0) {
-        next[level] = early_alloc_page();
-        memset(next[level], 0, PAGE_SIZE);
-    }
-
-    void *table = next[level];
-    next[level] += size;
+    void *table = early_alloc_page();
+    memset(table, 0, PAGE_SIZE);
     return table;
 }
 
@@ -77,6 +68,7 @@ void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags) {
     ASSERT(arch_pt_get_offset(virt | phys | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
+    ASSERT(arch_pt_is_canonical(virt));
     ASSERT(is_kernel_address(virt));
 
     mutex_acq(&kernel_pt_lock, false);
@@ -131,6 +123,7 @@ void pmap_early_alloc(uintptr_t virt, size_t size, int flags) {
     ASSERT(arch_pt_get_offset(virt | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
+    ASSERT(arch_pt_is_canonical(virt));
     ASSERT(is_kernel_address(virt));
 
     mutex_acq(&kernel_pt_lock, false);

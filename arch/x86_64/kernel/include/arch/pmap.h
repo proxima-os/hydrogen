@@ -47,11 +47,6 @@ static inline unsigned arch_pt_levels(void) {
     return x86_64_cpu_features.la57 ? 5 : 4;
 }
 
-/* return the size of a page table. must be constant for any given level. */
-static inline size_t arch_pt_table_size(unsigned level) {
-    return 0x1000;
-}
-
 /* return true if pages can be mapped directly in the given level */
 static inline bool arch_pt_can_map_direct(unsigned level) {
     return level <= 1 || (level == 2 && x86_64_cpu_features.huge_1gb);
