@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 typedef bool preempt_state_t;
+typedef bool migrate_state_t;
 
 typedef enum {
     THREAD_CREATED,
@@ -68,6 +69,9 @@ void thread_deref(thread_t *thread);
 
 void sched_queue_task(task_t *task);
 _Noreturn void sched_idle(void);
+
+migrate_state_t migrate_lock(void);
+void migrate_unlock(migrate_state_t state);
 
 // the following functions are internal to the scheduler
 

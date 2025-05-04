@@ -28,6 +28,7 @@ typedef struct {
     unsigned cpuid_high;
     x86_64_cpu_vendor_t cpu_vendor;
     x86_64_cpu_vendor_t hyp_vendor;
+    bool pcid : 1;
     bool x2apic : 1;
     bool tsc_deadline : 1;
     bool xsave : 1;
@@ -40,12 +41,14 @@ typedef struct {
     bool pat : 1;
     bool fsgsbase : 1;
     bool smep : 1;
+    bool invpcid : 1;
     bool smap : 1;
     bool umip : 1;
     bool nx : 1;
     bool huge_1gb : 1;
     bool la57 : 1;
     bool tsc_invariant : 1;
+    bool invlpgb : 1;
 } x86_64_cpu_features_t;
 
 extern x86_64_cpu_features_t x86_64_cpu_features;

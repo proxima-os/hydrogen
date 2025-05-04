@@ -19,6 +19,7 @@
 #define X86_64_CR4_UMIP (1ul << 11)
 #define X86_64_CR4_LA57 (1ul << 12)
 #define X86_64_CR4_FSGSBASE (1ul << 16)
+#define X86_64_CR4_PCIDE (1ul << 17)
 #define X86_64_CR4_OSXSAVE (1ul << 18)
 #define X86_64_CR4_SMEP (1ul << 20)
 #define X86_64_CR4_SMAP (1ul << 21)
@@ -54,21 +55,21 @@ static inline size_t x86_64_read_cr8(void) {
 }
 
 static inline void x86_64_write_cr0(size_t value) {
-    asm("mov %0, %%cr0" ::"r"(value));
+    asm("mov %0, %%cr0" ::"r"(value) : "memory");
 }
 
 static inline void x86_64_write_cr2(size_t value) {
-    asm("mov %0, %%cr2" ::"r"(value));
+    asm("mov %0, %%cr2" ::"r"(value) : "memory");
 }
 
 static inline void x86_64_write_cr3(size_t value) {
-    asm("mov %0, %%cr3" ::"r"(value));
+    asm("mov %0, %%cr3" ::"r"(value) : "memory");
 }
 
 static inline void x86_64_write_cr4(size_t value) {
-    asm("mov %0, %%cr4" ::"r"(value));
+    asm("mov %0, %%cr4" ::"r"(value) : "memory");
 }
 
 static inline void x86_64_write_cr8(size_t value) {
-    asm("mov %0, %%cr8" ::"r"(value));
+    asm("mov %0, %%cr8" ::"r"(value) : "memory");
 }

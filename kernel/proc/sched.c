@@ -324,3 +324,11 @@ _Noreturn void sched_idle(void) {
         }
     }
 }
+
+// Migration is currently not implemented, so these are no-ops
+migrate_state_t migrate_lock(void) {
+    return false;
+}
+
+void migrate_unlock(migrate_state_t state) {
+}

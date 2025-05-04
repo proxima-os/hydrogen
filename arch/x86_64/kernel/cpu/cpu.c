@@ -27,6 +27,7 @@ void x86_64_cpu_detect(void) {
     if (feat->cpuid_low >= 1) {
         cpuid(1, &eax, &ebx, &ecx, &edx);
 
+        feat->pcid = ecx & (1u << 17);
         feat->x2apic = ecx & (1u << 21);
         feat->tsc_deadline = ecx & (1u << 24);
         feat->xsave = ecx & (1u << 26);
@@ -38,13 +39,9 @@ void x86_64_cpu_detect(void) {
         feat->mca = edx & (1u << 14);
         feat->pat = edx & (1u << 16);
 
-        if (feat->xsave) cr4_value |= X86_64_CR4_OSXSAVE;
-
         if (feat->hypervisor) {
             cpuid(0x40000000, &feat->cpuid_hyp, &feat->hyp_vendor.ebx, &feat->hyp_vendor.ecx, &feat->hyp_vendor.edx);
         }
-
-        if (feat->de) cr4_value |= X86_64_CR4_DE;
     }
 
     if (feat->cpuid_low >= 7) {
@@ -53,13 +50,9 @@ void x86_64_cpu_detect(void) {
 
         feat->fsgsbase = ebx & (1u << 0);
         feat->smep = ebx & (1u << 7);
+        feat->invpcid = ebx & (1u << 10);
         feat->smap = ebx & (1u << 20);
         feat->umip = ecx & (1u << 2);
-
-        if (feat->fsgsbase) cr4_value |= X86_64_CR4_FSGSBASE;
-        if (feat->smep) cr4_value |= X86_64_CR4_SMEP;
-        if (feat->smap) cr4_value |= X86_64_CR4_SMAP;
-        if (feat->umip) cr4_value |= X86_64_CR4_UMIP;
     }
 
     cpuid(0x80000000, &feat->cpuid_high, &ebx, &ecx, &edx);
@@ -69,8 +62,6 @@ void x86_64_cpu_detect(void) {
 
         feat->nx = edx & (1u << 20);
         feat->huge_1gb = edx & (1u << 26);
-
-        if (feat->nx) efer_value |= X86_64_MSR_EFER_NXE;
     }
 
     if (feat->cpuid_high >= 0x80000007) {
@@ -82,9 +73,19 @@ void x86_64_cpu_detect(void) {
     if (feat->cpuid_high >= 0x80000008) {
         cpuid(0x80000008, &eax, &ebx, &ecx, &edx);
         feat->paddr_mask = (1ull << (eax & 0xff)) - 1;
+        feat->invlpgb = ebx & (1u << 3);
     }
 
     feat->la57 = cr4_value & X86_64_CR4_LA57;
+
+    // NOTE: PCIDE and PGE are only enabled later to ensure there are no stale TLB entries.
+    if (feat->xsave) cr4_value |= X86_64_CR4_OSXSAVE;
+    if (feat->de) cr4_value |= X86_64_CR4_DE;
+    if (feat->fsgsbase) cr4_value |= X86_64_CR4_FSGSBASE;
+    if (feat->smep) cr4_value |= X86_64_CR4_SMEP;
+    if (feat->smap) cr4_value |= X86_64_CR4_SMAP;
+    if (feat->umip) cr4_value |= X86_64_CR4_UMIP;
+    if (feat->nx) efer_value |= X86_64_MSR_EFER_NXE;
 }
 
 static uint64_t gdt[7] = {

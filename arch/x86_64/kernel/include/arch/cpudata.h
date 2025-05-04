@@ -9,6 +9,7 @@ typedef struct {
     uintptr_t syscall_entry_tmp; // must be the 1st field in the struct
     x86_64_tss_t tss;            // must be the 2nd field in the struct
     struct cpu *self;
+    int current_pcid;
 } arch_cpu_t;
 
 #define __this_cpu_type(name) __typeof__(((cpu_t *)0)->name)
