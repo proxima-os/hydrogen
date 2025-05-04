@@ -21,7 +21,7 @@ static void *early_alloc_table(unsigned level) {
         memset(next[level], 0, PAGE_SIZE);
     }
 
-    void *table = next;
+    void *table = next[level];
     next[level] += size;
     return table;
 }
