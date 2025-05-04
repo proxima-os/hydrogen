@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 void *vmalloc(size_t size) {
-    if (likely(size < PAGE_SIZE)) return kmalloc(size);
+    if (likely(size <= PAGE_SIZE)) return kmalloc(size);
 
     size = (size + PAGE_MASK) & ~PAGE_MASK;
     size_t pages = size >> PAGE_SHIFT;
@@ -32,8 +32,8 @@ err:
 }
 
 void *vrealloc(void *ptr, size_t old_size, size_t new_size) {
-    bool old_kmalloc = old_size < PAGE_SIZE;
-    bool new_kmalloc = new_size < PAGE_SIZE;
+    bool old_kmalloc = old_size <= PAGE_SIZE;
+    bool new_kmalloc = new_size <= PAGE_SIZE;
 
     if (likely(old_kmalloc == new_kmalloc)) {
         if (likely(old_kmalloc)) return krealloc(ptr, old_size, new_size);
@@ -87,7 +87,7 @@ void *vrealloc(void *ptr, size_t old_size, size_t new_size) {
 }
 
 void vfree(void *ptr, size_t size) {
-    if (likely(size < PAGE_SIZE)) return kfree(ptr, size);
+    if (likely(size <= PAGE_SIZE)) return kfree(ptr, size);
 
     size = (size + PAGE_MASK) & ~PAGE_MASK;
     pmap_unmap(NULL, (uintptr_t)ptr, size);
