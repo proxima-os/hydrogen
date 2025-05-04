@@ -1,4 +1,5 @@
 #include "mem/pmap.h"
+#include "arch/memmap.h"
 #include "arch/pmap.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -70,6 +71,8 @@ void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags) {
     ASSERT(virt < virt + (size - 1));
     ASSERT(arch_pt_is_canonical(virt));
     ASSERT(is_kernel_address(virt));
+    ASSERT(phys < phys + (size - 1));
+    ASSERT(phys + (size - 1) <= cpu_max_phys_addr());
 
     mutex_acq(&kernel_pt_lock, false);
     do_early_map(kernel_page_table, arch_pt_levels() - 1, virt, phys, size, flags);
