@@ -16,7 +16,7 @@ static void *early_alloc_table(unsigned level) {
 
     size_t size = arch_pt_table_size(level);
 
-    if (!next[level] || ((uintptr_t)next & (size - 1)) == 0) {
+    if (!next[level] || ((uintptr_t)next[level] & (size - 1)) == 0) {
         next[level] = early_alloc_page();
         memset(next[level], 0, PAGE_SIZE);
     }
