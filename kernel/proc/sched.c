@@ -1,10 +1,13 @@
 #include "proc/sched.h"
 #include "arch/idle.h"
 #include "arch/irq.h"
+#include "arch/stack.h"
 #include "cpu/cpudata.h"
 #include "cpu/smp.h"
 #include "errno.h"
 #include "kernel/compiler.h"
+#include "kernel/pgsize.h"
+#include "mem/vmalloc.h"
 #include "proc/rcu.h"
 #include "string.h"
 #include "util/list.h"
@@ -25,21 +28,35 @@ void sched_init(void) {
     sched->current->state = THREAD_RUNNING;
 }
 
-int sched_create_thread(thread_t *thread, void (*func)(void *), void *ctx, void *stack, size_t stack_size) {
+int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx) {
+    thread_t *thread = vmalloc(sizeof(*thread));
+    if (unlikely(!thread)) return ENOMEM;
     memset(thread, 0, sizeof(*thread));
 
-    int error = arch_init_thread(&thread->arch, func, ctx, stack, stack_size);
-    if (unlikely(error)) return error;
+    thread->stack = alloc_kernel_stack();
+    if (unlikely(!thread->stack)) {
+        vfree(thread, sizeof(*thread));
+        return ENOMEM;
+    }
+
+    int error = arch_init_thread(&thread->arch, func, ctx, thread->stack);
+    if (unlikely(error)) {
+        free_kernel_stack(thread->stack);
+        vfree(thread, sizeof(*thread));
+        return error;
+    }
 
     thread->references = REF_INIT(1);
     thread->cpu = get_current_cpu(); // TODO
     thread->state = THREAD_CREATED;
 
+    *out = thread;
     return 0;
 }
 
 static void reap_thread(thread_t *thread) {
-    // TODO
+    arch_reap_thread(&thread->arch);
+    free_kernel_stack(thread->stack);
     thread->state = THREAD_EXITED;
 }
 
@@ -78,7 +95,7 @@ static void do_yield(cpu_t *cpu) {
     if (prev == next) return;
 
     cpu->sched.current = next;
-    post_switch(CONTAINER(thread_t, arch, arch_switch_thread(&prev->arch, &next->arch)));
+    post_switch(arch_switch_thread(prev, next));
 }
 
 static void queue_yield(cpu_t *cpu) {
@@ -280,8 +297,8 @@ _Noreturn void sched_exit(void) {
     UNREACHABLE();
 }
 
-_Noreturn void sched_init_thread(arch_thread_t *prev, void (*func)(void *), void *ctx) {
-    post_switch(CONTAINER(thread_t, arch, prev));
+_Noreturn void sched_init_thread(thread_t *prev, void (*func)(void *), void *ctx) {
+    post_switch(prev);
     spin_rel_noirq(&get_current_cpu()->sched.lock);
     preempt_unlock(PREEMPT_ENABLED);
     func(ctx);
@@ -299,7 +316,7 @@ void thread_deref(thread_t *thread) {
         }
 
         ASSERT(thread->state == THREAD_EXITED);
-        // TODO
+        vfree(thread, sizeof(*thread));
     }
 }
 
@@ -331,4 +348,15 @@ migrate_state_t migrate_lock(void) {
 }
 
 void migrate_unlock(migrate_state_t state) {
+}
+
+_Static_assert(KERNEL_STACK_SIZE >= KERNEL_STACK_ALIGN, "stack must be larger than its alignment");
+_Static_assert(KERNEL_STACK_ALIGN <= PAGE_SIZE, "stack must not be aligned to multi-page boundary");
+
+void *alloc_kernel_stack(void) {
+    return vmalloc(KERNEL_STACK_SIZE);
+}
+
+void free_kernel_stack(void *stack) {
+    vfree(stack, KERNEL_STACK_SIZE);
 }

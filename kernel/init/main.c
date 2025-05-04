@@ -1,4 +1,3 @@
-#include "arch/stack.h"
 #include "init/cmdline.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -17,8 +16,6 @@ __attribute__((used, section(".requests2"))) static LIMINE_REQUESTS_END_MARKER;
 
 LIMINE_REQ LIMINE_BASE_REVISION(3);
 
-_Alignas(KERNEL_STACK_ALIGN) static unsigned char init_stack[KERNEL_STACK_SIZE];
-
 static void kernel_init(void *ctx) {
     memmap_reclaim_loader(); // don't move below anything that can create threads, see memmap.h
 
@@ -35,11 +32,11 @@ USED _Noreturn void kernel_main(void) {
     rcu_init();
     memmap_init();
 
-    thread_t init_thread;
-    int error = sched_create_thread(&init_thread, kernel_init, NULL, init_stack, sizeof(init_stack));
+    thread_t *init_thread;
+    int error = sched_create_thread(&init_thread, kernel_init, NULL);
     if (unlikely(error)) panic("failed to create init thread (%d)", error);
-    sched_wake(&init_thread);
-    thread_deref(&init_thread);
+    sched_wake(init_thread);
+    thread_deref(init_thread);
 
     sched_idle();
 }

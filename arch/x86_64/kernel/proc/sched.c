@@ -1,4 +1,7 @@
 #include "proc/sched.h"
+#include "arch/irq.h"
+#include "arch/stack.h"
+#include "cpu/cpudata.h"
 #include "kernel/compiler.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -16,12 +19,18 @@ typedef struct {
 extern size_t *x86_64_switch_thread(size_t *old_rsp, size_t new_rsp);
 extern const void x86_64_thread_entry;
 
-arch_thread_t *arch_switch_thread(arch_thread_t *from, arch_thread_t *to) {
-    return CONTAINER(arch_thread_t, rsp, x86_64_switch_thread(&from->rsp, to->rsp));
+thread_t *arch_switch_thread(thread_t *from, thread_t *to) {
+    irq_state_t state = save_disable_irq();
+
+    this_cpu_write_tl(arch.tss.rsp[0], (uintptr_t)to->stack + KERNEL_STACK_SIZE);
+    from = CONTAINER(thread_t, arch.rsp, x86_64_switch_thread(&from->arch.rsp, to->arch.rsp));
+
+    restore_irq(state);
+    return from;
 }
 
-int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, void *stack, size_t stack_size) {
-    stack += stack_size;
+int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, void *stack) {
+    stack += KERNEL_STACK_SIZE;
 
     thread_frame_t *frame = stack;
     frame -= 1;
@@ -34,5 +43,8 @@ int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, voi
 }
 
 _Noreturn void x86_64_init_thread(size_t *old_rsp, void (*func)(void *), void *ctx) {
-    sched_init_thread(CONTAINER(arch_thread_t, rsp, old_rsp), func, ctx);
+    sched_init_thread(CONTAINER(thread_t, arch.rsp, old_rsp), func, ctx);
+}
+
+void arch_reap_thread(arch_thread_t *thread) {
 }

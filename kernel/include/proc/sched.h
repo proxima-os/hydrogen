@@ -26,6 +26,7 @@ typedef struct thread {
     list_node_t queue_node;
     list_node_t wait_node;
     arch_thread_t arch;
+    void *stack;
     thread_state_t state;
     int wake_status;
     spinlock_t cpu_lock;
@@ -50,7 +51,7 @@ typedef struct {
 void sched_init(void);
 
 // creates a thread in the THREAD_CREATED state with 1 reference
-int sched_create_thread(thread_t *thread, void (*func)(void *), void *ctx, void *stack, size_t stack_size);
+int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx);
 
 preempt_state_t preempt_lock(void);
 bool preempt_unlock(preempt_state_t state);
@@ -73,10 +74,14 @@ _Noreturn void sched_idle(void);
 migrate_state_t migrate_lock(void);
 void migrate_unlock(migrate_state_t state);
 
+void *alloc_kernel_stack(void);
+void free_kernel_stack(void *stack);
+
 // the following functions are internal to the scheduler
 
-_Noreturn void sched_init_thread(arch_thread_t *prev, void (*func)(void *), void *ctx);
+_Noreturn void sched_init_thread(thread_t *prev, void (*func)(void *), void *ctx);
 
 // returns the thread that was switched from
-arch_thread_t *arch_switch_thread(arch_thread_t *from, arch_thread_t *to);
-int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, void *stack, size_t stack_size);
+thread_t *arch_switch_thread(thread_t *from, thread_t *to);
+int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, void *stack);
+void arch_reap_thread(arch_thread_t *thread);
