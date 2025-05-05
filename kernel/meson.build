@@ -3,6 +3,7 @@ kernel_include += include_directories('include')
 kernel_sources += files(
     'cpu/cpudata.c',
     'cpu/smp.c',
+    'drv/framebuffer.c',
     'init/cmdline.c',
     'init/main.c',
     'mem/kmalloc.c',

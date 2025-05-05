@@ -1,4 +1,5 @@
 #include "init/main.h"
+#include "drv/framebuffer.h"
 #include "init/cmdline.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -32,6 +33,7 @@ USED _Noreturn void kernel_main(void) {
     sched_init();
     rcu_init();
     memmap_init();
+    fb_init();
 
     if (!LIMINE_BASE_REVISION_SUPPORTED) {
         panic("loader does not support requested base revision");
