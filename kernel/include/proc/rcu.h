@@ -15,7 +15,7 @@ typedef struct {
 typedef preempt_state_t rcu_state_t;
 
 #define rcu_read_lock() preempt_lock()
-#define rcu_read(value) __atomic_load_n(&(value), __ATOMIC_RELAXED)
+#define rcu_read(value) __atomic_load_n(&(value), __ATOMIC_ACQUIRE)
 #define rcu_read_unlock(state) preempt_unlock(state)
 
 void rcu_init(void);
