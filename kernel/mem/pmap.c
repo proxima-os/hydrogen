@@ -578,7 +578,7 @@ void pmap_map(pmap_t *pmap, uintptr_t virt, uint64_t phys, size_t size, int flag
     ASSERT(is_kernel_address(virt) == (pmap == NULL));
     ASSERT(phys < phys + (size - 1));
     ASSERT(phys + (size - 1) <= cpu_max_phys_addr());
-    ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE)) == 0);
+    ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE | PMAP_CACHE_MASK)) == 0);
 
     if (!is_kernel_address(virt)) flags |= PMAP_USER;
     flags |= PMAP_ANONYMOUS;
