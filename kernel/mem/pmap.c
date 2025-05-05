@@ -381,9 +381,11 @@ static ssize_t do_prepare(void *table, unsigned level, uintptr_t virt, size_t si
     ssize_t leaves;
 
 #if !PT_PREPARE_DEBUG
-    leaves = arch_pt_get_index(virt + (size - 1), level) - index + 1;
-    virt_to_page(table)->anon.references += leaves;
-    return leaves;
+    if (level == 0) {
+        leaves = arch_pt_get_index(virt + (size - 1), level) - index + 1;
+        virt_to_page(table)->anon.references += leaves;
+        return leaves;
+    }
 #endif
 
     size_t entry_size = 1ul << arch_pt_entry_bits(level);
