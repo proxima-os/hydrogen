@@ -17,7 +17,7 @@ x86_64_cpu_features_t x86_64_cpu_features;
 static size_t cr4_value = X86_64_CR4_OSXMMEXCEPT | X86_64_CR4_OSFXSR | X86_64_CR4_PAE;
 static size_t efer_value = X86_64_MSR_EFER_LME | X86_64_MSR_EFER_SCE;
 
-static LIMINE_REQ const struct limine_paging_mode_request pmode_req = {
+static LIMINE_REQ struct limine_paging_mode_request pmode_req = {
         .id = LIMINE_PAGING_MODE_REQUEST,
         .revision = 1,
         .mode = LIMINE_PAGING_MODE_X86_64_5LVL,

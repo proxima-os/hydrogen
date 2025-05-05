@@ -1,3 +1,4 @@
+#include "init/main.h"
 #include "init/cmdline.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -31,6 +32,12 @@ USED _Noreturn void kernel_main(void) {
     sched_init();
     rcu_init();
     memmap_init();
+
+    if (!LIMINE_BASE_REVISION_SUPPORTED) {
+        panic("loader does not support requested base revision");
+    }
+
+    arch_init();
 
     thread_t *init_thread;
     int error = sched_create_thread(&init_thread, kernel_init, NULL);
