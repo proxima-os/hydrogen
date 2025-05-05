@@ -5,6 +5,9 @@
 #include "cpu/cpudata.h"
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
+#include "uacpi/acpi.h"
+#include "uacpi/status.h"
+#include "uacpi/tables.h"
 #include "util/panic.h"
 #include "util/printk.h"
 #include "x86_64/cpu.h"
@@ -29,6 +32,7 @@
 
 #define LAPIC_ICR_PENDING (1u << 12)
 
+#define LAPIC_LVT_NMI (4u << 8)
 #define LAPIC_LVT_ACTIVE_LOW (1u << 13)
 #define LAPIC_LVT_LEVEL_TRIGGERED (1u << 15)
 #define LAPIC_LVT_MASKED (1u << 16)
@@ -38,6 +42,7 @@
 static uintptr_t lapic_regs;
 static uint64_t lapic_regs_phys;
 static bool have_lapic;
+static struct acpi_madt *lapic_madt;
 
 static void setup_reg_access(void) {
     if (x86_64_cpu_features.x2apic) return;
@@ -89,7 +94,34 @@ static inline void lapic_fence(void) {
 void x86_64_lapic_init(void) {
     if (!x86_64_cpu_features.apic) panic("cpu does not have an integrated local apic");
     setup_reg_access();
+
+    uacpi_table madt_table;
+    uacpi_status status = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &madt_table);
+    if (uacpi_unlikely_error(status)) panic("failed to find madt table: %s", uacpi_status_to_string(status));
+
+    lapic_madt = madt_table.ptr;
     x86_64_lapic_init_local();
+
+    uacpi_table_unref(&madt_table);
+}
+
+static void setup_lint_nmi(uint8_t lint, uint16_t flags) {
+    if (lint >= 2) {
+        printk("lapic: firmware requested local nmi on non-existed input lint%u\n", lint);
+        return;
+    }
+
+    uint32_t lvt = LAPIC_LVT_NMI;
+
+    if ((flags & ACPI_MADT_POLARITY_MASK) == ACPI_MADT_POLARITY_ACTIVE_LOW) {
+        lvt |= LAPIC_LVT_ACTIVE_LOW;
+    }
+
+    if ((flags & ACPI_MADT_TRIGGERING_MASK) == ACPI_MADT_TRIGGERING_LEVEL) {
+        printk("lapic: firmware requested level-triggered local nmi, but nmis are always edge triggered\n");
+    }
+
+    lapic_write(lint ? LAPIC_LVT_LINT1 : LAPIC_LVT_LINT0, lvt);
 }
 
 void x86_64_lapic_init_local(void) {
@@ -102,6 +134,31 @@ void x86_64_lapic_init_local(void) {
 
     if (get_current_cpu() == &boot_cpu) {
         this_cpu_write(arch.apic_id, id);
+
+        struct acpi_entry_hdr *cur = lapic_madt->entries;
+        struct acpi_entry_hdr *end = (void *)lapic_madt + lapic_madt->hdr.length;
+
+        while (cur < end) {
+            if (cur->type == ACPI_MADT_ENTRY_TYPE_LAPIC) {
+                struct acpi_madt_lapic *entry = (void *)cur;
+
+                if (entry->id == id) {
+                    this_cpu_write(arch.acpi_id, entry->uid);
+                    break;
+                }
+            } else if (cur->type == ACPI_MADT_ENTRY_TYPE_LOCAL_X2APIC) {
+                struct acpi_madt_x2apic *entry = (void *)cur;
+
+                if (entry->id == id) {
+                    this_cpu_write(arch.acpi_id, entry->uid);
+                    break;
+                }
+            }
+
+            cur = (void *)cur + cur->length;
+        }
+
+        if (cur >= end) panic("failed to find acpi id for boot cpu");
     } else {
         ENSURE(id == this_cpu_read(arch.apic_id));
     }
@@ -119,6 +176,29 @@ void x86_64_lapic_init_local(void) {
     if (error) panic("lapic: got error 0x%x during initialization\n", error);
 
     have_lapic = true;
+
+    struct acpi_entry_hdr *cur = lapic_madt->entries;
+    struct acpi_entry_hdr *end = (void *)lapic_madt + lapic_madt->hdr.length;
+
+    uint32_t self_id = this_cpu_read(arch.acpi_id);
+
+    while (cur < end) {
+        if (cur->type == ACPI_MADT_ENTRY_TYPE_LAPIC_NMI) {
+            struct acpi_madt_lapic_nmi *entry = (void *)cur;
+
+            if (entry->uid == 0xff || entry->uid == self_id) {
+                setup_lint_nmi(entry->lint, entry->flags);
+            }
+        } else if (cur->type == ACPI_MADT_ENTRY_TYPE_LOCAL_X2APIC_NMI) {
+            struct acpi_madt_x2apic_nmi *entry = (void *)cur;
+
+            if (entry->uid == 0xffffffff || entry->uid == self_id) {
+                setup_lint_nmi(entry->lint, entry->flags);
+            }
+        }
+
+        cur = (void *)cur + cur->length;
+    }
 }
 
 void x86_64_lapic_eoi(void) {
