@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#define X86_64_MSR_KVM_SYSTEM_TIME 0x12
+
 #define X86_64_MSR_APIC_BASE 0x1b
 #define X86_64_MSR_APIC_BASE_EXTD (1ull << 10)
 #define X86_64_MSR_APIC_BASE_ENABLE (1ull << 11)
@@ -15,6 +17,8 @@
 
 #define X86_64_MSR_MCi_CTL(i) (0x400 + (i) * 4)
 #define X86_64_MSR_MCi_STATUS(i) (0x401 + (i) * 4)
+
+#define X86_64_MSR_KVM_SYSTEM_TIME_NEW 0x4b564d01
 
 #define X86_64_MSR_EFER 0xc0000080
 #define X86_64_MSR_EFER_SCE (1ull << 0)

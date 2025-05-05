@@ -29,6 +29,7 @@ typedef struct {
 
 extern uintptr_t hhdm_base;
 extern uintptr_t page_array_base;
+extern uint64_t kernel_base;
 
 void memmap_init(void);
 
@@ -67,4 +68,9 @@ static inline uint64_t virt_to_phys(void *virt) {
 
 static inline bool is_kernel_address(uintptr_t virt) {
     return virt & (1ul << (cpu_vaddr_bits() - 1));
+}
+
+static inline uint64_t sym_to_phys(const void *sym) {
+    extern const void _start;
+    return kernel_base + ((uintptr_t)sym - (uintptr_t)&_start);
 }

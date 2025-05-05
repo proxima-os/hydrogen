@@ -1,15 +1,16 @@
 #include "x86_64/hpet.h"
 #include "arch/mmio.h"
 #include "arch/pmap.h"
-#include "arch/time.h"
 #include "kernel/compiler.h"
 #include "kernel/time.h"
 #include "mem/kvmm.h"
 #include "uacpi/acpi.h"
 #include "uacpi/status.h"
 #include "uacpi/tables.h"
+#include "util/panic.h"
 #include "util/printk.h"
 #include "util/time.h"
+#include "x86_64/time.h"
 #include <stdint.h>
 
 #define HPET_CAP 0x00
@@ -23,6 +24,8 @@
 #define HPET_CFG_ENABLE (1ull << 0)
 
 #define HPET_TIMER_CFG_IRQ_ENABLE (1ull << 2)
+
+#define HPET_REGS_SIZE 1024
 
 static uintptr_t hpet_regs;
 static timeconv_t hpet_conv;
@@ -39,6 +42,17 @@ static uint64_t hpet_read_time(void) {
     return timeconv_apply(hpet_conv, hpet_read(HPET_CNT));
 }
 
+static void hpet_cleanup(void) {
+    unmap_mmio(hpet_regs, HPET_REGS_SIZE);
+    hpet_regs = 0;
+}
+
+static void hpet_finalize(void) {
+    if ((hpet_read(HPET_CAP) & HPET_CAP_COUNTER_64) == 0) {
+        panic("hpet: cannot use 32-bit hpet as system time source");
+    }
+}
+
 void x86_64_hpet_init(void) {
     uacpi_table table;
     uacpi_status status = uacpi_table_find_by_signature(ACPI_HPET_SIGNATURE, &table);
@@ -50,7 +64,7 @@ void x86_64_hpet_init(void) {
     int error = map_mmio(
             &hpet_regs,
             ((struct acpi_hpet *)table.ptr)->address.address,
-            1024,
+            HPET_REGS_SIZE,
             PMAP_READABLE | PMAP_WRITABLE | PMAP_CACHE_UC
     );
     uacpi_table_unref(&table);
@@ -66,10 +80,6 @@ void x86_64_hpet_init(void) {
     uint32_t hpet_period_fs = cap >> 32;
     printk("hpet: counter period is %u.%6u nanoseconds\n", hpet_period_fs / 1000000, hpet_period_fs % 1000000);
 
-    if ((cap & HPET_CAP_COUNTER_64) == 0) {
-        printk("hpet: counter is 32 bit\n");
-    }
-
     size_t max_timer = (cap >> 8) & 0x1f;
 
     for (size_t i = 0; i <= max_timer; i++) {
@@ -80,5 +90,6 @@ void x86_64_hpet_init(void) {
     hpet_write(HPET_CFG, cfg);
 
     hpet_conv = timeconv_create((FS_PER_SEC + (hpet_period_fs / 2)) / hpet_period_fs, NS_PER_SEC);
-    x86_64_read_time = hpet_read_time;
+
+    x86_64_switch_timer(hpet_read_time, hpet_cleanup, hpet_finalize);
 }

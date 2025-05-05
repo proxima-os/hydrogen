@@ -21,6 +21,7 @@ typedef union {
 } x86_64_cpu_vendor_t;
 
 static const x86_64_cpu_vendor_t x86_64_cpu_vendor_intel = {.text = "GenuineIntel"};
+static const x86_64_cpu_vendor_t x86_64_cpu_vendor_kvm = {.ebx = 0x4b4d564b, .ecx = 0x564b4d56, .edx = 0x4d};
 
 typedef struct {
     uint64_t paddr_mask;

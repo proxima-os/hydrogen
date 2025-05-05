@@ -19,6 +19,7 @@
 
 uintptr_t hhdm_base;
 uintptr_t page_array_base;
+uint64_t kernel_base;
 
 static uint64_t max_phys_addr;
 
@@ -196,15 +197,8 @@ static void create_page_array_func(uint64_t head, uint64_t tail, void *ptr) {
     ctx->in_area = true;
 }
 
-static void map_segment(
-        struct limine_executable_address_response *addr,
-        const void *start,
-        const void *end,
-        int flags
-) {
-    uint64_t phys = addr->physical_base + ((uintptr_t)start - addr->virtual_base);
-    size_t size = end - start;
-    pmap_early_map((uintptr_t)start, phys, size, flags);
+static void map_segment(const void *start, const void *end, int flags) {
+    pmap_early_map((uintptr_t)start, sym_to_phys(start), (uintptr_t)end - (uintptr_t)start, flags);
 }
 
 static void commit_usable(uint64_t head, uint64_t tail) {
@@ -404,6 +398,7 @@ void memmap_init(void) {
     ENSURE(memmap_req.response != NULL);
 
     hhdm_base = hhdm_req.response->offset;
+    kernel_base = kaddr_req.response->physical_base + ((uintptr_t)&_start - kaddr_req.response->virtual_base);
     loader_map = memmap_req.response;
 
     max_phys_addr = cpu_max_phys_addr();
@@ -434,9 +429,9 @@ void memmap_init(void) {
     early_alloc_idx = loader_map->entry_count;
 
     pmap_init();
-    map_segment(kaddr_req.response, &_start, &_erodata, PMAP_READABLE);
-    map_segment(kaddr_req.response, &_erodata, &_etext, PMAP_READABLE | PMAP_EXECUTABLE);
-    map_segment(kaddr_req.response, &_etext, &_end, PMAP_READABLE | PMAP_WRITABLE);
+    map_segment(&_start, &_erodata, PMAP_READABLE);
+    map_segment(&_erodata, &_etext, PMAP_READABLE | PMAP_EXECUTABLE);
+    map_segment(&_etext, &_end, PMAP_READABLE | PMAP_WRITABLE);
     iter_ram_areas(create_hhdm_func, NULL);
     pmap_init_switch();
 
