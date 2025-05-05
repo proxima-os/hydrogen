@@ -23,6 +23,7 @@
 #define X86_64_MSR_EFER 0xc0000080
 #define X86_64_MSR_EFER_SCE (1ull << 0)
 #define X86_64_MSR_EFER_LME (1ull << 8)
+#define X86_64_MSR_EFER_LMA (1ull << 10)
 #define X86_64_MSR_EFER_NXE (1ull << 11)
 
 #define X86_64_MSR_GS_BASE 0xc0000101
