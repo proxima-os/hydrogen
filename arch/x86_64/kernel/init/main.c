@@ -1,10 +1,13 @@
 #include "init/main.h"
 #include "acpi/acpi.h"
+#include "arch/irq.h"
 #include "arch/stack.h"
 #include "cpu/cpudata.h"
 #include "kernel/compiler.h"
 #include "util/slist.h"
 #include "x86_64/cpu.h"
+#include "x86_64/hpet.h"
+#include "x86_64/ioapic.h"
 #include "x86_64/lapic.h"
 #include "x86_64/tss.h"
 #include <stdint.h>
@@ -23,4 +26,5 @@ void arch_init(void) {
     x86_64_lapic_init();
     x86_64_ioapic_init();
     enable_irq();
+    x86_64_hpet_init();
 }

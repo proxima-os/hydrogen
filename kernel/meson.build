@@ -19,6 +19,7 @@ kernel_sources += files(
     'util/panic.c',
     'util/printk.c',
     'util/spinlock.c',
+    'util/time.c',
 )
 
 linker_script = files('kernel.lds')[0]

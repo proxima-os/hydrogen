@@ -14,4 +14,6 @@ kernel_sources += files(
     'init/main.S',
     'proc/sched.c',
     'proc/sched.S',
+    'time/hpet.c',
+    'time/time.c',
 )

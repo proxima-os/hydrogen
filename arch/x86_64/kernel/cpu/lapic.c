@@ -133,6 +133,8 @@ void x86_64_lapic_init_local(void) {
     if (!x86_64_cpu_features.x2apic) id >>= 24;
 
     if (get_current_cpu() == &boot_cpu) {
+        if (id > 0xff) panic("lapic: boot cpu is not addressable by i/o apics");
+
         this_cpu_write(arch.apic_id, id);
 
         struct acpi_entry_hdr *cur = lapic_madt->entries;
