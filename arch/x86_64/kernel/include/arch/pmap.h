@@ -240,15 +240,16 @@ static inline void x86_64_invlpgb(uintptr_t virt, int asid, int type) {
 }
 
 static inline void arch_pt_flush_leaf(uintptr_t virt, void *table, int asid, bool broadcast, bool current) {
-    if (broadcast) {
-        if (x86_64_cpu_features.invlpgb) {
-            if (asid >= 0) {
-                x86_64_invlpgb(virt, asid, X86_64_INVLPGB_ADDRESS | X86_64_INVLPGB_PCID | X86_64_INVLPGB_ONLY_LEAF);
-            }
-
-            x86_64_invlpgb(virt, 0, X86_64_INVLPGB_ADDRESS | X86_64_INVLPGB_ONLY_LEAF | X86_64_INVLPGB_GLOBAL);
+    if (broadcast && x86_64_cpu_features.invlpgb) {
+        if (asid >= 0) {
+            x86_64_invlpgb(virt, asid, X86_64_INVLPGB_ADDRESS | X86_64_INVLPGB_PCID | X86_64_INVLPGB_ONLY_LEAF);
         }
-    } else if (current) {
+
+        x86_64_invlpgb(virt, 0, X86_64_INVLPGB_ADDRESS | X86_64_INVLPGB_ONLY_LEAF | X86_64_INVLPGB_GLOBAL);
+        return;
+    }
+
+    if (current) {
         if (asid >= 0 && x86_64_cpu_features.invpcid) {
             x86_64_invpcid(virt, asid, X86_64_INVPCID_SINGLE_ADDRESS);
         }
@@ -258,15 +259,15 @@ static inline void arch_pt_flush_leaf(uintptr_t virt, void *table, int asid, boo
 }
 
 static inline void arch_pt_flush_edge(uintptr_t virt, void *table, int asid, bool broadcast, bool current) {
-    if (broadcast) {
-        if (x86_64_cpu_features.invlpgb) {
-            if (asid >= 0) {
-                x86_64_invlpgb(virt, asid, X86_64_INVLPGB_ADDRESS | X86_64_INVLPGB_PCID);
-            }
-
-            x86_64_invlpgb(virt, 0, X86_64_INVLPGB_ADDRESS | X86_64_INVLPGB_GLOBAL);
+    if (broadcast && x86_64_cpu_features.invlpgb) {
+        if (asid >= 0) {
+            x86_64_invlpgb(virt, asid, X86_64_INVLPGB_ADDRESS | X86_64_INVLPGB_PCID);
         }
-    } else if (current) {
+
+        x86_64_invlpgb(virt, 0, X86_64_INVLPGB_ADDRESS | X86_64_INVLPGB_GLOBAL);
+    }
+
+    if (current) {
         if (asid >= 0 || !x86_64_cpu_features.pcid) {
             x86_64_invlpg_asid(0, table, asid);
         } else {
