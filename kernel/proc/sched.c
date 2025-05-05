@@ -80,6 +80,7 @@ static thread_t *dequeue(cpu_t *cpu) {
 
 static void do_yield(cpu_t *cpu) {
     ASSERT(cpu == get_current_cpu());
+    ASSERT(arch_irq_enabled());
 
     rcu_quiet(cpu);
 
