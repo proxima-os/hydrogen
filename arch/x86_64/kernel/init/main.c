@@ -33,5 +33,5 @@ void arch_init(void) {
     x86_64_hpet_init();
     x86_64_kvmclock_init();
     x86_64_tsc_init();
-    if (x86_64_timer_confirm) x86_64_timer_confirm();
+    if (x86_64_timer_confirm) x86_64_timer_confirm(true);
 }

@@ -47,8 +47,8 @@ static void hpet_cleanup(void) {
     hpet_regs = 0;
 }
 
-static void hpet_confirm(void) {
-    if ((hpet_read(HPET_CAP) & HPET_CAP_COUNTER_64) == 0) {
+static void hpet_confirm(bool final) {
+    if (final && (hpet_read(HPET_CAP) & HPET_CAP_COUNTER_64) == 0) {
         panic("hpet: cannot use 32-bit hpet as system time source");
     }
 }

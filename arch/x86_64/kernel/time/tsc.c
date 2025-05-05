@@ -70,7 +70,7 @@ static bool determine_frequency(void) {
         }
     }
 
-    if (x86_64_timer_confirm) x86_64_timer_confirm();
+    if (x86_64_timer_confirm) x86_64_timer_confirm(false);
 
     timer_data_t start, end;
     read_time_stable(&start);
