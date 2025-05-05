@@ -15,7 +15,7 @@
 #define PMAP_CACHE_WC (2 << 3)
 #define PMAP_CACHE_UC (3 << 3)
 #define PMAP_USER (1 << 5)      /* internal */
-#define PMAP_ANONYMOUS (1 << 5) /* internal */
+#define PMAP_ANONYMOUS (1 << 6) /* internal */
 
 /* definitions that need to be provided by arch code:
  * #define ARCH_PT_MAX_LEVEL ...
