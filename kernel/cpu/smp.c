@@ -2,6 +2,7 @@
 #include "arch/idle.h"
 #include "arch/smp.h"
 #include "cpu/cpudata.h"
+#include "kernel/compiler.h"
 #include "util/slist.h"
 
 static smp_call_id_t next = 1;
@@ -33,10 +34,15 @@ smp_call_id_t smp_call_remote_async(cpu_t *dest, void (*func)(void *), void *ctx
     smp_call_id_t id = __atomic_fetch_add(&next, 1, __ATOMIC_ACQ_REL);
 
     if (dest) {
+        ASSERT(dest != get_current_cpu());
         trigger_call(dest, id, func, ctx);
     } else {
+        cpu_t *cur = get_current_cpu();
+
         SLIST_FOREACH(cpus, cpu_t, node, cpu) {
-            trigger_call(cpu, id, func, ctx);
+            if (cpu != cur) {
+                trigger_call(cpu, id, func, ctx);
+            }
         }
     }
 
@@ -49,9 +55,13 @@ again:
         smp_call_id_t current = __atomic_load_n(&dest->remote_call.current, __ATOMIC_ACQUIRE);
         if (current != 0 && current < id) goto again;
     } else {
-        SLIST_FOREACH(cpus, cpu_t, node, cur) {
-            smp_call_id_t current = __atomic_load_n(&cur->remote_call.current, __ATOMIC_ACQUIRE);
-            if (current != 0 && current < id) goto again;
+        cpu_t *cur = get_current_cpu();
+
+        SLIST_FOREACH(cpus, cpu_t, node, cpu) {
+            if (cur != cpu) {
+                smp_call_id_t current = __atomic_load_n(&cpu->remote_call.current, __ATOMIC_ACQUIRE);
+                if (current != 0 && current < id) goto again;
+            }
         }
     }
 }
