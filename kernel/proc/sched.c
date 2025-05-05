@@ -14,10 +14,13 @@
 #include "util/refcount.h"
 #include "util/slist.h"
 #include "util/spinlock.h"
+#include "util/time.h"
 #include <stdbool.h>
 
 #define PREEMPT_ENABLED 0
 #define PREEMPT_DISABLED 1
+
+static void handle_timeout_event(timer_event_t *self);
 
 void sched_init(void) {
     cpu_t *cpu = get_current_cpu();
@@ -49,6 +52,7 @@ int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx) {
     thread->references = REF_INIT(1);
     thread->cpu = get_current_cpu(); // TODO
     thread->state = THREAD_CREATED;
+    thread->timeout_event.func = handle_timeout_event;
 
     *out = thread;
     return 0;
@@ -80,7 +84,6 @@ static thread_t *dequeue(cpu_t *cpu) {
 
 static void do_yield(cpu_t *cpu) {
     ASSERT(cpu == get_current_cpu());
-    ASSERT(arch_irq_enabled());
 
     rcu_quiet(cpu);
 
@@ -97,7 +100,9 @@ static void do_yield(cpu_t *cpu) {
     prev->active = false;
     next->active = true;
 
+    irq_state_t state = save_disable_irq();
     post_switch(arch_switch_thread(prev, next));
+    restore_irq(state);
 }
 
 static void queue_yield(cpu_t *cpu) {
@@ -182,10 +187,28 @@ static void do_wake(cpu_t *cpu, thread_t *thread, int status) {
     ASSERT(cpu == thread->cpu);
     ASSERT(thread->state == THREAD_BLOCKED || thread->state == THREAD_BLOCKED_INTERRUPTIBLE);
 
+    if (thread->timeout_event.deadline != 0) {
+        timer_cancel_event(&thread->timeout_event);
+        thread->timeout_event.deadline = 0;
+    }
+
     thread->state = THREAD_RUNNING;
     thread->wake_status = status;
     if (!thread->active) enqueue(cpu, thread);
     maybe_preempt(cpu);
+}
+
+static void handle_timeout_event(timer_event_t *self) {
+    thread_t *thread = CONTAINER(thread_t, timeout_event, self);
+    cpu_t *cpu = thread->cpu;
+    spin_acq_noirq(&cpu->sched.lock);
+
+    if (thread->state == THREAD_BLOCKED || thread->state == THREAD_BLOCKED_INTERRUPTIBLE) {
+        thread->timeout_event.deadline = 0;
+        do_wake(cpu, thread, ETIMEDOUT);
+    }
+
+    spin_rel_noirq(&cpu->sched.lock);
 }
 
 bool sched_wake(thread_t *thread) {
@@ -248,7 +271,7 @@ void sched_prepare_wait(bool interruptible) {
     preempt_unlock(state);
 }
 
-int sched_perform_wait(void) {
+int sched_perform_wait(uint64_t deadline) {
     preempt_state_t state = preempt_lock();
     ASSERT(state == PREEMPT_ENABLED);
 
@@ -258,6 +281,12 @@ int sched_perform_wait(void) {
     thread_t *thread = cpu->sched.current;
 
     if (thread->state == THREAD_BLOCKED || thread->state == THREAD_BLOCKED_INTERRUPTIBLE) {
+        thread->timeout_event.deadline = deadline;
+
+        if (deadline != 0) {
+            timer_queue_event(&thread->timeout_event);
+        }
+
         thread->wake_status = -1;
         do_yield(cpu);
         cpu = get_current_cpu();
@@ -302,6 +331,7 @@ _Noreturn void sched_exit(void) {
 
 _Noreturn void sched_init_thread(thread_t *prev, void (*func)(void *), void *ctx) {
     post_switch(prev);
+    enable_irq();
     spin_rel_noirq(&get_current_cpu()->sched.lock);
     preempt_unlock(PREEMPT_ENABLED);
     func(ctx);

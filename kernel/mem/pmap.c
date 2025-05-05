@@ -460,7 +460,7 @@ bool pmap_prepare(pmap_t *pmap, uintptr_t virt, size_t size) {
     ASSERT(is_kernel_address(virt) == is_kernel_address(virt + (size - 1)));
     ASSERT(is_kernel_address(virt) == (pmap == NULL));
 
-    if (!pmap) mutex_acq(&kernel_pt_lock, false);
+    if (!pmap) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
@@ -524,7 +524,7 @@ void pmap_alloc(pmap_t *pmap, uintptr_t virt, size_t size, int flags) {
     if (!is_kernel_address(virt)) flags |= PMAP_USER;
     flags |= PMAP_ANONYMOUS;
 
-    if (!pmap) mutex_acq(&kernel_pt_lock, false);
+    if (!pmap) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
@@ -588,7 +588,7 @@ void pmap_map(pmap_t *pmap, uintptr_t virt, uint64_t phys, size_t size, int flag
 
     if (!is_kernel_address(virt)) flags |= PMAP_USER;
 
-    if (!pmap) mutex_acq(&kernel_pt_lock, false);
+    if (!pmap) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
@@ -646,7 +646,7 @@ void pmap_remap(pmap_t *pmap, uintptr_t virt, size_t size, int flags) {
     ASSERT(is_kernel_address(virt) == (pmap == NULL));
     ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE)) == 0);
 
-    if (!pmap) mutex_acq(&kernel_pt_lock, false);
+    if (!pmap) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
@@ -673,7 +673,7 @@ void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t
     ASSERT((smap != NULL) == (dmap != NULL));
     ASSERT(smap != dmap || src + (size - 1) < dest || src > dest + (size - 1));
 
-    if (!smap) mutex_acq(&kernel_pt_lock, false);
+    if (!smap) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
@@ -762,7 +762,7 @@ void pmap_unmap(pmap_t *pmap, uintptr_t virt, size_t size) {
     ASSERT(is_kernel_address(virt) == is_kernel_address(virt + (size - 1)));
     ASSERT(is_kernel_address(virt) == (pmap == NULL));
 
-    if (!pmap) mutex_acq(&kernel_pt_lock, false);
+    if (!pmap) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
@@ -840,7 +840,7 @@ void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags) {
     ASSERT(phys + (size - 1) <= cpu_max_phys_addr());
     ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE)) == 0);
 
-    mutex_acq(&kernel_pt_lock, false);
+    mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
@@ -907,7 +907,7 @@ void pmap_early_alloc(uintptr_t virt, size_t size, int flags) {
     ASSERT(is_kernel_address(virt));
     ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE)) == 0);
 
-    mutex_acq(&kernel_pt_lock, false);
+    mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
@@ -939,7 +939,7 @@ static size_t build_leaf_counts(void *table, unsigned level) {
 }
 
 void pmap_early_cleanup(void) {
-    mutex_acq(&kernel_pt_lock, false);
+    mutex_acq(&kernel_pt_lock, 0, false);
     build_leaf_counts(kernel_page_table, arch_pt_levels() - 1);
     mutex_rel(&kernel_pt_lock);
 }

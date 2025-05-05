@@ -5,6 +5,7 @@
 #include "util/refcount.h"
 #include "util/slist.h"
 #include "util/spinlock.h"
+#include "util/time.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -28,6 +29,7 @@ typedef struct thread {
     arch_thread_t arch;
     void *stack;
     thread_state_t state;
+    timer_event_t timeout_event;
     int wake_status;
     spinlock_t cpu_lock;
     bool active;
@@ -61,7 +63,7 @@ bool sched_wake(thread_t *thread); // if thread is in THREAD_CREATED, increments
 bool sched_interrupt(thread_t *thread);
 
 void sched_prepare_wait(bool interruptible);
-int sched_perform_wait(void);
+int sched_perform_wait(uint64_t deadline);
 void sched_cancel_wait(void);
 _Noreturn void sched_exit(void);
 

@@ -2,10 +2,25 @@
 
 #include "arch/time.h"
 #include "kernel/time.h"
+#include "util/list.h"
 #include <stdint.h>
 
 #define FS_PER_SEC 1000000000000000ull
 #define NS_PER_SEC 1000000000ull
+
+typedef struct timer_event {
+    list_node_t node;
+    void (*func)(struct timer_event *self);
+    uint64_t deadline;
+    struct cpu *cpu;
+    bool running;
+} timer_event_t;
+
+// NOTE: The caller is responsible for ensuring this function is not called while
+// the event is queued!
+void timer_queue_event(timer_event_t *event);
+
+void timer_cancel_event(timer_event_t *event);
 
 timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq);
 

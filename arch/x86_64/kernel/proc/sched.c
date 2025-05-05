@@ -1,5 +1,4 @@
 #include "proc/sched.h"
-#include "arch/irq.h"
 #include "arch/stack.h"
 #include "cpu/cpudata.h"
 #include "kernel/compiler.h"
@@ -20,11 +19,7 @@ extern size_t *x86_64_switch_thread(size_t *old_rsp, size_t new_rsp);
 extern const void x86_64_thread_entry;
 
 thread_t *arch_switch_thread(thread_t *from, thread_t *to) {
-    irq_state_t state = save_disable_irq();
-
     this_cpu_write_tl(arch.tss.rsp[0], (uintptr_t)to->stack + KERNEL_STACK_SIZE);
-
-    restore_irq(state);
     return CONTAINER(thread_t, arch.rsp, x86_64_switch_thread(&from->arch.rsp, to->arch.rsp));
 }
 

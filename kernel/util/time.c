@@ -1,5 +1,11 @@
 #include "util/time.h"
 #include "arch/divide.h"
+#include "arch/irq.h"
+#include "arch/time.h"
+#include "cpu/cpudata.h"
+#include "kernel/compiler.h"
+#include "util/list.h"
+#include "util/spinlock.h"
 #include <stdint.h>
 
 timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq) {
@@ -41,4 +47,96 @@ timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq) {
 }
 
 void time_handle_irq(void) {
+    list_t triggered = {};
+
+    cpu_t *cpu = get_current_cpu();
+    spin_acq_noirq(&cpu->events_lock);
+
+    uint64_t time = arch_read_time();
+
+    timer_event_t *event;
+
+    for (;;) {
+        event = LIST_HEAD(cpu->events, timer_event_t, node);
+        if (!event || time < event->deadline) break;
+
+        list_remove(&cpu->events, &event->node);
+        list_insert_tail(&triggered, &event->node);
+        __atomic_store_n(&event->cpu, NULL, __ATOMIC_RELEASE);
+        __atomic_store_n(&event->running, true, __ATOMIC_RELEASE);
+    }
+
+    if (event != NULL) {
+        arch_queue_timer_irq(event->deadline);
+    }
+
+    spin_rel_noirq(&cpu->events_lock);
+
+    for (;;) {
+        timer_event_t *event = LIST_REMOVE_HEAD(triggered, timer_event_t, node);
+        if (!event) break;
+        void (*func)(timer_event_t *) = event->func;
+        __atomic_store_n(&event->running, false, __ATOMIC_RELEASE);
+        func(event);
+    }
+}
+
+void timer_queue_event(timer_event_t *event) {
+    ASSERT(__atomic_load_n(&event->cpu, __ATOMIC_ACQUIRE) == NULL);
+    ASSERT(event->deadline != 0);
+
+    irq_state_t state = save_disable_irq();
+    cpu_t *cpu = get_current_cpu();
+    spin_acq_noirq(&cpu->events_lock);
+
+    timer_event_t *next = LIST_HEAD(cpu->events, timer_event_t, node);
+    while (next && next->deadline <= event->deadline) next = LIST_NEXT(*next, timer_event_t, node);
+
+    list_insert_before(&cpu->events, &next->node, &event->node);
+    __atomic_store_n(&event->cpu, cpu, __ATOMIC_RELEASE);
+
+    if (event == LIST_HEAD(cpu->events, timer_event_t, node)) {
+        arch_queue_timer_irq(event->deadline);
+    }
+
+    spin_rel_noirq(&cpu->events_lock);
+    restore_irq(state);
+}
+
+static void ensure_not_running(timer_event_t *event) {
+    for (;;) {
+        if (!__atomic_load_n(&event->running, __ATOMIC_ACQUIRE)) return;
+    }
+}
+
+void timer_cancel_event(timer_event_t *event) {
+    cpu_t *cpu = __atomic_load_n(&event->cpu, __ATOMIC_ACQUIRE);
+
+    if (cpu == NULL) {
+        ensure_not_running(event);
+        return;
+    }
+
+    irq_state_t state = spin_acq(&cpu->events_lock);
+
+    for (;;) {
+        cpu_t *ncpu = __atomic_load_n(&event->cpu, __ATOMIC_ACQUIRE);
+        if (ncpu == cpu) break;
+
+        spin_rel_noirq(&cpu->events_lock);
+        cpu = ncpu;
+
+        if (cpu == NULL) {
+            ensure_not_running(event);
+            return;
+        }
+
+        spin_acq_noirq(&cpu->events_lock);
+    }
+
+    list_remove(&cpu->events, &event->node);
+    __atomic_store_n(&event->cpu, NULL, __ATOMIC_RELEASE);
+
+    spin_rel(&cpu->events_lock, state);
+    ensure_not_running(event);
 }

@@ -5,7 +5,9 @@
 #include "mem/pmap.h"
 #include "proc/rcu.h"
 #include "proc/sched.h"
+#include "util/list.h"
 #include "util/slist.h"
+#include "util/spinlock.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -21,6 +23,8 @@ typedef struct cpu {
         void (*func)(void *);
         void *ctx;
     } remote_call;
+    list_t events;
+    spinlock_t events_lock;
 } cpu_t;
 
 extern cpu_t boot_cpu;

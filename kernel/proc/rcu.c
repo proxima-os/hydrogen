@@ -98,5 +98,5 @@ static void do_event_signal(task_t *ptr) {
 void rcu_sync(void) {
     rcu_task_t task = {.base.func = do_event_signal};
     rcu_call(&task.base);
-    event_wait(&task.event, false);
+    event_wait(&task.event, 0, false);
 }

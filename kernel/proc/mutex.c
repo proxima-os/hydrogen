@@ -17,7 +17,7 @@ static bool try_lock_weak(mutex_t *mutex) {
     return __atomic_compare_exchange_n(&mutex->state, &wanted, MUTEX_LOCKED, true, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
 }
 
-int mutex_acq(mutex_t *mutex, bool interruptible) {
+int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible) {
     if (likely(try_lock_weak(mutex))) return 0;
 
     for (int i = 0; i < SPIN_ITERS; i++) {
@@ -34,7 +34,7 @@ int mutex_acq(mutex_t *mutex, bool interruptible) {
         list_insert_tail(&mutex->waiters, &current_thread->wait_node);
         sched_prepare_wait(interruptible);
         spin_rel_noirq(&mutex->lock);
-        status = sched_perform_wait();
+        status = sched_perform_wait(deadline);
         spin_acq_noirq(&mutex->lock);
 
         if (status) {

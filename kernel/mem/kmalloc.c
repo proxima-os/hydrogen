@@ -73,7 +73,7 @@ void *kmalloc(size_t size) {
     if (size < MIN_ALLOC_SIZE) size = MIN_ALLOC_SIZE;
 
     unsigned bucket = get_bucket(size);
-    mutex_acq(&bucket_locks[bucket], false);
+    mutex_acq(&bucket_locks[bucket], 0, false);
 
     struct free_obj *obj = get_free_obj(bucket);
 
@@ -96,7 +96,7 @@ void *kmalloc(size_t size) {
             page->slab.num_free += 1;
         }
 
-        mutex_acq(&bucket_locks[bucket], false);
+        mutex_acq(&bucket_locks[bucket], 0, false);
         list_insert_head(&buckets[bucket], &page->slab.node);
     }
 
@@ -143,7 +143,7 @@ void kfree(void *ptr, size_t size) {
     struct free_obj *obj = ptr;
     unsigned bucket = get_bucket(size);
 
-    mutex_acq(&bucket_locks[bucket], false);
+    mutex_acq(&bucket_locks[bucket], 0, false);
     put_free_obj(page, obj, bucket);
     mutex_rel(&bucket_locks[bucket]);
 }

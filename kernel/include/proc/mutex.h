@@ -3,6 +3,7 @@
 #include "util/list.h"
 #include "util/spinlock.h"
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
     list_t waiters;
@@ -10,5 +11,5 @@ typedef struct {
     spinlock_t lock;
 } mutex_t;
 
-int mutex_acq(mutex_t *mutex, bool interruptible);
+int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible);
 void mutex_rel(mutex_t *mutex);

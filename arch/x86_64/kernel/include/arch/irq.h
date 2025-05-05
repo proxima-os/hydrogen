@@ -26,7 +26,3 @@ static inline irq_state_t save_disable_irq(void) {
 static inline void restore_irq(irq_state_t state) {
     if (state & 0x200) enable_irq();
 }
-
-static inline bool arch_irq_enabled(void) {
-    return x86_64_get_irq_state() & 0x200;
-}

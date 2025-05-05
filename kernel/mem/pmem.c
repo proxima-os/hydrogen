@@ -11,14 +11,14 @@ static shlist_t pmem_free_list;
 static pmem_stats_t pmem_stats;
 
 pmem_stats_t pmem_get_stats(void) {
-    mutex_acq(&pmem_lock, false);
+    mutex_acq(&pmem_lock, 0, false);
     pmem_stats_t stats = pmem_stats;
     mutex_rel(&pmem_lock);
     return stats;
 }
 
 bool pmem_reserve(size_t count) {
-    mutex_acq(&pmem_lock, false);
+    mutex_acq(&pmem_lock, 0, false);
 
     bool ok = count <= pmem_stats.available;
 
@@ -32,7 +32,7 @@ bool pmem_reserve(size_t count) {
 }
 
 void pmem_unreserve(size_t count) {
-    mutex_acq(&pmem_lock, false);
+    mutex_acq(&pmem_lock, 0, false);
 
     pmem_stats.available += count;
     ASSERT(pmem_stats.available <= pmem_stats.free);
@@ -41,7 +41,7 @@ void pmem_unreserve(size_t count) {
 }
 
 page_t *pmem_alloc(void) {
-    mutex_acq(&pmem_lock, false);
+    mutex_acq(&pmem_lock, 0, false);
 
     page_t *page = SHLIST_HEAD(pmem_free_list, page_t, free.node);
     size_t idx = --page->free.count;
@@ -59,7 +59,7 @@ page_t *pmem_alloc(void) {
 void pmem_free(page_t *page) {
     page->free.count = 1;
 
-    mutex_acq(&pmem_lock, false);
+    mutex_acq(&pmem_lock, 0, false);
 
     shlist_insert_head(&pmem_free_list, &page->free.node);
 
@@ -72,7 +72,7 @@ void pmem_free(page_t *page) {
 void pmem_add_area(uint64_t head, uint64_t tail, bool free) {
     size_t count = ((tail - head) >> PAGE_SHIFT) + 1;
 
-    mutex_acq(&pmem_lock, false);
+    mutex_acq(&pmem_lock, 0, false);
 
     pmem_stats.total += count;
 

@@ -4,6 +4,7 @@
 #include "proc/sched.h"
 #include "util/list.h"
 #include "util/spinlock.h"
+#include <stdint.h>
 
 void event_signal(event_t *event) {
     bool wanted = false;
@@ -33,7 +34,7 @@ void event_clear(event_t *event) {
     __atomic_store_n(&event->signalled, false, __ATOMIC_RELEASE);
 }
 
-int event_wait(event_t *event, bool interruptible) {
+int event_wait(event_t *event, uint64_t deadline, bool interruptible) {
     if (__atomic_load_n(&event->signalled, __ATOMIC_ACQUIRE)) return 0;
 
     int status = 0;
@@ -46,7 +47,7 @@ int event_wait(event_t *event, bool interruptible) {
         list_insert_tail(&event->waiters, &current_thread->wait_node);
         sched_prepare_wait(interruptible);
         spin_rel(&event->lock, state);
-        status = sched_perform_wait();
+        status = sched_perform_wait(deadline);
         state = spin_acq(&event->lock);
         if (status) list_remove(&event->waiters, &current_thread->wait_node);
     }

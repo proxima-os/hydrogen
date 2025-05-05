@@ -138,7 +138,7 @@ void kvmm_add_range(uintptr_t head, uintptr_t tail) {
 
     size_t size = aligned_tail - aligned_head + 1;
 
-    mutex_acq(&kvmm_lock, false);
+    mutex_acq(&kvmm_lock, 0, false);
 
     kvmm_range_t *prev = NULL;
     kvmm_range_t *next = HLIST_HEAD(kvmm_ranges, kvmm_range_t, node);
@@ -192,7 +192,7 @@ uintptr_t kvmm_alloc(size_t size) {
     ASSERT((size & PAGE_MASK) == 0);
     ASSERT(size != 0);
 
-    mutex_acq(&kvmm_lock, false);
+    mutex_acq(&kvmm_lock, 0, false);
 
     kvmm_range_t *src_range = select_range(size);
     if (unlikely(!src_range)) {
@@ -238,7 +238,7 @@ bool kvmm_resize(uintptr_t address, size_t old_size, size_t new_size, bool resiz
 
     if (unlikely(old_size == new_size)) return true;
 
-    mutex_acq(&kvmm_lock, false);
+    mutex_acq(&kvmm_lock, 0, false);
 
     kvmm_range_t *range = alloc_get(address);
     ASSERT(range->size == old_size);
@@ -276,7 +276,7 @@ bool kvmm_resize(uintptr_t address, size_t old_size, size_t new_size, bool resiz
 }
 
 void kvmm_free(uintptr_t address, size_t size) {
-    mutex_acq(&kvmm_lock, false);
+    mutex_acq(&kvmm_lock, 0, false);
 
     kvmm_range_t *range = alloc_get(address);
     ASSERT(range->size == size);
