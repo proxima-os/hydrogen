@@ -234,7 +234,7 @@ void x86_64_lapic_timer_setup(x86_64_lapic_timer_mode_t mode, bool interrupt) {
     x86_64_lapic_timer_stop();
 
     uint32_t lvt = mode | X86_64_IDT_LAPIC_TIMER;
-    if (interrupt) lvt |= LAPIC_LVT_MASKED;
+    if (!interrupt) lvt |= LAPIC_LVT_MASKED;
     lapic_write(LAPIC_LVT_TIMER, lvt);
 }
 
