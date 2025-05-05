@@ -9,6 +9,7 @@
 #include "util/time.h"
 #include "x86_64/cpu.h"
 #include "x86_64/cpuid.h"
+#include "x86_64/lapic.h"
 #include "x86_64/time.h"
 #include <stdint.h>
 
@@ -18,11 +19,13 @@
 #define CALIBRATION_TIME_NS 500000000 /* 500ms */
 
 static uint64_t tsc_freq;
+static uint64_t lapic_freq;
 static timeconv_t tsc_conv;
 
 typedef struct {
     uint64_t nanoseconds;
     uint64_t tsc;
+    uint32_t lapic;
 } timer_data_t;
 
 static uint64_t ref_elapsed(uint64_t start, uint64_t end) {
@@ -37,10 +40,12 @@ static bool read_time_stable(timer_data_t *data) {
     for (int i = 0; i < STABLE_READ_TRIES; i++) {
         data->nanoseconds = arch_read_time();
         data->tsc = x86_64_read_tsc();
+        data->lapic = x86_64_lapic_timer_remaining();
         uint64_t end = arch_read_time();
 
         if (ref_elapsed(data->nanoseconds, end) <= STABLE_READ_THRESHOLD) {
             restore_irq(state);
+            data->lapic = UINT32_MAX - data->lapic;
             return true;
         }
     }
@@ -61,9 +66,12 @@ static bool determine_frequency(void) {
         unsigned eax, ebx, ecx, edx;
         cpuid(0x15, &eax, &ebx, &ecx, &edx);
 
-        if (ebx != 0 && ecx != 0) {
-            tsc_freq = (uint64_t)ecx * ebx / eax;
-            return true;
+        if (ecx != 0) {
+            lapic_freq = ecx;
+
+            if (ebx != 0) {
+                tsc_freq = ((lapic_freq * ebx) + (eax / 2)) / eax;
+            }
         }
     }
 
@@ -73,17 +81,33 @@ static bool determine_frequency(void) {
 
         if (eax != 0) {
             tsc_freq = (uint64_t)eax * 1000;
-            return true;
+        }
+
+        if (ebx != 0) {
+            lapic_freq = (uint64_t)ebx * 1000;
         }
     }
 
+    bool tsc_required = x86_64_cpu_features.tsc_invariant && tsc_freq == 0;
+    bool lapic_required = !x86_64_cpu_features.tsc_deadline && lapic_freq == 0;
+
+    if (!tsc_required && !lapic_required) return true;
+
+    uint64_t calibration_time = CALIBRATION_TIME_NS;
+    if (!tsc_required) calibration_time /= 10;
+
     if (x86_64_timer_confirm) x86_64_timer_confirm(false);
+
+    if (lapic_required) {
+        x86_64_lapic_timer_setup(X86_64_LAPIC_TIMER_ONESHOT, false);
+        x86_64_lapic_timer_start(UINT32_MAX);
+    }
 
     timer_data_t start, end;
     read_time_stable(&start);
 
     for (;;) {
-        if (ref_elapsed(start.nanoseconds, arch_read_time()) >= CALIBRATION_TIME_NS) {
+        if (ref_elapsed(start.nanoseconds, arch_read_time()) >= calibration_time) {
             break;
         }
     }
@@ -91,7 +115,16 @@ static bool determine_frequency(void) {
     read_time_stable(&end);
 
     uint64_t elapsed = ref_elapsed(start.nanoseconds, end.nanoseconds);
-    tsc_freq = get_freq(end.tsc - start.tsc, elapsed);
+
+    if (tsc_required) {
+        tsc_freq = get_freq(end.tsc - start.tsc, elapsed);
+    }
+
+    if (lapic_required) {
+        ENSURE(end.lapic < UINT32_MAX);
+        lapic_freq = get_freq(end.lapic - start.lapic, elapsed);
+        x86_64_lapic_timer_stop();
+    }
 
     return true;
 }
@@ -101,12 +134,20 @@ static uint64_t tsc_read_time(void) {
 }
 
 void x86_64_tsc_init(void) {
+    if (!x86_64_cpu_features.tsc_invariant) x86_64_cpu_features.tsc_deadline = false;
+
+    // do this even if tsc isn't invariant, since it determins lapic frequency too
+    if (!determine_frequency()) return;
+
+    if (lapic_freq != 0) {
+        printk("lapic: %U.%6U MHz\n", lapic_freq / 1000000, lapic_freq % 1000000);
+    }
+
     if (!x86_64_cpu_features.tsc_invariant) {
         printk("tsc: not invariant\n");
         return;
     }
 
-    if (!determine_frequency()) return;
     printk("tsc: %U.%6U MHz\n", tsc_freq / 1000000, tsc_freq % 1000000);
 
     tsc_conv = timeconv_create(tsc_freq, NS_PER_SEC);
