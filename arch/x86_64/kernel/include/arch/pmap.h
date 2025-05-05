@@ -133,6 +133,8 @@ static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int fla
         }
     }
 
+    if (flags & PMAP_ANONYMOUS) pte |= X86_64_PTE_ANON;
+
     return pte;
 }
 
