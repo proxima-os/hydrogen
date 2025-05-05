@@ -23,10 +23,9 @@ thread_t *arch_switch_thread(thread_t *from, thread_t *to) {
     irq_state_t state = save_disable_irq();
 
     this_cpu_write_tl(arch.tss.rsp[0], (uintptr_t)to->stack + KERNEL_STACK_SIZE);
-    from = CONTAINER(thread_t, arch.rsp, x86_64_switch_thread(&from->arch.rsp, to->arch.rsp));
 
     restore_irq(state);
-    return from;
+    return CONTAINER(thread_t, arch.rsp, x86_64_switch_thread(&from->arch.rsp, to->arch.rsp));
 }
 
 int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, void *stack) {
