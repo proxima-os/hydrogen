@@ -8,9 +8,11 @@
 #include "mem/kvmm.h"
 #include "mem/pmap.h"
 #include "mem/pmem.h"
+#include "mem/vmalloc.h"
 #include "sections.h"
 #include "string.h"
 #include "util/panic.h"
+#include "util/slist.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -26,6 +28,15 @@ static uint64_t early_alloc_idx;
 
 static uint64_t min_page_head;
 static uint64_t max_page_tail;
+
+typedef struct {
+    slist_node_t node;
+    uint64_t head;
+    uint64_t tail;
+    bool kernel_owned : 1;
+} ram_range_t;
+
+static slist_t ram_list;
 
 static void bounds_func(uint64_t head, uint64_t tail, void *ctx) {
     if (head < min_page_head) min_page_head = head;
@@ -272,6 +283,116 @@ static void add_hhdm_gaps(uint64_t head, uint64_t tail, void *ptr) {
     ctx->next_head = tail + 1;
 }
 
+struct build_ram_list_ctx {
+    uint64_t head;
+    uint64_t tail;
+    bool owned;
+    bool in_area;
+};
+
+static void ram_list_add(uint64_t head, uint64_t tail, bool owned) {
+    ram_range_t *range = vmalloc(sizeof(*range));
+    if (unlikely(!range)) panic("memmap: out of memory while creating ram list");
+
+    memset(range, 0, sizeof(*range));
+    range->head = head;
+    range->tail = tail;
+    range->kernel_owned = owned;
+    slist_insert_tail(&ram_list, &range->node);
+}
+
+static void ram_list_commit(struct build_ram_list_ctx *ctx) {
+    if (!ctx->in_area) return;
+
+    if (ctx->owned) {
+        uint64_t aligned_head = (ctx->head + PAGE_MASK) & ~PAGE_MASK;
+        uint64_t aligned_tail = (ctx->tail - PAGE_MASK) | PAGE_MASK;
+
+        if (aligned_head < ctx->head || aligned_tail > ctx->tail || aligned_head > aligned_tail) {
+            ram_list_add(ctx->head, ctx->tail, false);
+        } else {
+            if (ctx->head < aligned_head) {
+                ram_list_add(ctx->head, aligned_head - 1, false);
+            }
+
+            ram_list_add(aligned_head, aligned_tail, true);
+
+            if (aligned_tail < ctx->tail) {
+                ram_list_add(aligned_tail + 1, ctx->tail, false);
+            }
+        }
+    } else {
+        ram_list_add(ctx->head, ctx->tail, ctx->owned);
+    }
+
+    ctx->in_area = false;
+}
+
+static void ram_list_append(struct build_ram_list_ctx *ctx, uint64_t head, uint64_t tail, bool owned) {
+    if (owned) {
+        if (head < min_page_head) {
+            if (tail < min_page_head) {
+                owned = false;
+            } else {
+                ram_list_append(ctx, head, min_page_head - 1, false);
+                head = min_page_head;
+            }
+        } else if (tail > max_page_tail) {
+            if (head <= max_page_tail) {
+                ram_list_append(ctx, head, max_page_tail, true);
+                head = max_page_tail + 1;
+            }
+
+            owned = false;
+        }
+    }
+
+    if (ctx->in_area) {
+        if (ctx->tail + 1 >= head && ctx->owned == owned) {
+            if (ctx->tail < tail) ctx->tail = tail;
+            return;
+        }
+
+        ram_list_commit(ctx);
+    }
+
+    ctx->head = head;
+    ctx->tail = tail;
+    ctx->owned = owned;
+    ctx->in_area = true;
+}
+
+static void build_ram_list(void) {
+    struct build_ram_list_ctx ctx = {};
+    uint64_t max = cpu_max_phys_addr();
+
+    for (uint64_t i = 0; i < loader_map->entry_count; i++) {
+        struct limine_memmap_entry *entry = loader_map->entries[i];
+        if (entry->length == 0) continue;
+
+        bool cur_owned;
+
+        if (entry->type == LIMINE_MEMMAP_USABLE || entry->type == LIMINE_MEMMAP_BOOTLOADER_RECLAIMABLE ||
+            entry->type == LIMINE_MEMMAP_EXECUTABLE_AND_MODULES) {
+            cur_owned = true;
+        } else if (entry->type == LIMINE_MEMMAP_ACPI_RECLAIMABLE || entry->type == LIMINE_MEMMAP_ACPI_NVS) {
+            cur_owned = false;
+        } else {
+            continue;
+        }
+
+        uint64_t cur_head = entry->base;
+        uint64_t cur_tail = cur_head + (entry->length - 1);
+        if (cur_tail < cur_head) cur_tail = UINT64_MAX;
+        if (cur_tail > max) cur_tail = max;
+        if (cur_head > cur_tail) continue;
+
+        ram_list_append(&ctx, cur_head, cur_tail, cur_owned);
+    }
+
+    ram_list_commit(&ctx);
+}
+
 void memmap_init(void) {
     extern const void _start, _erodata, _etext, _end;
 
@@ -355,6 +476,7 @@ void memmap_init(void) {
     iter_ram_areas(add_hhdm_gaps, &ctx2);
 
     pmap_init_cpu(get_current_cpu());
+    build_ram_list();
 }
 
 struct reclaim_ctx {
@@ -456,4 +578,44 @@ void *early_alloc_page(void) {
     }
 
     panic("early_alloc_page out of memory");
+}
+
+bool next_owned_ram_gap(uint64_t addr, uint64_t *head, uint64_t *tail) {
+    uint64_t gap_head = 0;
+    uint64_t max = cpu_max_phys_addr();
+
+    SLIST_FOREACH(ram_list, ram_range_t, node, range) {
+        if (range->kernel_owned) {
+            if (gap_head < range->head) {
+                uint64_t gap_tail = range->head - 1;
+
+                if (addr <= gap_tail) {
+                    *head = gap_head;
+                    *tail = gap_tail;
+                    return true;
+                }
+            }
+
+            if (range->tail == max) {
+                return false;
+            }
+
+            gap_head = range->tail + 1;
+        }
+    }
+
+    *head = gap_head;
+    *tail = cpu_max_phys_addr();
+    return true;
+}
+
+bool is_area_ram(uint64_t head, uint64_t tail) {
+    SLIST_FOREACH(ram_list, ram_range_t, node, range) {
+        if (range->tail < head) continue;
+        if (head < range->head) return false;
+        if (tail <= range->tail) return true;
+        head = range->tail + 1;
+    }
+
+    return false;
 }
