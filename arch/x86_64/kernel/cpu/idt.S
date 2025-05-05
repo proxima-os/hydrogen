@@ -2,9 +2,7 @@
 
 .section ".text.x86_64_idt_entry", "ax", @progbits
 
-#ifndef NDEBUG
 .cfi_sections .debug_frame
-#endif
 
 .balign 16
 .type x86_64_idt_entry, @function

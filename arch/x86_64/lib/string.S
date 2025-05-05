@@ -1,8 +1,6 @@
 .section ".text.memcmp", "ax", @progbits
 
-#ifndef NDEBUG
 .cfi_sections .debug_frame
-#endif
 
 .balign 16
 .globl memcmp

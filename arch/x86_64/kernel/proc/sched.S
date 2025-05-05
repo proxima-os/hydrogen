@@ -1,8 +1,6 @@
 .section ".text.x86_64_switch_thread", "ax", @progbits
 
-#ifndef NDEBUG
 .cfi_sections .debug_frame
-#endif
 
 .balign 16
 .globl x86_64_switch_thread
