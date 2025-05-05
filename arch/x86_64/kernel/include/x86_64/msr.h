@@ -9,8 +9,8 @@
 
 #define X86_64_MSR_MCG_CTL 0x17b
 
-#define X86_64_MSR_MCi_CTL(i) (0x400 + (i) * 2)
-#define X86_64_MSR_MCi_STATUS(i) (0x401 + (i) * 2)
+#define X86_64_MSR_MCi_CTL(i) (0x400 + (i) * 4)
+#define X86_64_MSR_MCi_STATUS(i) (0x401 + (i) * 4)
 
 #define X86_64_MSR_EFER 0xc0000080
 #define X86_64_MSR_EFER_SCE (1ull << 0)
