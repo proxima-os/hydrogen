@@ -98,7 +98,7 @@ static inline void arch_pt_write(void *table, unsigned level, size_t index, pte_
 
 static inline pte_t arch_pt_create_edge(unsigned level, void *target) {
     ASSERT(level != 0);
-    return virt_to_phys(target) | X86_64_PTE_ACCESSED | X86_64_PTE_WRITABLE | X86_64_PTE_PRESENT;
+    return virt_to_phys(target) | X86_64_PTE_ACCESSED | X86_64_PTE_USER | X86_64_PTE_WRITABLE | X86_64_PTE_PRESENT;
 }
 
 static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int flags) {
