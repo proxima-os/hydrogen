@@ -2,6 +2,7 @@
 #include "arch/divide.h"
 #include "arch/irq.h"
 #include "arch/time.h"
+#include "kernel/compiler.h"
 #include "kernel/time.h"
 #include "kernel/x86_64/tsc.h"
 #include "util/printk.h"
@@ -24,6 +25,12 @@ typedef struct {
     uint64_t tsc;
 } timer_data_t;
 
+static uint64_t ref_elapsed(uint64_t start, uint64_t end) {
+    if (end < start) end += UINT32_MAX;
+    ASSERT(start <= end);
+    return end - start;
+}
+
 static bool read_time_stable(timer_data_t *data) {
     irq_state_t state = save_disable_irq();
 
@@ -32,7 +39,7 @@ static bool read_time_stable(timer_data_t *data) {
         data->tsc = x86_64_read_tsc();
         uint64_t end = arch_read_time();
 
-        if (end - data->nanoseconds <= STABLE_READ_THRESHOLD) {
+        if (ref_elapsed(data->nanoseconds, end) <= STABLE_READ_THRESHOLD) {
             restore_irq(state);
             return true;
         }
@@ -74,10 +81,16 @@ static bool determine_frequency(void) {
 
     timer_data_t start, end;
     read_time_stable(&start);
-    stall(CALIBRATION_TIME_NS);
+
+    for (;;) {
+        if (ref_elapsed(start.nanoseconds, arch_read_time()) >= CALIBRATION_TIME_NS) {
+            break;
+        }
+    }
+
     read_time_stable(&end);
 
-    uint64_t elapsed = end.nanoseconds - start.nanoseconds;
+    uint64_t elapsed = ref_elapsed(start.nanoseconds, end.nanoseconds);
     tsc_freq = get_freq(end.tsc - start.tsc, elapsed);
 
     return true;
