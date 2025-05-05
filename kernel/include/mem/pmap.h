@@ -37,6 +37,8 @@ void pmap_destroy(pmap_t *pmap);
 // note: if pmap != NULL, the caller is responsible for locking
 bool pmap_prepare(pmap_t *pmap, uintptr_t virt, size_t size);
 void pmap_alloc(pmap_t *pmap, uintptr_t virt, size_t size, int flags); // you have to call pmem_reserve first
+void pmap_map(pmap_t *pmap, uintptr_t virt, uint64_t phys, size_t size, int flags);
+void pmap_remap(pmap_t *pmap, uintptr_t virt, size_t size, int flags);
 void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t size); // undoes pmap_prepare
 void pmap_unmap(pmap_t *pmap, uintptr_t virt, size_t size);                             // undoes pmap_prepare
 

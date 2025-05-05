@@ -6,11 +6,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define PMAP_READABLE 1
-#define PMAP_WRITABLE 2
-#define PMAP_EXECUTABLE 4
-#define PMAP_USER 8 /* internal */
-#define PMAP_ANONYMOUS 16 /* internal */
+#define PMAP_READABLE (1 << 0)
+#define PMAP_WRITABLE (1 << 1)
+#define PMAP_EXECUTABLE (1 << 2)
+#define PMAP_CACHE_MASK (3 << 3)
+#define PMAP_CACHE_WB (0 << 3)
+#define PMAP_CACHE_WT (1 << 3)
+#define PMAP_CACHE_WC (2 << 3)
+#define PMAP_CACHE_UC (3 << 3)
+#define PMAP_USER (1 << 5)      /* internal */
+#define PMAP_ANONYMOUS (1 << 5) /* internal */
 
 /* definitions that need to be provided by arch code:
  * #define ARCH_PT_MAX_LEVEL ...
@@ -117,3 +122,7 @@ static inline size_t arch_pt_max_index(unsigned level);
 
 /* initialize a new table for the given level. return false on failure. */
 static inline bool arch_pt_init_table(void *table, unsigned level);
+
+/* changes the permission flags for `pte` into `new_flags`.
+ * returns true if a global flush is necessary. */
+static inline bool arch_pt_change_permissions(pte_t *pte, unsigned level, int new_flags);

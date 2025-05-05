@@ -526,6 +526,131 @@ void pmap_alloc(pmap_t *pmap, uintptr_t virt, size_t size, int flags) {
     if (!pmap) mutex_rel(&kernel_pt_lock);
 }
 
+static void do_map(void *table, unsigned level, uintptr_t virt, uint64_t phys, size_t size, int flags, tlb_ctx_t *tlb) {
+    size_t index = arch_pt_get_index(virt, level);
+    size_t entry_size = 1ul << arch_pt_entry_bits(level);
+    size_t entry_mask = entry_size - 1;
+
+    do {
+        if (level == 0) {
+#if PT_PREPARE_DEBUG
+            ENSURE(arch_pt_read(table, level, index) == ARCH_PT_PREPARE_PTE);
+#endif
+            page_t *page = pmem_alloc();
+            page->anon.references = 1;
+            arch_pt_write(table, level, index, arch_pt_create_leaf(level, phys, flags));
+            index += 1;
+            virt += entry_size;
+            phys += entry_size;
+            size -= entry_size;
+            continue;
+        }
+
+        pte_t pte = arch_pt_read(table, level, index);
+        ASSERT(pte != 0);
+#if PT_PREPARE_DEBUG
+        ASSERT(pte != ARCH_PT_PREPARE_PTE);
+#endif
+        ASSERT(arch_pt_is_edge(level, pte));
+        void *child = arch_pt_edge_target(level, pte);
+
+        size_t cur = entry_size - (virt & entry_mask);
+        if (cur > size) cur = size;
+
+        do_map(child, level - 1, virt, phys, cur, flags, tlb);
+
+        index += 1;
+        virt += cur;
+        phys += cur;
+        size -= cur;
+    } while (size > 0);
+}
+
+void pmap_map(pmap_t *pmap, uintptr_t virt, uint64_t phys, size_t size, int flags) {
+    ASSERT(arch_pt_get_offset(virt | phys | size) == 0);
+    ASSERT(size > 0);
+    ASSERT(virt < virt + (size - 1));
+    ASSERT(arch_pt_is_canonical(virt));
+    ASSERT(arch_pt_is_canonical(virt + (size - 1)));
+    ASSERT(is_kernel_address(virt) == is_kernel_address(virt + (size - 1)));
+    ASSERT(is_kernel_address(virt) == (pmap == NULL));
+    ASSERT(phys < phys + (size - 1));
+    ASSERT(phys + (size - 1) <= cpu_max_phys_addr());
+    ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE)) == 0);
+
+    if (!is_kernel_address(virt)) flags |= PMAP_USER;
+    flags |= PMAP_ANONYMOUS;
+
+    if (!pmap) mutex_acq(&kernel_pt_lock, false);
+    migrate_state_t state = migrate_lock();
+
+    tlb_ctx_t tlb;
+    tlb_init(&tlb, pmap);
+    do_map(pmap ? pmap->table : kernel_page_table, arch_pt_levels() - 1, virt, phys, size, flags, &tlb);
+    tlb_commit(&tlb);
+
+    migrate_unlock(state);
+    if (!pmap) mutex_rel(&kernel_pt_lock);
+}
+
+static void do_remap(void *table, unsigned level, uintptr_t virt, size_t size, int flags, tlb_ctx_t *tlb) {
+    size_t index = arch_pt_get_index(virt, level);
+    size_t entry_size = 1ul << arch_pt_entry_bits(level);
+    size_t entry_mask = entry_size - 1;
+
+    do {
+        size_t cur = entry_size - (virt & entry_mask);
+        if (cur > size) cur = size;
+
+        pte_t pte = arch_pt_read(table, level, index);
+
+        if (pte != 0 && (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
+            if (level == 0 || !arch_pt_is_edge(level, pte)) {
+                ASSERT(cur == entry_size);
+
+                pte_t npte = pte;
+                bool global = arch_pt_change_permissions(&npte, level, flags);
+
+                if (pte != npte) {
+                    arch_pt_write(table, level, index, npte);
+                    tlb_add_leaf(tlb, virt, global);
+                }
+            } else {
+                do_remap(arch_pt_edge_target(level, pte), level - 1, virt, cur, flags, tlb);
+            }
+        }
+
+        index += 1;
+        virt += cur;
+        size -= cur;
+    } while (size > 0);
+}
+
+void pmap_remap(pmap_t *pmap, uintptr_t virt, size_t size, int flags) {
+    ASSERT(arch_pt_get_offset(virt | size) == 0);
+    ASSERT(size > 0);
+    ASSERT(virt < virt + (size - 1));
+    ASSERT(arch_pt_is_canonical(virt));
+    ASSERT(arch_pt_is_canonical(virt + (size - 1)));
+    ASSERT(is_kernel_address(virt) == is_kernel_address(virt + (size - 1)));
+    ASSERT(is_kernel_address(virt) == (pmap == NULL));
+    ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE)) == 0);
+
+    if (!is_kernel_address(virt)) flags |= PMAP_USER;
+    flags |= PMAP_ANONYMOUS;
+
+    if (!pmap) mutex_acq(&kernel_pt_lock, false);
+    migrate_state_t state = migrate_lock();
+
+    tlb_ctx_t tlb;
+    tlb_init(&tlb, pmap);
+    do_remap(pmap ? pmap->table : kernel_page_table, arch_pt_levels() - 1, virt, size, flags, &tlb);
+    tlb_commit(&tlb);
+
+    migrate_unlock(state);
+    if (!pmap) mutex_rel(&kernel_pt_lock);
+}
+
 void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t size) {
     ASSERT(arch_pt_get_offset(src | dest | size) == 0);
     ASSERT(size > 0);

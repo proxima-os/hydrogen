@@ -17,12 +17,22 @@
 #define X86_64_PTE_PRESENT (1ul << 0)
 #define X86_64_PTE_WRITABLE (1ul << 1)
 #define X86_64_PTE_USER (1ul << 2)
+#define X86_64_PTE_WRITE_THROUGH (1ul << 3)
+#define X86_64_PTE_CACHE_DISABLE (1ul << 4)
 #define X86_64_PTE_ACCESSED (1ul << 5)
 #define X86_64_PTE_DIRTY (1ul << 6)
 #define X86_64_PTE_HUGE (1ul << 7)
 #define X86_64_PTE_GLOBAL (1ul << 8)
 #define X86_64_PTE_ANON (1ul << 9)
 #define X86_64_PTE_NX (1ul << 63)
+
+#define X86_64_PTE_PAT(x) ((((x) & 4) << 5) | (((x) & 3) << 3))
+#define X86_64_PTE_PAT_HUGE(x) ((((x) & 4) << 10) | (((x) & 3) << 3))
+#define X86_64_PTE_PAT_EXTRACT(x) ((((x) & 0x80) >> 5) | (((x) & 0x18) >> 3))
+#define X86_64_PTE_PAT_HUGE_EXTRACT(x) ((((x) & 0x1000) >> 10) | (((x) & 0x18) >> 3))
+#define X86_64_PAT_WT 1
+#define X86_64_PAT_UC 3
+#define X86_64_PAT_WC 5
 
 _Static_assert(PAGE_SHIFT >= 12, "PAGE_SHIFT too small");
 
@@ -101,10 +111,33 @@ static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int fla
     if (flags & PMAP_USER) pte |= X86_64_PTE_USER;
     else if (x86_64_cpu_features.pge) pte |= X86_64_PTE_GLOBAL;
 
+    if (x86_64_cpu_features.pat) {
+        int index;
+
+        switch (flags & PMAP_CACHE_MASK) {
+        case 0: index = 0; break;
+        case PMAP_CACHE_WT: index = X86_64_PAT_WT; break;
+        case PMAP_CACHE_WC: index = X86_64_PAT_WC; break;
+        case PMAP_CACHE_UC: index = X86_64_PAT_UC; break;
+        default: UNREACHABLE();
+        }
+
+        pte |= level != 0 ? X86_64_PTE_PAT_HUGE(index) : X86_64_PTE_PAT(index);
+    } else {
+        switch (flags & PMAP_CACHE_MASK) {
+        case 0: break;
+        case PMAP_CACHE_WT:
+        case PMAP_CACHE_WC: pte |= X86_64_PTE_WRITE_THROUGH; break;
+        case PMAP_CACHE_UC: pte |= X86_64_PTE_CACHE_DISABLE | X86_64_PTE_WRITE_THROUGH; break;
+        default: UNREACHABLE();
+        }
+    }
+
     return pte;
 }
 
 static inline bool arch_pt_is_edge(unsigned level, pte_t pte) {
+    ASSERT(pte & X86_64_PTE_PRESENT);
     return level != 0 && (pte & X86_64_PTE_HUGE) == 0;
 }
 
@@ -125,6 +158,21 @@ static inline int arch_pt_get_leaf_flags(unsigned level, pte_t pte) {
     if (pte & X86_64_PTE_WRITABLE) flags |= PMAP_WRITABLE;
     if (pte & X86_64_PTE_ANON) flags |= PMAP_ANONYMOUS;
     if (!x86_64_cpu_features.nx || (pte & X86_64_PTE_NX) == 0) flags |= PMAP_EXECUTABLE;
+
+    if (x86_64_cpu_features.pat) {
+        int index = level != 0 ? X86_64_PTE_PAT_HUGE_EXTRACT(pte) : X86_64_PTE_PAT_EXTRACT(pte);
+
+        switch (index) {
+        case 0: break;
+        case X86_64_PAT_WT: flags |= PMAP_CACHE_WT; break;
+        case X86_64_PAT_UC: flags |= PMAP_CACHE_UC; break;
+        case X86_64_PAT_WC: flags |= PMAP_CACHE_WC; break;
+        default: UNREACHABLE();
+        }
+    } else {
+        if (flags & X86_64_PTE_CACHE_DISABLE) flags |= PMAP_CACHE_UC;
+        else if (flags & X86_64_PTE_WRITE_THROUGH) flags |= PMAP_CACHE_WT;
+    }
 
     return flags;
 }
@@ -276,4 +324,30 @@ static inline size_t arch_pt_max_index(unsigned level) {
 static inline bool arch_pt_init_table(void *table, unsigned level) {
     memset(table, 0, PAGE_SIZE);
     return true;
+}
+
+static inline bool arch_pt_change_permissions(pte_t *pte, unsigned level, int new_flags) {
+    pte_t value = *pte;
+    bool need_flush = false;
+
+    ASSERT(!arch_pt_is_edge(level, value));
+
+    if (new_flags & PMAP_WRITABLE) {
+        value |= X86_64_PTE_WRITABLE;
+    } else if (value & X86_64_PTE_WRITABLE) {
+        value &= ~X86_64_PTE_WRITABLE;
+        need_flush = true;
+    }
+
+    if (x86_64_cpu_features.nx) {
+        if (new_flags & PMAP_EXECUTABLE) {
+            value &= ~X86_64_PTE_NX;
+        } else if (!(value & X86_64_PTE_NX)) {
+            value |= X86_64_PTE_NX;
+            need_flush = true;
+        }
+    }
+
+    *pte = value;
+    return need_flush;
 }
