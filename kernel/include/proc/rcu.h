@@ -18,6 +18,8 @@ typedef preempt_state_t rcu_state_t;
 #define rcu_read(value) __atomic_load_n(&(value), __ATOMIC_ACQUIRE)
 #define rcu_read_unlock(state) preempt_unlock(state)
 
+#define rcu_write(location, value) __atomic_store_n(&(location), (value), __ATOMIC_RELEASE)
+
 void rcu_init(void);
 
 void rcu_quiet(struct cpu *cpu);
