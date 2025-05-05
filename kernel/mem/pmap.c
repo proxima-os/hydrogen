@@ -336,33 +336,35 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
 
         pte_t pte = arch_pt_read(table, level, index);
 
+        if (level == 0) {
 #if PT_PREPARE_DEBUG
-        if (pte == ARCH_PT_PREPARE_PTE) {
-            arch_pt_write(table, level, index, 0);
-            leaves += 1;
-            virt += cur;
-            size -= cur;
-            continue;
-        }
+            ASSERT(pte != 0);
 #endif
 
-        if (pte != 0) {
-            if (level == 0 || !arch_pt_is_edge(level, pte)) {
+            if (pte != 0) {
                 arch_pt_write(table, level, index, 0);
-                tlb_add_unmap_leaf(tlb, virt, level, pte);
-            } else {
-                void *child = arch_pt_edge_target(level, pte);
-                size_t ret = do_unmap(child, level - 1, virt, cur, tlb);
-                leaves += ret;
 
-                page_t *page = virt_to_page(child);
-                page->anon.references -= leaves;
-
-                if (page->anon.references == 0) {
-                    arch_pt_write(table, level, index, 0);
-                    tlb_add_edge(tlb, virt, true);
-                    tlb_add_unmap_anon(tlb, page);
+                if (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE) {
+                    tlb_add_unmap_leaf(tlb, virt, level, pte);
                 }
+            }
+
+            leaves += 1;
+        } else {
+            ASSERT(pte != 0);
+            ASSERT(arch_pt_is_edge(level, pte));
+
+            void *child = arch_pt_edge_target(level, pte);
+            size_t ret = do_unmap(child, level - 1, virt, cur, tlb);
+            leaves += ret;
+
+            page_t *page = virt_to_page(child);
+            page->anon.references -= leaves;
+
+            if (page->anon.references == 0) {
+                arch_pt_write(table, level, index, 0);
+                tlb_add_edge(tlb, virt, true);
+                tlb_add_unmap_anon(tlb, page);
             }
         }
 
@@ -603,10 +605,12 @@ static void do_remap(void *table, unsigned level, uintptr_t virt, size_t size, i
 
         pte_t pte = arch_pt_read(table, level, index);
 
-        if (pte != 0 && (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
-            if (level == 0 || !arch_pt_is_edge(level, pte)) {
-                ASSERT(cur == entry_size);
+        if (level == 0) {
+#if PT_PREPARE_DEBUG
+            ASSERT(pte != 0);
+#endif
 
+            if (pte != 0 && !(PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
                 pte_t npte = pte;
                 bool global = arch_pt_change_permissions(&npte, level, flags);
 
@@ -614,9 +618,10 @@ static void do_remap(void *table, unsigned level, uintptr_t virt, size_t size, i
                     arch_pt_write(table, level, index, npte);
                     tlb_add_leaf(tlb, virt, global);
                 }
-            } else {
-                do_remap(arch_pt_edge_target(level, pte), level - 1, virt, cur, flags, tlb);
             }
+        } else {
+            ASSERT(arch_pt_is_edge(level, pte));
+            do_remap(arch_pt_edge_target(level, pte), level - 1, virt, cur, flags, tlb);
         }
 
         index += 1;
