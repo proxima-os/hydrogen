@@ -282,7 +282,7 @@ void sched_cancel_wait(void) {
 }
 
 _Noreturn void sched_exit(void) {
-    preempt_state_t state = preempt_lock();
+    UNUSED preempt_state_t state = preempt_lock();
     ASSERT(state == PREEMPT_ENABLED);
 
     cpu_t *cpu = get_current_cpu();
