@@ -538,8 +538,6 @@ static void do_map(void *table, unsigned level, uintptr_t virt, uint64_t phys, s
 #if PT_PREPARE_DEBUG
             ENSURE(arch_pt_read(table, level, index) == ARCH_PT_PREPARE_PTE);
 #endif
-            page_t *page = pmem_alloc();
-            page->anon.references = 1;
             arch_pt_write(table, level, index, arch_pt_create_leaf(level, phys, flags));
             index += 1;
             virt += entry_size;
