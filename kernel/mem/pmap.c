@@ -332,6 +332,8 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
 
     do {
         size_t cur = entry_size - (virt & entry_mask);
+        if (cur > size) cur = size;
+
         pte_t pte = arch_pt_read(table, level, index);
 
 #if PT_PREPARE_DEBUG
