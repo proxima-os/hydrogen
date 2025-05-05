@@ -23,7 +23,6 @@ void x86_64_lapic_timer_setup(x86_64_lapic_timer_mode_t mode, bool interrupt);
 void x86_64_lapic_timer_start(uint32_t count);
 uint32_t x86_64_lapic_timer_remaining(void);
 
-void x86_64_lapic_irq_timer(void);
 void x86_64_lapic_irq_error(void);
 void x86_64_lapic_irq_spurious(void);
 

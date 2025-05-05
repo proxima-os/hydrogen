@@ -1,5 +1,6 @@
 #include "util/time.h"
 #include "arch/divide.h"
+#include <stdint.h>
 
 timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq) {
     /*
@@ -37,4 +38,7 @@ timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq) {
             .multiplier = multiplier,
             .shift = p,
     };
+}
+
+void time_handle_irq(void) {
 }

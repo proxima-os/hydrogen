@@ -7,6 +7,7 @@
 #include "x86_64/idtvec.h"
 #include "x86_64/lapic.h"
 #include "x86_64/msr.h"
+#include "x86_64/time.h"
 #include "x86_64/tss.h"
 #include <stdint.h>
 
@@ -89,7 +90,7 @@ USED void x86_64_idt_dispatch(x86_64_idt_frame_t *frame) {
         smp_handle_remote_call();
         x86_64_lapic_eoi();
         return;
-    case X86_64_IDT_LAPIC_TIMER: return x86_64_lapic_irq_timer();
+    case X86_64_IDT_LAPIC_TIMER: return x86_64_handle_timer();
     case X86_64_IDT_LAPIC_ERROR: return x86_64_lapic_irq_error();
     case X86_64_IDT_LAPIC_SPURIOUS: return x86_64_lapic_irq_spurious();
     default: return x86_64_idt_handle_fatal(frame);

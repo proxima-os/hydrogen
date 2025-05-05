@@ -6,12 +6,9 @@
 #include "kernel/compiler.h"
 #include "util/slist.h"
 #include "x86_64/cpu.h"
-#include "x86_64/hpet.h"
 #include "x86_64/ioapic.h"
-#include "x86_64/kvmclock.h"
 #include "x86_64/lapic.h"
 #include "x86_64/time.h"
-#include "x86_64/tsc.h"
 #include "x86_64/tss.h"
 #include <stdint.h>
 
@@ -29,9 +26,5 @@ void arch_init(void) {
     x86_64_lapic_init();
     x86_64_ioapic_init();
     enable_irq();
-
-    x86_64_hpet_init();
-    x86_64_kvmclock_init();
-    x86_64_tsc_init();
-    if (x86_64_timer_confirm) x86_64_timer_confirm(true);
+    x86_64_time_init();
 }

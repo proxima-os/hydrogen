@@ -91,5 +91,5 @@ void x86_64_hpet_init(void) {
 
     hpet_conv = timeconv_create((FS_PER_SEC + (hpet_period_fs / 2)) / hpet_period_fs, NS_PER_SEC);
 
-    x86_64_switch_timer(hpet_read_time, hpet_cleanup, hpet_confirm);
+    x86_64_switch_timer(hpet_read_time, NULL, hpet_cleanup, hpet_confirm);
 }

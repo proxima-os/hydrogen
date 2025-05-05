@@ -20,7 +20,8 @@
 
 static uint64_t tsc_freq;
 static uint64_t lapic_freq;
-static timeconv_t tsc_conv;
+static timeconv_t tsc2time_conv;
+static timeconv_t time2tsc_conv;
 
 typedef struct {
     uint64_t nanoseconds;
@@ -130,7 +131,12 @@ static bool determine_frequency(void) {
 }
 
 static uint64_t tsc_read_time(void) {
-    return timeconv_apply(tsc_conv, x86_64_read_tsc());
+    return timeconv_apply(tsc2time_conv, x86_64_read_tsc());
+}
+
+static uint64_t time_to_tsc(uint64_t time) {
+    uint64_t tsc = timeconv_apply(time2tsc_conv, time);
+    return tsc ? tsc : 1;
 }
 
 void x86_64_tsc_init(void) {
@@ -141,6 +147,7 @@ void x86_64_tsc_init(void) {
 
     if (lapic_freq != 0) {
         printk("lapic: %U.%6U MHz\n", lapic_freq / 1000000, lapic_freq % 1000000);
+        x86_64_ns2lapic_conv = timeconv_create(NS_PER_SEC, lapic_freq);
     }
 
     if (!x86_64_cpu_features.tsc_invariant) {
@@ -150,6 +157,8 @@ void x86_64_tsc_init(void) {
 
     printk("tsc: %U.%6U MHz\n", tsc_freq / 1000000, tsc_freq % 1000000);
 
-    tsc_conv = timeconv_create(tsc_freq, NS_PER_SEC);
-    x86_64_switch_timer(tsc_read_time, NULL, NULL);
+    tsc2time_conv = timeconv_create(tsc_freq, NS_PER_SEC);
+    time2tsc_conv = timeconv_create(NS_PER_SEC, tsc_freq);
+
+    x86_64_switch_timer(tsc_read_time, time_to_tsc, NULL, NULL);
 }

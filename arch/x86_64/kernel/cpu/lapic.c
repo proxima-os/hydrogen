@@ -246,10 +246,6 @@ uint32_t x86_64_lapic_timer_remaining(void) {
     return lapic_read(LAPIC_TIMER_CCR);
 }
 
-void x86_64_lapic_irq_timer(void) {
-    x86_64_lapic_eoi();
-}
-
 void x86_64_lapic_irq_error(void) {
     lapic_write(LAPIC_ERR, 0);
     printk("lapic: got error 0x%x\n", lapic_read(LAPIC_ERR));

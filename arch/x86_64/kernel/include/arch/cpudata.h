@@ -9,6 +9,7 @@ typedef struct {
     uintptr_t syscall_entry_tmp; // must be the 1st field in the struct
     x86_64_tss_t tss;            // must be the 2nd field in the struct
     struct cpu *self;
+    uint64_t deadline;
     int current_pcid;
     uint32_t acpi_id;
     uint32_t apic_id;

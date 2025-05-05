@@ -18,6 +18,8 @@
 #define X86_64_MSR_MCi_CTL(i) (0x400 + (i) * 4)
 #define X86_64_MSR_MCi_STATUS(i) (0x401 + (i) * 4)
 
+#define X86_64_MSR_TSC_DEADLINE 0x6e0
+
 #define X86_64_MSR_KVM_SYSTEM_TIME_NEW 0x4b564d01
 
 #define X86_64_MSR_EFER 0xc0000080
