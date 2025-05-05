@@ -55,4 +55,5 @@ void x86_64_kvmclock_init(void) {
     x86_64_wrmsr(kvmclock_msr, sym_to_phys(&kvmclock_info) | 1);
 
     x86_64_switch_timer(kvmclock_read, kvmclock_cleanup, NULL);
+    printk("kvmclock: initialized\n");
 }

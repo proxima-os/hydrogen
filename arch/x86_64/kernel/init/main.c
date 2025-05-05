@@ -11,6 +11,7 @@
 #include "x86_64/kvmclock.h"
 #include "x86_64/lapic.h"
 #include "x86_64/time.h"
+#include "x86_64/tsc.h"
 #include "x86_64/tss.h"
 #include <stdint.h>
 
@@ -31,5 +32,6 @@ void arch_init(void) {
 
     x86_64_hpet_init();
     x86_64_kvmclock_init();
-    if (x86_64_timer_finalize) x86_64_timer_finalize();
+    x86_64_tsc_init();
+    if (x86_64_timer_confirm) x86_64_timer_confirm();
 }

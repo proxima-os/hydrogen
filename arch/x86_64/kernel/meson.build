@@ -15,4 +15,5 @@ kernel_sources += files(
     'time/hpet.c',
     'time/kvmclock.c',
     'time/time.c',
+    'time/tsc.c',
 )
