@@ -1,6 +1,8 @@
 #include "x86_64/cpu.h"
 #include "arch/irq.h"
 #include "cpu/cpudata.h"
+#include "limine.h"
+#include "sections.h"
 #include "util/spinlock.h"
 #include "x86_64/cpuid.h"
 #include "x86_64/cr.h"
@@ -14,6 +16,14 @@ x86_64_cpu_features_t x86_64_cpu_features;
 
 static size_t cr4_value = X86_64_CR4_OSXMMEXCEPT | X86_64_CR4_OSFXSR | X86_64_CR4_PAE;
 static size_t efer_value = X86_64_MSR_EFER_LME | X86_64_MSR_EFER_SCE;
+
+static LIMINE_REQ const struct limine_paging_mode_request pmode_req = {
+        .id = LIMINE_PAGING_MODE_REQUEST,
+        .revision = 1,
+        .mode = LIMINE_PAGING_MODE_X86_64_5LVL,
+        .min_mode = LIMINE_PAGING_MODE_X86_64_4LVL,
+        .max_mode = LIMINE_PAGING_MODE_X86_64_5LVL,
+};
 
 void x86_64_cpu_detect(void) {
     cr4_value |= x86_64_read_cr4() & X86_64_CR4_LA57;
