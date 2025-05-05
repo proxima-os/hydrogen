@@ -21,4 +21,6 @@ USED void x86_64_prepare_main(void) {
 void arch_init(void) {
     acpi_init();
     x86_64_lapic_init();
+    x86_64_ioapic_init();
+    enable_irq();
 }
