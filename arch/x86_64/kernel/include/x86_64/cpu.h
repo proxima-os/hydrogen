@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cpu/cpudata.h"
+#include "kernel/compiler.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -11,7 +12,7 @@
 #define X86_64_SEL_TSS 0x28
 
 typedef union {
-    char text[12];
+    NONSTRING char text[12];
     struct {
         uint32_t ebx;
         uint32_t edx;
