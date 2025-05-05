@@ -15,6 +15,7 @@ static spinlock_t lock;
 void printk_add(printk_sink_t *sink) {
     irq_state_t state = printk_lock();
     list_insert_tail(&sinks, &sink->node);
+    printk_raw_flush();
     printk_unlock(state);
 }
 
@@ -171,7 +172,7 @@ static bool can_read;
 static bool can_flush;
 
 static void flush_to_sinks(void) {
-    if (!can_flush) return;
+    if (!can_flush || list_empty(&sinks)) return;
 
     if (flush_idx < write_idx) {
         write_to_sinks(&printk_buf[flush_idx], write_idx - flush_idx);
