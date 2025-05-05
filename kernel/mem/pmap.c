@@ -359,7 +359,7 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
             leaves += ret;
 
             page_t *page = virt_to_page(child);
-            page->anon.references -= leaves;
+            page->anon.references -= ret;
 
             if (page->anon.references == 0) {
                 arch_pt_write(table, level, index, 0);
