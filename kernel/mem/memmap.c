@@ -460,6 +460,7 @@ void memmap_init(void) {
     struct create_page_array_ctx ctx = {};
     iter_ram_areas(create_page_array_func, &ctx);
     create_page_array_finalize(&ctx);
+    pmap_early_cleanup();
 
     early_alloc_idx = 0; // disable early allocator
 

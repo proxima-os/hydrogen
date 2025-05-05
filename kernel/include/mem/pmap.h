@@ -44,3 +44,4 @@ void pmap_unmap(pmap_t *pmap, uintptr_t virt, size_t size);                     
 
 void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags);
 void pmap_early_alloc(uintptr_t virt, size_t size, int flags);
+void pmap_early_cleanup(void);
