@@ -119,12 +119,16 @@ static void tlb_commit(tlb_ctx_t *tlb) {
         struct tlb_remote_ctx ctx = {tlb, 0};
 
         if (tlb->pmap != NULL && tlb->global) {
+            cpu_t *cur = get_current_cpu();
+
             preempt_state_t state = preempt_lock();
             spin_acq_noirq(&tlb->pmap->cpus_lock);
 
-            HLIST_FOREACH(tlb->pmap->cpus, pmap_asid_data_t, node, cur) {
-                __atomic_fetch_add(&ctx.pending, 1, __ATOMIC_ACQUIRE);
-                smp_call_remote_async(cur->cpu, tlb_remote, &ctx);
+            HLIST_FOREACH(tlb->pmap->cpus, pmap_asid_data_t, node, asid) {
+                if (asid->cpu != cur) {
+                    __atomic_fetch_add(&ctx.pending, 1, __ATOMIC_ACQUIRE);
+                    smp_call_remote_async(asid->cpu, tlb_remote, &ctx);
+                }
             }
 
             spin_rel_noirq(&tlb->pmap->cpus_lock);
