@@ -20,7 +20,7 @@ _Noreturn void panic(const char *format, ...) {
 
     if (!__atomic_exchange_n(&panicking, true, __ATOMIC_RELAXED)) {
         printk_lock(); // never unlock it after this
-        smp_call_remote(NULL, do_halt, NULL);
+        smp_call_remote_async(NULL, do_halt, NULL);
 
         va_list args;
         va_start(args, format);

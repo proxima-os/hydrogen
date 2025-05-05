@@ -1,10 +1,13 @@
 #pragma once
 
 #include "arch/cpudata.h" /* IWYU pragma: export */
+#include "cpu/smp.h"
 #include "mem/pmap.h"
 #include "proc/rcu.h"
 #include "proc/sched.h"
+#include "util/slist.h"
 #include <stddef.h>
+#include <stdint.h>
 
 typedef struct cpu {
     arch_cpu_t arch; // must be the 1st field in the struct
@@ -12,9 +15,16 @@ typedef struct cpu {
     sched_t sched;
     rcu_cpu_state_t rcu;
     pmap_cpu_data_t pmap;
+    slist_node_t node;
+    struct {
+        smp_call_id_t current;
+        void (*func)(void *);
+        void *ctx;
+    } remote_call;
 } cpu_t;
 
 extern cpu_t boot_cpu;
+extern slist_t cpus;
 
 /* _tl-suffixed cpu-local macros are for data that is thread-local:
  * in other words, nothing gets messed up if the value is read/written
