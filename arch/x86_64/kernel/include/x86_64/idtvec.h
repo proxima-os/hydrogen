@@ -18,3 +18,7 @@
 #define X86_64_IDT_AC 0x11
 #define X86_64_IDT_MC 0x12
 #define X86_64_IDT_XM 0x13
+
+#define X86_64_IDT_LAPIC_TIMER 0xfd
+#define X86_64_IDT_LAPIC_ERROR 0xfe
+#define X86_64_IDT_LAPIC_SPURIOUS 0xff

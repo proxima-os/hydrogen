@@ -4,6 +4,7 @@
 #include "x86_64/cpu.h"
 #include "x86_64/cr.h"
 #include "x86_64/idtvec.h"
+#include "x86_64/lapic.h"
 #include "x86_64/msr.h"
 #include "x86_64/tss.h"
 #include <stdint.h>
@@ -83,6 +84,9 @@ USED void x86_64_idt_dispatch(x86_64_idt_frame_t *frame) {
     case X86_64_IDT_MC:
         if (x86_64_rdmsr(X86_64_MSR_GS_BASE) != *(uintptr_t *)&frame[1]) asm("swapgs");
         return x86_64_idt_handle_fatal(frame);
+    case X86_64_IDT_LAPIC_TIMER: return x86_64_lapic_irq_timer();
+    case X86_64_IDT_LAPIC_ERROR: return x86_64_lapic_irq_error();
+    case X86_64_IDT_LAPIC_SPURIOUS: return x86_64_lapic_irq_spurious();
     default: return x86_64_idt_handle_fatal(frame);
     }
 }

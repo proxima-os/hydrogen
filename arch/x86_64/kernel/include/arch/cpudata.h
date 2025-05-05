@@ -10,6 +10,7 @@ typedef struct {
     x86_64_tss_t tss;            // must be the 2nd field in the struct
     struct cpu *self;
     int current_pcid;
+    uint32_t apic_id;
 } arch_cpu_t;
 
 #define __this_cpu_type(name) __typeof__(((cpu_t *)0)->name)

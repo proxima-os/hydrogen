@@ -4,6 +4,7 @@
 #include "cpu/cpudata.h"
 #include "kernel/compiler.h"
 #include "x86_64/cpu.h"
+#include "x86_64/lapic.h"
 #include "x86_64/tss.h"
 #include <stdint.h>
 
@@ -17,4 +18,5 @@ USED void x86_64_prepare_main(void) {
 
 void arch_init(void) {
     acpi_init();
+    x86_64_lapic_init();
 }

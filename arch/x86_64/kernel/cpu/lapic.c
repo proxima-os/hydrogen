@@ -1,0 +1,178 @@
+#include "x86_64/lapic.h"
+#include "arch/idle.h"
+#include "arch/mmio.h"
+#include "arch/pmap.h"
+#include "cpu/cpudata.h"
+#include "kernel/compiler.h"
+#include "mem/kvmm.h"
+#include "util/panic.h"
+#include "util/printk.h"
+#include "x86_64/cpu.h"
+#include "x86_64/idtvec.h"
+#include "x86_64/msr.h"
+#include <stdint.h>
+
+#define LAPIC_ID 0x20
+#define LAPIC_EOI 0xb0
+#define LAPIC_SVR 0xf0
+#define LAPIC_ERR 0x280
+#define LAPIC_ICR 0x300
+#define LAPIC_LVT_TIMER 0x320
+#define LAPIC_LVT_LINT0 0x350
+#define LAPIC_LVT_LINT1 0x360
+#define LAPIC_LVT_ERROR 0x370
+#define LAPIC_TIMER_ICR 0x380
+#define LAPIC_TIMER_CCR 0x390
+#define LAPIC_TIMER_DCR 0x3e0
+
+#define LAPIC_SVR_ENABLE (1u << 8)
+
+#define LAPIC_ICR_PENDING (1u << 12)
+
+#define LAPIC_LVT_ACTIVE_LOW (1u << 13)
+#define LAPIC_LVT_LEVEL_TRIGGERED (1u << 15)
+#define LAPIC_LVT_MASKED (1u << 16)
+
+#define LAPIC_TIMER_DCR_1 0xb
+
+static uintptr_t lapic_regs;
+static uint64_t lapic_regs_phys;
+static bool have_lapic;
+
+static void setup_reg_access(void) {
+    if (x86_64_cpu_features.x2apic) return;
+
+    lapic_regs_phys = (x86_64_rdmsr(X86_64_MSR_APIC_BASE) & ~0xfff) & x86_64_cpu_features.paddr_mask;
+    int error = map_mmio(&lapic_regs, lapic_regs_phys, 0x1000, PMAP_READABLE | PMAP_WRITABLE | PMAP_CACHE_UC);
+    if (unlikely(error)) panic("lapic: failed to map registers (%d)", error);
+}
+
+static void setup_reg_access_local(void) {
+    uint64_t msr = x86_64_rdmsr(X86_64_MSR_APIC_BASE);
+    uint64_t nmsr = msr | X86_64_MSR_APIC_BASE_ENABLE;
+
+    if (x86_64_cpu_features.x2apic) {
+        nmsr |= X86_64_MSR_APIC_BASE_EXTD;
+    } else {
+        nmsr &= ~(x86_64_cpu_features.paddr_mask & ~0xfff);
+        nmsr |= lapic_regs_phys;
+    }
+
+    if (msr != nmsr) x86_64_wrmsr(X86_64_MSR_APIC_BASE, nmsr);
+}
+
+static inline uint32_t lapic_read(unsigned reg) {
+    if (x86_64_cpu_features.x2apic) return x86_64_rdmsr(0x800 + (reg >> 4));
+    else return mmio_read32(lapic_regs, reg);
+}
+
+static inline void lapic_write(unsigned reg, uint32_t value) {
+    if (x86_64_cpu_features.x2apic) x86_64_wrmsr(0x800 + (reg >> 4), value);
+    else mmio_write32(lapic_regs, reg, value);
+}
+
+static inline void lapic_write64(unsigned reg, uint64_t value) {
+    if (x86_64_cpu_features.x2apic) {
+        x86_64_wrmsr(0x800 + (reg >> 4), value);
+    } else {
+        mmio_write32(lapic_regs, reg + 0x10, value >> 32);
+        mmio_write32(lapic_regs, reg, value);
+    }
+}
+
+static inline void lapic_fence(void) {
+    if (x86_64_cpu_features.x2apic) {
+        asm("mfence; lfence");
+    }
+}
+
+void x86_64_lapic_init(void) {
+    if (!x86_64_cpu_features.apic) panic("cpu does not have an integrated local apic");
+    setup_reg_access();
+    x86_64_lapic_init_local();
+}
+
+void x86_64_lapic_init_local(void) {
+    setup_reg_access_local();
+    lapic_write(LAPIC_SVR, X86_64_IDT_LAPIC_SPURIOUS); // disable local apic during init
+    lapic_write(LAPIC_ERR, 0);                         // clear stale errors
+
+    uint32_t id = lapic_read(LAPIC_ID);
+    if (!x86_64_cpu_features.x2apic) id >>= 24;
+
+    if (get_current_cpu() == &boot_cpu) {
+        this_cpu_write(arch.apic_id, id);
+    } else {
+        ENSURE(id == this_cpu_read(arch.apic_id));
+    }
+
+    lapic_write(LAPIC_LVT_TIMER, LAPIC_LVT_MASKED | X86_64_IDT_LAPIC_TIMER);
+    lapic_write(LAPIC_LVT_LINT0, LAPIC_LVT_MASKED | X86_64_IDT_LAPIC_SPURIOUS);
+    lapic_write(LAPIC_LVT_LINT1, LAPIC_LVT_MASKED | X86_64_IDT_LAPIC_SPURIOUS);
+    lapic_write(LAPIC_LVT_ERROR, X86_64_IDT_LAPIC_ERROR);
+
+    lapic_write(LAPIC_TIMER_DCR, LAPIC_TIMER_DCR_1);
+    lapic_write(LAPIC_SVR, LAPIC_SVR_ENABLE | X86_64_IDT_LAPIC_SPURIOUS);
+
+    lapic_write(LAPIC_ERR, 0);
+    uint32_t error = lapic_read(LAPIC_ERR);
+    if (error) panic("lapic: got error 0x%x during initialization\n", error);
+
+    have_lapic = true;
+}
+
+void x86_64_lapic_eoi(void) {
+    lapic_write(LAPIC_EOI, 0);
+}
+
+void x86_64_lapic_ipi(uint32_t target_id, uint8_t vector, uint32_t flags) {
+    if (!have_lapic) return;
+
+    uint64_t icr = vector | flags;
+
+    if (x86_64_cpu_features.x2apic) {
+        icr |= (uint64_t)target_id << 32;
+        // in x2apic mode the register writes aren't serializing, so without this the other cpu
+        // might get the interrupt before it sees data that the interrupt handler uses
+        lapic_fence();
+    } else {
+        icr |= (uint64_t)target_id << 56;
+    }
+
+    lapic_write64(LAPIC_ICR, icr);
+
+    if (!x86_64_cpu_features.x2apic) {
+        while ((lapic_read(LAPIC_ICR) & LAPIC_ICR_PENDING) != 0) {
+            cpu_relax();
+        }
+    }
+}
+
+void x86_64_lapic_timer_setup(x86_64_lapic_timer_mode_t mode, bool interrupt) {
+    x86_64_lapic_timer_stop();
+
+    uint32_t lvt = mode | X86_64_IDT_LAPIC_TIMER;
+    if (interrupt) lvt |= LAPIC_LVT_MASKED;
+    lapic_write(LAPIC_LVT_TIMER, lvt);
+}
+
+void x86_64_lapic_timer_start(uint32_t count) {
+    lapic_write(LAPIC_TIMER_ICR, count);
+}
+
+uint32_t x86_64_lapic_timer_remaining(void) {
+    return lapic_read(LAPIC_TIMER_CCR);
+}
+
+void x86_64_lapic_irq_timer(void) {
+    x86_64_lapic_eoi();
+}
+
+void x86_64_lapic_irq_error(void) {
+    lapic_write(LAPIC_ERR, 0);
+    printk("lapic: got error 0x%x\n", lapic_read(LAPIC_ERR));
+    x86_64_lapic_eoi();
+}
+
+void x86_64_lapic_irq_spurious(void) {
+}

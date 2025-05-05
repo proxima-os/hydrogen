@@ -2,6 +2,10 @@
 
 #include <stdint.h>
 
+#define X86_64_MSR_APIC_BASE 0x1b
+#define X86_64_MSR_APIC_BASE_EXTD (1ull << 10)
+#define X86_64_MSR_APIC_BASE_ENABLE (1ull << 11)
+
 #define X86_64_MSR_MCG_CAP 0x179
 #define X86_64_MSR_MSG_CAP_COUNT 0xff
 #define X86_64_MSR_MCG_CAP_MCG_CTL_P (1ull << 8)
