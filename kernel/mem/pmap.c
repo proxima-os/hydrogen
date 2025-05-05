@@ -579,7 +579,6 @@ void pmap_map(pmap_t *pmap, uintptr_t virt, uint64_t phys, size_t size, int flag
     ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE | PMAP_CACHE_MASK)) == 0);
 
     if (!is_kernel_address(virt)) flags |= PMAP_USER;
-    flags |= PMAP_ANONYMOUS;
 
     if (!pmap) mutex_acq(&kernel_pt_lock, false);
     migrate_state_t state = migrate_lock();
