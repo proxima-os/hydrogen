@@ -254,11 +254,12 @@ int sched_perform_wait(void) {
     spin_acq_noirq(&cpu->sched.lock);
 
     thread_t *thread = cpu->sched.current;
-    ASSERT(thread->state == THREAD_BLOCKED || thread->state == THREAD_BLOCKED_INTERRUPTIBLE);
 
-    thread->wake_status = -1;
-    do_yield(cpu);
-    cpu = get_current_cpu();
+    if (thread->state == THREAD_BLOCKED || thread->state == THREAD_BLOCKED_INTERRUPTIBLE) {
+        thread->wake_status = -1;
+        do_yield(cpu);
+        cpu = get_current_cpu();
+    }
 
     spin_rel_noirq(&cpu->sched.lock);
     preempt_unlock(state);
