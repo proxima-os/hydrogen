@@ -356,6 +356,8 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
             ASSERT(pte != 0);
 #endif
 
+            ASSERT(table != kernel_page_table);
+
             if (pte != 0) {
                 arch_pt_write(table, level, index, 0);
 
@@ -376,7 +378,7 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
             page_t *page = virt_to_page(child);
             page->anon.references -= ret;
 
-            if (page->anon.references == 0) {
+            if (page->anon.references == 0 && table != kernel_page_table) {
                 arch_pt_write(table, level, index, 0);
                 tlb_add_edge(tlb, virt, true);
                 tlb_add_unmap_anon(tlb, page);
@@ -626,6 +628,8 @@ static void do_remap(void *table, unsigned level, uintptr_t virt, size_t size, i
 #if PT_PREPARE_DEBUG
             ASSERT(pte != 0);
 #endif
+
+            ASSERT(table != kernel_page_table);
 
             if (pte != 0 && !(PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
                 pte_t npte = pte;
