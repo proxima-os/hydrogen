@@ -25,7 +25,7 @@ static uint64_t rsdp_phys;
 
 static LIMINE_REQ struct limine_rsdp_request rsdp_req = {.id = LIMINE_RSDP_REQUEST};
 
-void acpi_init(void) {
+INIT_TEXT void acpi_init(void) {
     if (!rsdp_req.response) {
         printk("acpi: no response to rsdp request\n");
         return;

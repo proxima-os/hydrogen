@@ -14,8 +14,8 @@
 
 x86_64_cpu_features_t x86_64_cpu_features;
 
-static size_t cr4_value = X86_64_CR4_OSXMMEXCEPT | X86_64_CR4_OSFXSR | X86_64_CR4_PAE;
-static size_t efer_value = X86_64_MSR_EFER_LMA | X86_64_MSR_EFER_LME | X86_64_MSR_EFER_SCE;
+INIT_DATA static size_t cr4_value = X86_64_CR4_OSXMMEXCEPT | X86_64_CR4_OSFXSR | X86_64_CR4_PAE;
+INIT_DATA static size_t efer_value = X86_64_MSR_EFER_LMA | X86_64_MSR_EFER_LME | X86_64_MSR_EFER_SCE;
 
 static LIMINE_REQ struct limine_paging_mode_request pmode_req = {
         .id = LIMINE_PAGING_MODE_REQUEST,
@@ -25,7 +25,7 @@ static LIMINE_REQ struct limine_paging_mode_request pmode_req = {
         .max_mode = LIMINE_PAGING_MODE_X86_64_5LVL,
 };
 
-void x86_64_cpu_detect(void) {
+INIT_TEXT void x86_64_cpu_detect(void) {
     cr4_value |= x86_64_read_cr4() & X86_64_CR4_LA57;
 
     x86_64_cpu_features_t *feat = &x86_64_cpu_features;
@@ -107,9 +107,9 @@ static uint64_t gdt[7] = {
         0,                // tss low
         0,                // tss high
 };
-static spinlock_t gdt_lock;
+INIT_DATA static spinlock_t gdt_lock;
 
-static void init_gdt(cpu_t *self) {
+INIT_TEXT static void init_gdt(cpu_t *self) {
     struct {
         uint16_t limit;
         void *base;
@@ -154,7 +154,7 @@ static void init_gdt(cpu_t *self) {
     spin_rel(&gdt_lock, state);
 }
 
-void x86_64_cpu_init(cpu_t *self) {
+INIT_TEXT void x86_64_cpu_init(cpu_t *self) {
     x86_64_write_cr0(
             X86_64_CR0_PG | X86_64_CR0_AM | X86_64_CR0_WP | X86_64_CR0_NE | X86_64_CR0_ET | X86_64_CR0_MP |
             X86_64_CR0_PE

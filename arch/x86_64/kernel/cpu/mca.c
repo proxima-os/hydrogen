@@ -1,10 +1,11 @@
 #include "x86_64/mca.h"
+#include "sections.h"
 #include "x86_64/cpu.h"
 #include "x86_64/cr.h"
 #include "x86_64/msr.h"
 #include <stdint.h>
 
-void x86_64_mca_init(void) {
+INIT_TEXT void x86_64_mca_init(void) {
     if (!x86_64_cpu_features.mce) return;
 
     if (x86_64_cpu_features.mca) {

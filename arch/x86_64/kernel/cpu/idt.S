@@ -90,7 +90,7 @@ x86_64_idt_entry:
     .cfi_endproc
 .size x86_64_idt_entry, . - x86_64_idt_entry
 
-.section ".rodata.x86_64_idt_thunks", "a", @progbits
+.section ".init.data", "aw", @progbits
 
 .balign 8
 .globl x86_64_idt_thunks
@@ -123,7 +123,7 @@ x86_64_idt_thunks:
     jmp x86_64_idt_entry
     .cfi_endproc
 
-.pushsection ".rodata.x86_64_idt_thunks", "a", @progbits
+.pushsection ".init.data", "aw", @progbits
 .org \vector * 8
     .quad 1b
 .popsection
@@ -154,6 +154,6 @@ idt_thunk .Li
 .set .Li, .Li + 1
 .endr
 
-.section ".rodata.x86_64_idt_thunks", "a", @progbits
+.section ".init.data", "aw", @progbits
 .org 256 * 8
 .size x86_64_idt_thunks, . - x86_64_idt_thunks

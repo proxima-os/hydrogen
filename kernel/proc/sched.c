@@ -9,6 +9,7 @@
 #include "kernel/pgsize.h"
 #include "mem/vmalloc.h"
 #include "proc/rcu.h"
+#include "sections.h"
 #include "string.h"
 #include "util/list.h"
 #include "util/refcount.h"
@@ -22,7 +23,7 @@
 
 static void handle_timeout_event(timer_event_t *self);
 
-void sched_init(void) {
+INIT_TEXT void sched_init(void) {
     cpu_t *cpu = get_current_cpu();
     sched_t *sched = &cpu->sched;
     sched->current = &sched->idle_thread;

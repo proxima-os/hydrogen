@@ -6,6 +6,7 @@
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
 #include "mem/vmalloc.h"
+#include "sections.h"
 #include "string.h"
 #include "uacpi/acpi.h"
 #include "uacpi/status.h"
@@ -68,7 +69,7 @@ static ioapic_t *gsi_to_apic(uint32_t *irq) {
     return NULL;
 }
 
-void x86_64_ioapic_init(void) {
+INIT_TEXT void x86_64_ioapic_init(void) {
     uacpi_table table;
     uacpi_status status = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &table);
     if (uacpi_unlikely_error(status)) panic("failed to find madt table: %s", uacpi_status_to_string(status));

@@ -3,6 +3,7 @@
 #include "kernel/compiler.h"
 #include "kernel/time.h"
 #include "proc/sched.h"
+#include "sections.h"
 #include "util/panic.h"
 #include "util/printk.h"
 #include "util/time.h"
@@ -19,17 +20,17 @@ static uint64_t no_time_read(void) {
     return 0;
 }
 
-static void no_time_confirm(bool final) {
+INIT_TEXT static void no_time_confirm(bool final) {
     panic("no time source available");
 }
 
 uint64_t (*x86_64_read_time)(void) = no_time_read;
 uint64_t (*x86_64_timer_get_tsc)(uint64_t);
-void (*x86_64_timer_cleanup)(void);
-void (*x86_64_timer_confirm)(bool) = no_time_confirm;
+INIT_DATA void (*x86_64_timer_cleanup)(void);
+INIT_DATA void (*x86_64_timer_confirm)(bool) = no_time_confirm;
 timeconv_t x86_64_ns2lapic_conv;
 
-void x86_64_time_init(void) {
+INIT_TEXT void x86_64_time_init(void) {
     x86_64_hpet_init();
     x86_64_kvmclock_init();
     x86_64_tsc_init();
@@ -45,7 +46,7 @@ void x86_64_time_init(void) {
     }
 }
 
-void x86_64_switch_timer(
+INIT_TEXT void x86_64_switch_timer(
         uint64_t (*read)(void),
         uint64_t (*get_tsc)(uint64_t),
         void (*cleanup)(void),

@@ -1,6 +1,6 @@
 #include "arch/stack.h"
 
-.section ".text._entry", "ax", @progbits
+.section ".init.text", "ax", @progbits
 
 .cfi_sections .debug_frame
 

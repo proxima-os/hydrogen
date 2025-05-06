@@ -13,6 +13,7 @@
 #include "string.h"
 #include "util/list.h"
 #include "util/panic.h"
+#include "util/printk.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -21,14 +22,14 @@ uintptr_t hhdm_base;
 uintptr_t page_array_base;
 uint64_t kernel_base;
 
-static uint64_t max_phys_addr;
+INIT_DATA static uint64_t max_phys_addr;
 
-static struct limine_memmap_response *loader_map;
-static uint64_t early_alloc_max;
-static uint64_t early_alloc_idx;
+INIT_DATA static struct limine_memmap_response *loader_map;
+INIT_DATA static uint64_t early_alloc_max;
+INIT_DATA static uint64_t early_alloc_idx;
 
-static uint64_t min_page_head;
-static uint64_t max_page_tail;
+INIT_DATA static uint64_t min_page_head;
+INIT_DATA static uint64_t max_page_tail;
 
 typedef struct {
     list_node_t node;
@@ -39,12 +40,12 @@ typedef struct {
 
 static list_t ram_list;
 
-static void bounds_func(uint64_t head, uint64_t tail, void *ctx) {
+INIT_TEXT static void bounds_func(uint64_t head, uint64_t tail, void *ctx) {
     if (head < min_page_head) min_page_head = head;
     if (head > max_page_tail) max_page_tail = tail;
 }
 
-static bool align_bounds(uint64_t *head, uint64_t *tail) {
+INIT_TEXT static bool align_bounds(uint64_t *head, uint64_t *tail) {
     uint64_t aligned_head = (*head + PAGE_MASK) & ~PAGE_MASK;
     if (aligned_head < *head) return false;
 
@@ -58,7 +59,7 @@ static bool align_bounds(uint64_t *head, uint64_t *tail) {
     return true;
 }
 
-static void iter_ram_areas(void (*func)(uint64_t, uint64_t, void *), void *ctx) {
+INIT_TEXT static void iter_ram_areas(void (*func)(uint64_t, uint64_t, void *), void *ctx) {
     uint64_t area_head = 0;
     uint64_t area_tail = 0;
     bool in_area = false;
@@ -101,7 +102,7 @@ static void iter_ram_areas(void (*func)(uint64_t, uint64_t, void *), void *ctx) 
     }
 }
 
-static void determine_memory_bounds(void) {
+INIT_TEXT static void determine_memory_bounds(void) {
     min_page_head = UINT64_MAX;
     max_page_tail = 0;
     iter_ram_areas(bounds_func, NULL);
@@ -109,13 +110,13 @@ static void determine_memory_bounds(void) {
 }
 
 #define MAX_EARLY_VM_AREAS 4
-static struct {
+INIT_DATA static struct {
     uintptr_t head;
     uintptr_t tail;
 } early_vm_areas[MAX_EARLY_VM_AREAS];
-static size_t num_early_vm_areas;
+INIT_DATA static size_t num_early_vm_areas;
 
-static void add_early_vm_area(uintptr_t head, uintptr_t tail) {
+INIT_TEXT static void add_early_vm_area(uintptr_t head, uintptr_t tail) {
     uintptr_t aligned_head = (head + PAGE_MASK) & ~PAGE_MASK;
     if (aligned_head < head) return;
 
@@ -129,7 +130,7 @@ static void add_early_vm_area(uintptr_t head, uintptr_t tail) {
     early_vm_areas[idx].tail = aligned_tail;
 }
 
-static uintptr_t early_vm_alloc(uintptr_t size) {
+INIT_TEXT static uintptr_t early_vm_alloc(uintptr_t size) {
     size = (size + PAGE_MASK) & ~PAGE_MASK;
     ENSURE(size > 0);
 
@@ -154,7 +155,7 @@ static uintptr_t early_vm_alloc(uintptr_t size) {
     return 0;
 }
 
-static void create_hhdm_func(uint64_t head, uint64_t tail, void *ctx) {
+INIT_TEXT static void create_hhdm_func(uint64_t head, uint64_t tail, void *ctx) {
     pmap_early_map(hhdm_base + head, head, (tail - head) + 1, PMAP_READABLE | PMAP_WRITABLE);
 }
 
@@ -164,7 +165,7 @@ struct create_page_array_ctx {
     bool in_area;
 };
 
-static void create_page_array_finalize(struct create_page_array_ctx *ctx) {
+INIT_TEXT static void create_page_array_finalize(struct create_page_array_ctx *ctx) {
     if (ctx->in_area) {
         size_t size = ctx->tail - ctx->head + 1;
         pmap_early_alloc(ctx->head, size, PMAP_READABLE | PMAP_WRITABLE);
@@ -174,7 +175,7 @@ static void create_page_array_finalize(struct create_page_array_ctx *ctx) {
     }
 }
 
-static void create_page_array_func(uint64_t head, uint64_t tail, void *ptr) {
+INIT_TEXT static void create_page_array_func(uint64_t head, uint64_t tail, void *ptr) {
     struct create_page_array_ctx *ctx = ptr;
 
     uintptr_t parr_head = page_array_base + ((head >> PAGE_SHIFT) * sizeof(page_t));
@@ -197,11 +198,11 @@ static void create_page_array_func(uint64_t head, uint64_t tail, void *ptr) {
     ctx->in_area = true;
 }
 
-static void map_segment(const void *start, const void *end, int flags) {
+INIT_TEXT static void map_segment(const void *start, const void *end, int flags) {
     pmap_early_map((uintptr_t)start, sym_to_phys(start), (uintptr_t)end - (uintptr_t)start, flags);
 }
 
-static void commit_usable(uint64_t head, uint64_t tail) {
+INIT_TEXT static void commit_usable(uint64_t head, uint64_t tail) {
     if (head < early_alloc_max) {
         if (tail <= early_alloc_max) {
             pmem_add_area(head, tail, true);
@@ -215,7 +216,7 @@ static void commit_usable(uint64_t head, uint64_t tail) {
     pmem_add_area(head, tail, false);
 }
 
-static void add_areas(bool free) {
+INIT_TEXT static void add_areas(bool free) {
     uint64_t wanted_type = free ? LIMINE_MEMMAP_USABLE : LIMINE_MEMMAP_EXECUTABLE_AND_MODULES;
 
     uint64_t area_head = 0;
@@ -265,7 +266,7 @@ struct add_hhdm_gaps_ctx {
     uint64_t next_head;
 };
 
-static void add_hhdm_gaps(uint64_t head, uint64_t tail, void *ptr) {
+INIT_TEXT static void add_hhdm_gaps(uint64_t head, uint64_t tail, void *ptr) {
     struct add_hhdm_gaps_ctx *ctx = ptr;
 
     if (ctx->next_head < head) {
@@ -284,7 +285,7 @@ struct build_ram_list_ctx {
     bool in_area;
 };
 
-static void ram_list_add(uint64_t head, uint64_t tail, bool owned) {
+INIT_TEXT static void ram_list_add(uint64_t head, uint64_t tail, bool owned) {
     ram_range_t *range = vmalloc(sizeof(*range));
     if (unlikely(!range)) panic("memmap: out of memory while creating ram list");
 
@@ -295,7 +296,7 @@ static void ram_list_add(uint64_t head, uint64_t tail, bool owned) {
     list_insert_tail(&ram_list, &range->node);
 }
 
-static void ram_list_commit(struct build_ram_list_ctx *ctx) {
+INIT_TEXT static void ram_list_commit(struct build_ram_list_ctx *ctx) {
     if (!ctx->in_area) return;
 
     if (ctx->owned) {
@@ -322,7 +323,7 @@ static void ram_list_commit(struct build_ram_list_ctx *ctx) {
     ctx->in_area = false;
 }
 
-static void ram_list_append(struct build_ram_list_ctx *ctx, uint64_t head, uint64_t tail, bool owned) {
+INIT_TEXT static void ram_list_append(struct build_ram_list_ctx *ctx, uint64_t head, uint64_t tail, bool owned) {
     if (owned) {
         if (head < min_page_head) {
             if (tail < min_page_head) {
@@ -356,7 +357,7 @@ static void ram_list_append(struct build_ram_list_ctx *ctx, uint64_t head, uint6
     ctx->in_area = true;
 }
 
-static void build_ram_list(void) {
+INIT_TEXT static void build_ram_list(void) {
     struct build_ram_list_ctx ctx = {};
     uint64_t max = cpu_max_phys_addr();
 
@@ -387,7 +388,7 @@ static void build_ram_list(void) {
     ram_list_commit(&ctx);
 }
 
-void memmap_init(void) {
+INIT_TEXT void memmap_init(void) {
     extern const void _start, _erodata, _etext, _end;
 
     static LIMINE_REQ struct limine_hhdm_request hhdm_req = {.id = LIMINE_HHDM_REQUEST};
@@ -480,6 +481,7 @@ struct reclaim_ctx {
     uint64_t reclaim_tail;
     uint64_t usable_head;
     uint64_t usable_tail;
+    size_t reclaimed;
     bool in_reclaim;
     bool in_usable;
 };
@@ -505,13 +507,14 @@ struct reclaim_ctx {
         } while (0);                                 \
     })
 
-static void reclaim_commit(struct reclaim_ctx *ctx) {
+INIT_TEXT static void reclaim_commit(struct reclaim_ctx *ctx) {
     if (ctx->in_reclaim && align_bounds(&ctx->reclaim_head, &ctx->reclaim_tail)) {
         pmem_add_area(ctx->reclaim_head, ctx->reclaim_tail, true);
+        ctx->reclaimed += (ctx->reclaim_tail - ctx->reclaim_head) + 1;
     }
 }
 
-static void usable_commit(struct reclaim_ctx *ctx) {
+INIT_TEXT static void usable_commit(struct reclaim_ctx *ctx) {
     uint64_t ahead = ctx->usable_head, atail = ctx->usable_tail;
     if (ctx->in_usable && align_bounds(&ahead, &atail)) {
         if (ahead != ctx->usable_head) ADD_TO_TYPE(reclaim, *ctx, ctx->usable_head, ahead - 1);
@@ -519,7 +522,7 @@ static void usable_commit(struct reclaim_ctx *ctx) {
     }
 }
 
-void memmap_reclaim_loader(void) {
+INIT_TEXT void memmap_reclaim_loader(void) {
     ASSERT(loader_map != NULL);
 
     struct reclaim_ctx ctx = {};
@@ -547,11 +550,37 @@ void memmap_reclaim_loader(void) {
     reclaim_commit(&ctx);
 
     loader_map = NULL;
+
+    printk("mem: reclaimed %zK of bootloader data\n", ctx.reclaimed / 1024);
 }
 
 #undef ADD_TO_TYPE
 
-void *early_alloc_page(void) {
+static size_t reclaim_init_region(const void *start, const void *end) {
+    uintptr_t addr = (uintptr_t)start;
+    size_t size = (uintptr_t)end - (uintptr_t)start;
+
+    if (size != 0) {
+        pmap_unmap(NULL, addr, size);
+        pmem_free_multiple(phys_to_page(sym_to_phys(start)), size >> PAGE_SHIFT);
+        pmem_unreserve(size >> PAGE_SHIFT);
+    }
+
+    return size;
+}
+
+__attribute__((section(".cleanup.text"), noinline)) void memmap_reclaim_init(void) {
+    extern const void __init_text_start, __init_text_end, __init_data_start, __init_data_end;
+
+    size_t total = 0;
+
+    total += reclaim_init_region(&__init_text_start, &__init_text_end);
+    total += reclaim_init_region(&__init_data_start, &__init_data_end);
+
+    printk("mem: reclaimed %zK of initialization code and data\n", total / 1024);
+}
+
+INIT_TEXT void *early_alloc_page(void) {
     ASSERT(loader_map != NULL);
 
     for (; early_alloc_idx > 0; early_alloc_idx--) {

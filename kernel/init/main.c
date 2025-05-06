@@ -18,17 +18,31 @@ __attribute__((used, section(".requests2"))) static LIMINE_REQUESTS_END_MARKER;
 
 LIMINE_REQ LIMINE_BASE_REVISION(3);
 
-static void kernel_init(void *ctx) {
-    memmap_reclaim_loader(); // don't move below anything that can create threads, see memmap.h
+// this is in a separate function so that kernel_init can be INIT_TEXT
+__attribute__((noinline)) static _Noreturn void finalize_init(void) {
+    memmap_reclaim_init();
 
     pmem_stats_t stats = pmem_get_stats();
     printk("mem: %zK total, %zK available, %zK free\n",
            stats.total * (PAGE_SIZE / 1024),
            stats.available * (PAGE_SIZE / 1024),
            stats.free * (PAGE_SIZE / 1024));
+    sched_exit();
 }
 
-USED _Noreturn void kernel_main(void) {
+INIT_TEXT static void kernel_init(void *ctx) {
+    memmap_reclaim_loader(); // don't move below anything that can create threads, see memmap.h
+    finalize_init();
+}
+
+// this is in a separate function so that kernel_main can be INIT_TEXT
+__attribute__((noinline)) static _Noreturn void wake_init_thread_and_idle(thread_t *thread) {
+    sched_wake(thread);
+    thread_deref(thread);
+    sched_idle();
+}
+
+INIT_TEXT USED _Noreturn void kernel_main(void) {
     parse_command_line();
     sched_init();
     rcu_init();
@@ -44,8 +58,5 @@ USED _Noreturn void kernel_main(void) {
     thread_t *init_thread;
     int error = sched_create_thread(&init_thread, kernel_init, NULL);
     if (unlikely(error)) panic("failed to create init thread (%d)", error);
-    sched_wake(init_thread);
-    thread_deref(init_thread);
-
-    sched_idle();
+    wake_init_thread_and_idle(init_thread);
 }

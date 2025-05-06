@@ -4,6 +4,7 @@
 #include "kernel/compiler.h"
 #include "kernel/time.h"
 #include "mem/kvmm.h"
+#include "sections.h"
 #include "uacpi/acpi.h"
 #include "uacpi/status.h"
 #include "uacpi/tables.h"
@@ -34,7 +35,7 @@ static uint64_t hpet_read(unsigned reg) {
     return mmio_read64(hpet_regs, reg);
 }
 
-static void hpet_write(unsigned reg, uint64_t value) {
+INIT_TEXT static void hpet_write(unsigned reg, uint64_t value) {
     mmio_write64(hpet_regs, reg, value);
 }
 
@@ -42,18 +43,18 @@ static uint64_t hpet_read_time(void) {
     return timeconv_apply(hpet_conv, hpet_read(HPET_CNT));
 }
 
-static void hpet_cleanup(void) {
+INIT_TEXT static void hpet_cleanup(void) {
     unmap_mmio(hpet_regs, HPET_REGS_SIZE);
     hpet_regs = 0;
 }
 
-static void hpet_confirm(bool final) {
+INIT_TEXT static void hpet_confirm(bool final) {
     if (final && (hpet_read(HPET_CAP) & HPET_CAP_COUNTER_64) == 0) {
         panic("hpet: cannot use 32-bit hpet as system time source");
     }
 }
 
-void x86_64_hpet_init(void) {
+INIT_TEXT void x86_64_hpet_init(void) {
     uacpi_table table;
     uacpi_status status = uacpi_table_find_by_signature(ACPI_HPET_SIGNATURE, &table);
     if (uacpi_unlikely_error(status)) {

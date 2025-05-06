@@ -4,6 +4,7 @@
 #include "kernel/compiler.h"
 #include "proc/event.h"
 #include "proc/sched.h"
+#include "sections.h"
 #include "util/slist.h"
 #include "util/spinlock.h"
 
@@ -22,7 +23,7 @@ static void run_callbacks(task_t *task) {
     }
 }
 
-void rcu_init(void) {
+INIT_TEXT void rcu_init(void) {
     this_cpu_write(rcu.run_callbacks_task.func, run_callbacks);
 }
 

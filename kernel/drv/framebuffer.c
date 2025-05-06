@@ -65,7 +65,7 @@ static void fb_write(printk_sink_t *self, const void *data, size_t size) {
     }
 }
 
-void fb_init(void) {
+INIT_TEXT void fb_init(void) {
     static LIMINE_REQ struct limine_framebuffer_request fb_req = {.id = LIMINE_FRAMEBUFFER_REQUEST};
     static printk_sink_t sink = {
             .write = fb_write,

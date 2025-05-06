@@ -37,6 +37,8 @@ void memmap_init(void);
 // Otherwise, race conditions could cause a UAF.
 void memmap_reclaim_loader(void);
 
+void memmap_reclaim_init(void);
+
 void *early_alloc_page(void);
 
 bool next_owned_ram_gap(uint64_t addr, uint64_t *head, uint64_t *tail);

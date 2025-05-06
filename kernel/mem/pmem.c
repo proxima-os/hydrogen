@@ -3,6 +3,7 @@
 #include "kernel/pgsize.h"
 #include "mem/memmap.h"
 #include "proc/mutex.h"
+#include "sections.h"
 #include "string.h"
 #include "util/shlist.h"
 #include <stddef.h>
@@ -217,7 +218,7 @@ void pmem_free_multiple(page_t *page, size_t count) {
     mutex_rel(&pmem_lock);
 }
 
-void pmem_add_area(uint64_t head, uint64_t tail, bool free) {
+INIT_TEXT void pmem_add_area(uint64_t head, uint64_t tail, bool free) {
     ASSERT((head & PAGE_MASK) == 0);
     ASSERT((tail & PAGE_MASK) == PAGE_MASK);
     size_t count = ((tail - head) >> PAGE_SHIFT) + 1;

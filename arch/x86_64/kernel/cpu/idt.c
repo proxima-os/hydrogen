@@ -1,6 +1,7 @@
 #include "x86_64/idt.h"
 #include "cpu/smp.h"
 #include "kernel/compiler.h"
+#include "sections.h"
 #include "util/panic.h"
 #include "x86_64/cpu.h"
 #include "x86_64/cr.h"
@@ -18,11 +19,11 @@ static struct {
 
 extern uintptr_t x86_64_idt_thunks[256];
 
-static void set_ist_idx(int vector, int index) {
+INIT_TEXT static void set_ist_idx(int vector, int index) {
     idt[vector].low |= ((uint64_t)(index + 1) << 32);
 }
 
-void x86_64_idt_init(void) {
+INIT_TEXT void x86_64_idt_init(void) {
     struct {
         uint16_t limit;
         void *base;

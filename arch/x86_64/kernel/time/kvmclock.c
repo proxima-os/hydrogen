@@ -1,6 +1,7 @@
 #include "x86_64/kvmclock.h"
 #include "kernel/x86_64/kvmclock.h"
 #include "mem/memmap.h"
+#include "sections.h"
 #include "string.h"
 #include "util/printk.h"
 #include "x86_64/cpu.h"
@@ -19,11 +20,11 @@ static uint64_t kvmclock_read(void) {
     return x86_64_read_kvmclock(&kvmclock_info);
 }
 
-static void kvmclock_cleanup(void) {
+INIT_TEXT static void kvmclock_cleanup(void) {
     x86_64_wrmsr(kvmclock_msr, 0);
 }
 
-void x86_64_kvmclock_init(void) {
+INIT_TEXT void x86_64_kvmclock_init(void) {
     if (!x86_64_cpu_features.hypervisor) {
         printk("kvmclock: not running in hypervisor\n");
         return;
