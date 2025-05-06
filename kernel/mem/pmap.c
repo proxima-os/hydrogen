@@ -226,9 +226,19 @@ static void free_tables(void *table, unsigned level, size_t min_idx, size_t max_
 int pmap_create(pmap_t *out) {
     static uint64_t next_asid;
 
+    unsigned level = arch_pt_levels() - 1;
+
     memset(out, 0, sizeof(*out));
-    if (unlikely(!(out = alloc_table(arch_pt_levels() - 1)))) return ENOMEM;
+    if (unlikely(!(out = alloc_table(level)))) return ENOMEM;
     out->asid = __atomic_fetch_add(&next_asid, 1, __ATOMIC_RELAXED) % (arch_pt_max_asid() + 1);
+
+    size_t min_idx = arch_pt_get_index(arch_pt_max_user_addr(), level) + 1;
+    size_t max_idx = arch_pt_max_index(level);
+
+    while (min_idx <= max_idx) {
+        arch_pt_write(out->table, level, min_idx, arch_pt_read(kernel_page_table, level, min_idx));
+        min_idx += 1;
+    }
 
     return 0;
 }
