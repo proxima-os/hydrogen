@@ -7,6 +7,7 @@
 #include "string.h"
 #include "util/hash.h"
 #include "util/hlist.h"
+#include "util/list.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -21,7 +22,7 @@
 #define ALLOC_TABLE_SIZE 512
 
 typedef struct kvmm_range {
-    hlist_node_t node;
+    list_node_t node;
     hlist_node_t kind_node;
     uintptr_t head;
     size_t size;
@@ -29,7 +30,7 @@ typedef struct kvmm_range {
     bool free : 1;
 } kvmm_range_t;
 
-static hlist_t kvmm_ranges;
+static list_t kvmm_ranges;
 
 static hlist_t kvmm_free_ranges[sizeof(size_t) * 8 - PAGE_SHIFT];
 static size_t kvmm_free_bitmap;
@@ -93,7 +94,7 @@ static bool try_merge(kvmm_range_t *prev, kvmm_range_t *next, uintptr_t head, si
 
         if (next_merge) {
             prev->size += next->size;
-            hlist_remove(&kvmm_ranges, &next->node);
+            list_remove(&kvmm_ranges, &next->node);
             free_remove(next, next->order);
             kfree(next, sizeof(*next));
         }
@@ -121,7 +122,7 @@ static bool merge_or_insert(kvmm_range_t *prev, kvmm_range_t *next, uintptr_t he
         range->order = get_lower_p2(size);
         range->free = true;
 
-        hlist_insert_after(&kvmm_ranges, &prev->node, &range->node);
+        list_insert_after(&kvmm_ranges, &prev->node, &range->node);
         free_insert(range, range->order);
     }
 
@@ -212,13 +213,15 @@ uintptr_t kvmm_alloc(size_t size) {
             return 0;
         }
 
-        src_range->size -= size;
-        update_order(src_range);
-
         memset(range, 0, sizeof(*range));
-        range->head = src_range->head + src_range->size;
+        range->head = src_range->head;
         range->size = size;
         range->free = false;
+        list_insert_before(&kvmm_ranges, &src_range->node, &range->node);
+
+        src_range->head += size;
+        src_range->size -= size;
+        update_order(src_range);
     } else {
         range = src_range;
         free_remove(range, range->order);
@@ -288,7 +291,7 @@ void kvmm_free(uintptr_t address, size_t size) {
                 range->head,
                 range->size
         )) {
-        hlist_remove(&kvmm_ranges, &range->node);
+        list_remove(&kvmm_ranges, &range->node);
         kfree(range, sizeof(*range));
     } else {
         range->free = true;
