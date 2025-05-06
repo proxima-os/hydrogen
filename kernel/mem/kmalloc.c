@@ -37,7 +37,7 @@ static inline struct free_obj *get_free_obj(unsigned bucket) {
 
     struct free_obj *obj = SHLIST_REMOVE_HEAD(page->slab.objects, struct free_obj, node);
 
-    if (unlikely(shlist_empty(&page->slab.objects))) {
+    if (unlikely(--page->slab.num_free == 0)) {
         list_remove(&buckets[bucket], &page->slab.node);
     }
 
