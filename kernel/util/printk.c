@@ -2,6 +2,7 @@
 #include "arch/irq.h"
 #include "kernel/compiler.h"
 #include "kernel/types.h"
+#include "util/error.h"
 #include "util/list.h"
 #include "util/spinlock.h"
 #include <stdarg.h>
@@ -132,6 +133,11 @@ void printk_raw_formatv(const char *format, va_list args) {
         case 'Z': write_uint(va_arg(args, size_t), 16, min_digits, false); break;
         case 'p': write_uint((uintptr_t)va_arg(args, void *), 16, min_digits, true); break;
         case '%': printk_raw_write(&c, 1); break;
+        case 'e': {
+            const char *s = error_to_string(va_arg(args, int));
+            printk_raw_write(s, strlen(s));
+            break;
+        }
         default: goto next;
         }
         last = format;

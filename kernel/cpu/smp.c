@@ -53,14 +53,14 @@ void smp_call_wait(cpu_t *dest, smp_call_id_t id) {
 again:
     if (dest) {
         smp_call_id_t current = __atomic_load_n(&dest->remote_call.current, __ATOMIC_ACQUIRE);
-        if (current != 0 && current < id) goto again;
+        if (current != 0 && current <= id) goto again;
     } else {
         cpu_t *cur = get_current_cpu();
 
         SLIST_FOREACH(cpus, cpu_t, node, cpu) {
             if (cur != cpu) {
                 smp_call_id_t current = __atomic_load_n(&cpu->remote_call.current, __ATOMIC_ACQUIRE);
-                if (current != 0 && current < id) goto again;
+                if (current != 0 && current <= id) goto again;
             }
         }
     }

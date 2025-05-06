@@ -98,7 +98,7 @@ INIT_TEXT void fb_init(void) {
             PMAP_WRITABLE | PMAP_CACHE_WC
     );
     if (unlikely(error)) {
-        printk("framebuffer: failed to map framebuffer (%d)\n", error);
+        printk("framebuffer: failed to map framebuffer (%e)\n", error);
         return;
     }
     framebuffer = (volatile void *)addr;

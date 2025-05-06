@@ -1,6 +1,7 @@
 #include "x86_64/idt.h"
 #include "cpu/smp.h"
 #include "kernel/compiler.h"
+#include "proc/sched.h"
 #include "sections.h"
 #include "util/panic.h"
 #include "x86_64/cpu.h"
@@ -19,7 +20,7 @@ static struct {
 
 extern uintptr_t x86_64_idt_thunks[256];
 
-INIT_TEXT static void set_ist_idx(int vector, int index) {
+INIT_TEXT static void set_ist_idx(int vector, x86_64_ist_index_t index) {
     idt[vector].low |= ((uint64_t)(index + 1) << 32);
 }
 
@@ -87,10 +88,13 @@ USED void x86_64_idt_dispatch(x86_64_idt_frame_t *frame) {
     case X86_64_IDT_MC:
         if (x86_64_rdmsr(X86_64_MSR_GS_BASE) != *(uintptr_t *)&frame[1]) asm("swapgs");
         return x86_64_idt_handle_fatal(frame);
-    case X86_64_IDT_IPI_REMOTE_CALL:
+    case X86_64_IDT_IPI_REMOTE_CALL: {
+        preempt_state_t state = preempt_lock();
         smp_handle_remote_call();
         x86_64_lapic_eoi();
+        preempt_unlock(state);
         return;
+    }
     case X86_64_IDT_LAPIC_TIMER: return x86_64_handle_timer();
     case X86_64_IDT_LAPIC_ERROR: return x86_64_lapic_irq_error();
     case X86_64_IDT_LAPIC_SPURIOUS: return x86_64_lapic_irq_spurious();

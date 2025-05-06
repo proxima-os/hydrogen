@@ -32,6 +32,7 @@
 #define LAPIC_SVR_ENABLE (1u << 8)
 
 #define LAPIC_ICR_PENDING (1u << 12)
+#define LAPIC_ICR_LEVEL (1u << 14)
 
 #define LAPIC_LVT_NMI (4u << 8)
 #define LAPIC_LVT_ACTIVE_LOW (1u << 13)
@@ -43,14 +44,13 @@
 static uintptr_t lapic_regs;
 static uint64_t lapic_regs_phys;
 static bool have_lapic;
-INIT_DATA static struct acpi_madt *lapic_madt;
 
 INIT_TEXT static void setup_reg_access(void) {
     if (x86_64_cpu_features.x2apic) return;
 
     lapic_regs_phys = (x86_64_rdmsr(X86_64_MSR_APIC_BASE) & ~0xfff) & x86_64_cpu_features.paddr_mask;
     int error = map_mmio(&lapic_regs, lapic_regs_phys, 0x1000, PMAP_READABLE | PMAP_WRITABLE | PMAP_CACHE_UC);
-    if (unlikely(error)) panic("lapic: failed to map registers (%d)", error);
+    if (unlikely(error)) panic("lapic: failed to map registers (%e)", error);
 }
 
 INIT_TEXT static void setup_reg_access_local(void) {
@@ -88,7 +88,12 @@ static inline void lapic_write64(unsigned reg, uint64_t value) {
 
 static inline void lapic_fence(void) {
     if (x86_64_cpu_features.x2apic) {
-        asm("mfence; lfence");
+        // in x2apic mode the register writes aren't serializing, so without this the other cpu
+        // might get the interrupt before it sees data that the interrupt handler uses
+        asm("mfence; lfence" ::: "memory");
+    } else {
+        // in xapic mode a compiler barrier is enough
+        asm("" ::: "memory");
     }
 }
 
@@ -98,11 +103,8 @@ INIT_TEXT void x86_64_lapic_init(void) {
 
     uacpi_table madt_table;
     uacpi_status status = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &madt_table);
-    if (uacpi_unlikely_error(status)) panic("failed to find madt table: %s", uacpi_status_to_string(status));
-
-    lapic_madt = madt_table.ptr;
-    x86_64_lapic_init_local();
-
+    if (uacpi_unlikely_error(status)) panic("lapic: failed to find madt table: %s", uacpi_status_to_string(status));
+    x86_64_lapic_init_local(madt_table.ptr);
     uacpi_table_unref(&madt_table);
 }
 
@@ -125,7 +127,7 @@ INIT_TEXT static void setup_lint_nmi(uint8_t lint, uint16_t flags) {
     lapic_write(lint ? LAPIC_LVT_LINT1 : LAPIC_LVT_LINT0, lvt);
 }
 
-INIT_TEXT void x86_64_lapic_init_local(void) {
+INIT_TEXT void x86_64_lapic_init_local(struct acpi_madt *madt) {
     setup_reg_access_local();
     lapic_write(LAPIC_SVR, X86_64_IDT_LAPIC_SPURIOUS); // disable local apic during init
     lapic_write(LAPIC_ERR, 0);                         // clear stale errors
@@ -138,8 +140,8 @@ INIT_TEXT void x86_64_lapic_init_local(void) {
 
         this_cpu_write(arch.apic_id, id);
 
-        struct acpi_entry_hdr *cur = lapic_madt->entries;
-        struct acpi_entry_hdr *end = (void *)lapic_madt + lapic_madt->hdr.length;
+        struct acpi_entry_hdr *cur = madt->entries;
+        struct acpi_entry_hdr *end = (void *)madt + madt->hdr.length;
 
         while (cur < end) {
             if (cur->type == ACPI_MADT_ENTRY_TYPE_LAPIC) {
@@ -180,8 +182,8 @@ INIT_TEXT void x86_64_lapic_init_local(void) {
 
     have_lapic = true;
 
-    struct acpi_entry_hdr *cur = lapic_madt->entries;
-    struct acpi_entry_hdr *end = (void *)lapic_madt + lapic_madt->hdr.length;
+    struct acpi_entry_hdr *cur = madt->entries;
+    struct acpi_entry_hdr *end = (void *)madt + madt->hdr.length;
 
     uint32_t self_id = this_cpu_read(arch.acpi_id);
 
@@ -213,15 +215,17 @@ void x86_64_lapic_ipi(uint32_t target_id, uint8_t vector, uint32_t flags) {
 
     uint64_t icr = vector | flags;
 
+    if ((flags & X86_64_LAPIC_IPI_INIT_DEASSERT) != X86_64_LAPIC_IPI_INIT_DEASSERT) {
+        icr |= LAPIC_ICR_LEVEL;
+    }
+
     if (x86_64_cpu_features.x2apic) {
         icr |= (uint64_t)target_id << 32;
-        // in x2apic mode the register writes aren't serializing, so without this the other cpu
-        // might get the interrupt before it sees data that the interrupt handler uses
-        lapic_fence();
     } else {
         icr |= (uint64_t)target_id << 56;
     }
 
+    lapic_fence();
     lapic_write64(LAPIC_ICR, icr);
 
     if (!x86_64_cpu_features.x2apic) {

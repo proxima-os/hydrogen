@@ -9,12 +9,14 @@ typedef enum {
     X86_64_LAPIC_TIMER_TSC_DEADLINE = 2 << 17,
 } x86_64_lapic_timer_mode_t;
 
+struct acpi_madt;
+
 void x86_64_lapic_init(void);
-void x86_64_lapic_init_local(void);
+void x86_64_lapic_init_local(struct acpi_madt *madt);
 void x86_64_lapic_eoi(void);
 
-#define X86_64_LAPIC_IPI_INIT (4u << 8)
-#define X86_64_LAPIC_IPI_INIT_DEASSERT ((1u << 14) | (5u << 8))
+#define X86_64_LAPIC_IPI_INIT (5u << 8)
+#define X86_64_LAPIC_IPI_INIT_DEASSERT ((1u << 15) | (5u << 8))
 #define X86_64_LAPIC_IPI_STARTUP (6u << 8)
 
 void x86_64_lapic_ipi(uint32_t target_id, uint8_t vector, uint32_t flags);

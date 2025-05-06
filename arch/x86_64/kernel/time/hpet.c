@@ -70,7 +70,7 @@ INIT_TEXT void x86_64_hpet_init(void) {
     );
     uacpi_table_unref(&table);
     if (unlikely(error)) {
-        printk("hpet: failed to map registers (%d)\n", error);
+        printk("hpet: failed to map registers (%e)\n", error);
         return;
     }
 

@@ -72,7 +72,7 @@ static ioapic_t *gsi_to_apic(uint32_t *irq) {
 INIT_TEXT void x86_64_ioapic_init(void) {
     uacpi_table table;
     uacpi_status status = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &table);
-    if (uacpi_unlikely_error(status)) panic("failed to find madt table: %s", uacpi_status_to_string(status));
+    if (uacpi_unlikely_error(status)) panic("ioapic: failed to find madt table: %s", uacpi_status_to_string(status));
 
     struct acpi_madt *madt = (struct acpi_madt *)table.ptr;
 
@@ -102,7 +102,7 @@ INIT_TEXT void x86_64_ioapic_init(void) {
             memset(ioapic, 0, sizeof(*ioapic));
 
             int error = map_mmio(&ioapic->regs, entry->address, 0x14, PMAP_READABLE | PMAP_WRITABLE | PMAP_CACHE_UC);
-            if (unlikely(error)) panic("ioapic: failed to map registers (%d)", error);
+            if (unlikely(error)) panic("ioapic: failed to map registers (%e)", error);
 
             ioapic->gsi_base = entry->gsi_base;
             ioapic->num_irqs = ((ioapic_read(ioapic, IOAPICVER) >> 16) & 0xff) + 1;

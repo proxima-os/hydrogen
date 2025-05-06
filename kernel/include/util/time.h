@@ -8,6 +8,10 @@
 #define FS_PER_SEC 1000000000000000ull
 #define NS_PER_SEC 1000000000ull
 
+#define NS_PER_MS 1000000ull
+
+#define NS_PER_US 1000ull
+
 typedef struct timer_event {
     list_node_t node;
     void (*func)(struct timer_event *self);
@@ -26,3 +30,11 @@ timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq);
 
 void arch_queue_timer_irq(uint64_t deadline);
 void time_handle_irq(void);
+
+static inline void time_stall(uint64_t nanoseconds) {
+    uint64_t start = arch_read_time();
+
+    for (;;) {
+        if (arch_read_time() - start >= nanoseconds) return;
+    }
+}

@@ -14,9 +14,6 @@
 
 x86_64_cpu_features_t x86_64_cpu_features;
 
-INIT_DATA static size_t cr4_value = X86_64_CR4_OSXMMEXCEPT | X86_64_CR4_OSFXSR | X86_64_CR4_PAE;
-INIT_DATA static size_t efer_value = X86_64_MSR_EFER_LMA | X86_64_MSR_EFER_LME | X86_64_MSR_EFER_SCE;
-
 static LIMINE_REQ struct limine_paging_mode_request pmode_req = {
         .id = LIMINE_PAGING_MODE_REQUEST,
         .revision = 1,
@@ -26,6 +23,9 @@ static LIMINE_REQ struct limine_paging_mode_request pmode_req = {
 };
 
 INIT_TEXT void x86_64_cpu_detect(void) {
+    size_t cr4_value = X86_64_CR4_OSXMMEXCEPT | X86_64_CR4_OSFXSR | X86_64_CR4_PAE;
+    uint64_t efer_value = X86_64_MSR_EFER_LMA | X86_64_MSR_EFER_LME | X86_64_MSR_EFER_SCE;
+
     cr4_value |= x86_64_read_cr4() & X86_64_CR4_LA57;
 
     x86_64_cpu_features_t *feat = &x86_64_cpu_features;
@@ -96,6 +96,13 @@ INIT_TEXT void x86_64_cpu_detect(void) {
     if (feat->smap) cr4_value |= X86_64_CR4_SMAP;
     if (feat->umip) cr4_value |= X86_64_CR4_UMIP;
     if (feat->nx) efer_value |= X86_64_MSR_EFER_NXE;
+
+    x86_64_write_cr0(
+            X86_64_CR0_PG | X86_64_CR0_AM | X86_64_CR0_WP | X86_64_CR0_NE | X86_64_CR0_ET | X86_64_CR0_MP |
+            X86_64_CR0_PE
+    );
+    x86_64_write_cr4(cr4_value);
+    x86_64_wrmsr(X86_64_MSR_EFER, efer_value);
 }
 
 static uint64_t gdt[7] = {
@@ -155,13 +162,6 @@ INIT_TEXT static void init_gdt(cpu_t *self) {
 }
 
 INIT_TEXT void x86_64_cpu_init(cpu_t *self) {
-    x86_64_write_cr0(
-            X86_64_CR0_PG | X86_64_CR0_AM | X86_64_CR0_WP | X86_64_CR0_NE | X86_64_CR0_ET | X86_64_CR0_MP |
-            X86_64_CR0_PE
-    );
-    x86_64_write_cr4(cr4_value);
-    x86_64_wrmsr(X86_64_MSR_EFER, efer_value);
-
     self->arch.self = self;
     init_gdt(self);
     x86_64_idt_init();

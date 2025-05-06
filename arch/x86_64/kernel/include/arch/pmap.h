@@ -53,7 +53,7 @@ static inline void arch_pt_switch(void *target, int asid, bool current) {
 
     if (asid >= 0) {
         cr3_value |= asid;
-        this_cpu_write_tl(arch.current_pcid, asid);
+        this_cpu_write(arch.current_pcid, asid);
     }
 
     x86_64_write_cr3(cr3_value);

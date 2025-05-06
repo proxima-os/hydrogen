@@ -162,7 +162,7 @@ static bool alloc_slow_in_region(uint64_t head, uint64_t tail, void *ptr) {
         pmem_stats.free -= count;
         ASSERT(pmem_stats.available <= pmem_stats.free);
 
-        ctx->page = page;
+        ctx->page = base;
         return false;
     }
 
@@ -171,7 +171,7 @@ static bool alloc_slow_in_region(uint64_t head, uint64_t tail, void *ptr) {
 
 page_t *pmem_alloc_slow_and_unreliable(uint64_t min, uint64_t max, uint64_t align, size_t count) {
     ASSERT(count != 0);
-    ASSERT(align & (align - 1));
+    ASSERT((align & (align - 1)) == 0);
 
     uint64_t align_mask = align - 1;
     if (align_mask < PAGE_MASK) align_mask = PAGE_MASK;

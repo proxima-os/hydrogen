@@ -9,23 +9,38 @@
 #include "x86_64/cpu.h"
 #include "x86_64/ioapic.h"
 #include "x86_64/lapic.h"
+#include "x86_64/smp.h"
 #include "x86_64/time.h"
 #include "x86_64/tss.h"
 #include <stdint.h>
 
-_Alignas(KERNEL_STACK_ALIGN) static unsigned char bsp_fatal_stack[KERNEL_STACK_SIZE];
+_Alignas(KERNEL_STACK_ALIGN) static unsigned char bsp_ist_stacks[X86_64_IST_MAX][KERNEL_STACK_SIZE];
 
 INIT_TEXT USED void x86_64_prepare_main(void) {
     x86_64_cpu_detect();
-    boot_cpu.arch.tss.ist[X86_64_IST_FATAL] = (uintptr_t)bsp_fatal_stack + sizeof(bsp_fatal_stack);
+
+    for (int i = 0; i < X86_64_IST_MAX; i++) {
+        boot_cpu.arch.tss.ist[i] = (uintptr_t)bsp_ist_stacks[i] + sizeof(bsp_ist_stacks[i]);
+    }
+
     slist_insert_tail(&cpus, &boot_cpu.node);
     x86_64_cpu_init(&boot_cpu);
 }
 
-INIT_TEXT void arch_init(void) {
+INIT_TEXT void arch_init_early(void) {
     acpi_init();
     x86_64_lapic_init();
     x86_64_ioapic_init();
     enable_irq();
     x86_64_time_init();
+}
+
+INIT_TEXT void arch_init_late(void) {
+    x86_64_smp_init();
+}
+
+INIT_TEXT void arch_init_current(void *ctx) {
+    x86_64_lapic_init_local(ctx);
+    enable_irq();
+    x86_64_time_init_local();
 }

@@ -5,7 +5,9 @@
 #include "kernel/pgsize.h"
 #include "limine.h"
 #include "mem/memmap.h"
+#include "mem/pmap.h"
 #include "mem/pmem.h"
+#include "proc/event.h"
 #include "proc/rcu.h"
 #include "proc/sched.h"
 #include "sections.h"
@@ -32,6 +34,7 @@ __attribute__((noinline)) static _Noreturn void finalize_init(void) {
 
 INIT_TEXT static void kernel_init(void *ctx) {
     memmap_reclaim_loader(); // don't move below anything that can create threads, see memmap.h
+    arch_init_late();
     finalize_init();
 }
 
@@ -53,10 +56,24 @@ INIT_TEXT USED _Noreturn void kernel_main(void) {
         panic("loader does not support requested base revision");
     }
 
-    arch_init();
+    arch_init_early();
 
     thread_t *init_thread;
     int error = sched_create_thread(&init_thread, kernel_init, NULL);
-    if (unlikely(error)) panic("failed to create init thread (%d)", error);
+    if (unlikely(error)) panic("failed to create init thread (%e)", error);
     wake_init_thread_and_idle(init_thread);
+}
+
+// this is in a separate function so that smp_init_current can be INIT_TEXT
+__attribute__((noinline)) static _Noreturn void signal_and_idle(event_t *event) {
+    if (event != NULL) event_signal(event);
+    sched_idle();
+}
+
+INIT_TEXT _Noreturn void smp_init_current(event_t *event, void *ctx) {
+    sched_init();
+    rcu_init();
+    pmap_init_switch();
+    arch_init_current(ctx);
+    signal_and_idle(event);
 }

@@ -5,7 +5,6 @@
 #include "proc/sched.h"
 #include "sections.h"
 #include "util/panic.h"
-#include "util/printk.h"
 #include "util/time.h"
 #include "x86_64/cpu.h"
 #include "x86_64/hpet.h"
@@ -36,12 +35,14 @@ INIT_TEXT void x86_64_time_init(void) {
     x86_64_tsc_init();
     if (x86_64_timer_confirm) x86_64_timer_confirm(true);
 
+    x86_64_time_init_local();
+}
+
+INIT_TEXT void x86_64_time_init_local(void) {
     if (x86_64_cpu_features.tsc_deadline) {
         ASSERT(x86_64_timer_get_tsc != NULL);
-        printk("time: using tsc deadline for events\n");
         x86_64_lapic_timer_setup(X86_64_LAPIC_TIMER_TSC_DEADLINE, true);
     } else {
-        printk("time: using lapic oneshot for events\n");
         x86_64_lapic_timer_setup(X86_64_LAPIC_TIMER_ONESHOT, true);
     }
 }

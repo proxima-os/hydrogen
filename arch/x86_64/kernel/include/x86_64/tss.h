@@ -12,4 +12,7 @@ typedef struct {
     uint16_t iopb_base;
 } __attribute__((packed, aligned(8))) x86_64_tss_t;
 
-#define X86_64_IST_FATAL 0
+typedef enum {
+    X86_64_IST_FATAL,
+    X86_64_IST_MAX,
+} x86_64_ist_index_t;
