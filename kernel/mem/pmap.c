@@ -393,7 +393,7 @@ void pmap_destroy_range(pmap_t *pmap, uintptr_t virt, size_t size) {
     ASSERT(arch_pt_is_canonical(virt + (size - 1)));
     ASSERT(!is_kernel_address(virt + (size - 1)));
 
-    size_t leaves = do_destroy_range(pmap->table, arch_pt_levels() - 1, virt, size);
+    UNUSED size_t leaves = do_destroy_range(pmap->table, arch_pt_levels() - 1, virt, size);
 #if HYDROGEN_ASSERTIONS
     virt_to_page(pmap->table)->anon.references -= leaves;
 #endif
