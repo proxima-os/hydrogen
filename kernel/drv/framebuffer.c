@@ -1,11 +1,14 @@
 #include "drv/framebuffer.h"
 #include "arch/pmap.h"
+#include "errno.h"
 #include "kernel/compiler.h"
 #include "limine.h"
 #include "mem/kvmm.h"
 #include "mem/memmap.h"
+#include "mem/vmalloc.h"
 #include "sections.h"
 #include "util/printk.h"
+#include <stddef.h>
 #include <stdint.h>
 
 #define CHAR_WIDTH 8
@@ -14,97 +17,233 @@
 #define MIN_CHAR 0x20
 #define MAX_CHAR 0x7e
 
+typedef uint8_t glyph_id_t;
+
 typedef unsigned char glyph_line_t;
 typedef glyph_line_t glyph_t[CHAR_HEIGHT];
 
 static const glyph_t font[MAX_CHAR - MIN_CHAR + 1];
 
-static volatile void *framebuffer;
-static uint64_t pitch;
-static uint64_t width;
-static uint64_t height;
+typedef struct {
+    glyph_id_t glyph;
+} char_t;
 
-static void putchar(unsigned char c) {
-    static uint64_t x;
-    static uint64_t y;
+typedef struct {
+    char_t character;
+    size_t queue_index;
+} fb_char_t;
 
+typedef struct {
+    char_t character;
+    size_t buffer_index;
+} queue_char_t;
+
+typedef struct {
+    printk_sink_t base;
+    volatile void *framebuffer;
+    fb_char_t *buffer;
+    queue_char_t *queue;
+    uint64_t pitch;
+    size_t queue_count;
+    uint32_t width;
+    uint32_t height;
+    uint32_t fg_color;
+    uint32_t x;
+    uint32_t y;
+} fb_sink_t;
+
+static void fb_display(fb_sink_t *self, char_t character, uint32_t x, uint32_t y) {
+    size_t index = y * self->width + x;
+    fb_char_t *buffer = &self->buffer[index];
+    queue_char_t *queue;
+
+    if (buffer->queue_index == 0) {
+        if (!memcmp(&buffer->character, &character, sizeof(character))) return;
+        buffer->queue_index = ++self->queue_count;
+        queue = &self->queue[buffer->queue_index - 1];
+        queue->buffer_index = index;
+    } else {
+        queue = &self->queue[buffer->queue_index - 1];
+    }
+
+    queue->character = character;
+}
+
+static glyph_id_t ascii_to_glyph_id(unsigned char c) {
+    if (c < MIN_CHAR || c > MAX_CHAR) c = '?';
+    return c - MIN_CHAR;
+}
+
+static void maybe_scroll(fb_sink_t *self) {
+    if (self->y < self->height) return;
+
+    for (uint32_t y = 1; y < self->height; y++) {
+        for (uint32_t x = 0; x < self->width; x++) {
+            fb_char_t *buffer = &self->buffer[y * self->width + x];
+
+            if (buffer->queue_index == 0) {
+                fb_display(self, buffer->character, x, y - 1);
+            } else {
+                queue_char_t *queue = &self->queue[buffer->queue_index - 1];
+                fb_display(self, queue->character, x, y - 1);
+            }
+        }
+    }
+
+    char_t character = {.glyph = ascii_to_glyph_id(' ')};
+    uint32_t y = self->height - 1;
+
+    for (uint32_t x = 0; x < self->width; x++) {
+        fb_display(self, character, x, y);
+    }
+
+    self->y -= 1;
+}
+
+static void fb_write_single(fb_sink_t *self, unsigned char c) {
     switch (c) {
-    case '\n': y = (y + 1) % height; // fall through
-    case '\r': x = 0; return;
+    case '\n': self->y += 1; maybe_scroll(self); // fall through
+    case '\r': self->x = 0; return;
     case '\t':
-        x = (x + 8) & ~7;
-        if (x >= width) x = width - 1;
+        self->x = (self->x + 8) & ~7;
+        if (self->x >= self->width) self->x = self->width - 1;
         return;
     }
 
-    if (c < MIN_CHAR || c > MAX_CHAR) c = '?';
+    char_t character = (char_t){.glyph = ascii_to_glyph_id(c)};
+    fb_display(self, character, self->x, self->y);
 
-    volatile void *line_ptr = framebuffer + y * CHAR_HEIGHT * pitch + x * CHAR_WIDTH * 4;
+    self->x += 1;
 
-    for (size_t i = 0; i < CHAR_HEIGHT; i++) {
-        volatile uint32_t *pixels = line_ptr;
-        glyph_line_t bitmap = font[c - MIN_CHAR][i];
-
-        for (size_t i = 0; i < CHAR_WIDTH; i++) {
-            *pixels++ = (bitmap & 0x80) != 0 ? 0xffffffff : 0;
-            bitmap <<= 1;
-        }
-
-        line_ptr += pitch;
-    }
-
-    if (++x >= width) {
-        x = 0;
-        y = (y + 1) % height;
+    if (self->x >= self->width) {
+        self->x = 0;
+        self->y += 1;
+        maybe_scroll(self);
     }
 }
 
-static void fb_write(printk_sink_t *self, const void *data, size_t size) {
-    for (size_t i = 0; i < size; i++) {
-        putchar(*(const unsigned char *)data++);
+static void fb_write(printk_sink_t *ptr, const void *data, size_t size) {
+    fb_sink_t *self = (fb_sink_t *)ptr;
+
+    while (size--) {
+        fb_write_single(self, *(unsigned char *)data++);
     }
+}
+
+static void display_character(fb_sink_t *self, queue_char_t *item) {
+    uint32_t x = item->buffer_index % self->width;
+    uint32_t y = item->buffer_index / self->width;
+
+    volatile void *line_ptr = self->framebuffer + y * CHAR_HEIGHT * self->pitch + x * CHAR_WIDTH * 4;
+    const glyph_line_t *glyph = font[item->character.glyph];
+
+    for (int i = 0; i < CHAR_HEIGHT; i++) {
+        volatile uint32_t *px_ptr = line_ptr;
+        unsigned bitmap = *glyph;
+
+        for (int j = 0; j < CHAR_WIDTH; j++) {
+            *px_ptr = (bitmap & (1u << (CHAR_WIDTH - 1))) ? self->fg_color : 0;
+            px_ptr += 1;
+            bitmap <<= 1;
+        }
+
+        line_ptr += self->pitch;
+        glyph += 1;
+    }
+}
+
+static void fb_flush(printk_sink_t *ptr) {
+    fb_sink_t *self = (fb_sink_t *)ptr;
+
+    for (size_t i = 0; i < self->queue_count; i++) {
+        queue_char_t *item = &self->queue[i];
+        fb_char_t *buffer = &self->buffer[item->buffer_index];
+
+        if (memcmp(&item->character, &buffer->character, sizeof(item->character))) {
+            display_character(self, item);
+            buffer->character = item->character;
+        }
+
+        buffer->queue_index = 0;
+    }
+
+    self->queue_count = 0;
+}
+
+#define TEXT_COLOR_COMPONENT 0xaaaaaaaa
+
+INIT_TEXT static uint32_t component(uint32_t mask, unsigned size, unsigned shift) {
+    if (size == 0) return 0;
+    if (shift >= 32) return 0;
+
+    return (mask >> (32 - size)) << shift;
+}
+
+INIT_TEXT static int create_sink(struct limine_framebuffer *fb, uint32_t width, uint32_t height) {
+    fb_sink_t *sink = vmalloc(sizeof(*sink));
+    if (unlikely(!sink)) return ENOMEM;
+    memset(sink, 0, sizeof(*sink));
+
+    size_t num_chars = (size_t)width * height;
+
+    size_t queue_offs = ((num_chars * sizeof(*sink->buffer)) + (_Alignof(queue_char_t) - 1)) &
+                        ~(_Alignof(queue_char_t) - 1);
+    size_t queue_size = num_chars * sizeof(*sink->queue);
+    size_t total_size = queue_offs + queue_size;
+    void *memory = vmalloc(total_size);
+    if (unlikely(!memory)) {
+        vfree(sink, sizeof(*sink));
+        return ENOMEM;
+    }
+
+    uintptr_t addr;
+    int error = map_mmio(
+            &addr,
+            (uintptr_t)fb->address - hhdm_base,
+            fb->pitch * height * CHAR_HEIGHT,
+            PMAP_WRITABLE | PMAP_CACHE_WC
+    );
+    if (unlikely(error)) {
+        vfree(memory, total_size);
+        vfree(sink, sizeof(*sink));
+        return error;
+    }
+
+    memset(memory, 0, total_size);
+    sink->buffer = memory;
+    sink->queue = memory + queue_offs;
+
+    sink->base.write = fb_write;
+    sink->base.flush = fb_flush;
+    sink->framebuffer = (volatile void *)addr;
+    sink->pitch = fb->pitch;
+    sink->width = width;
+    sink->height = height;
+    sink->fg_color = component(TEXT_COLOR_COMPONENT, fb->red_mask_size, fb->red_mask_shift) |
+                     component(TEXT_COLOR_COMPONENT, fb->green_mask_size, fb->green_mask_shift) |
+                     component(TEXT_COLOR_COMPONENT, fb->blue_mask_size, fb->blue_mask_shift);
+
+    printk_add(&sink->base);
+    printk("framebuffer: added printk sink\n");
+    return 0;
 }
 
 INIT_TEXT void fb_init(void) {
     static LIMINE_REQ struct limine_framebuffer_request fb_req = {.id = LIMINE_FRAMEBUFFER_REQUEST};
-    static printk_sink_t sink = {
-            .write = fb_write,
-    };
-
     if (!fb_req.response) return;
 
     for (uint64_t i = 0; i < fb_req.response->framebuffer_count; i++) {
         struct limine_framebuffer *fb = fb_req.response->framebuffers[i];
         if (fb->memory_model != LIMINE_FRAMEBUFFER_RGB || fb->bpp != 32) continue;
 
-        uint64_t w = fb->width / CHAR_WIDTH;
-        uint64_t h = fb->height / CHAR_HEIGHT;
+        uint64_t width = fb->width / CHAR_WIDTH;
+        uint64_t height = fb->height / CHAR_HEIGHT;
 
-        if (w * h > width * height) {
-            framebuffer = fb->address;
-            pitch = fb->pitch;
-            width = w;
-            height = h;
+        if (width != 0 && height != 0) {
+            int error = create_sink(fb, width, height);
+            if (unlikely(error)) printk("framebuffer: failed to create sink (%e)", error);
         }
     }
-
-    if (!framebuffer) return;
-
-    uintptr_t addr;
-    int error = map_mmio(
-            &addr,
-            virt_to_phys((void *)framebuffer),
-            pitch * height * CHAR_HEIGHT,
-            PMAP_WRITABLE | PMAP_CACHE_WC
-    );
-    if (unlikely(error)) {
-        printk("framebuffer: failed to map framebuffer (%e)\n", error);
-        return;
-    }
-    framebuffer = (volatile void *)addr;
-
-    printk_add(&sink);
-    printk("framebuffer: added printk sink\n");
 }
 
 // https://github.com/viler-int10h/vga-text-mode-fonts/blob/f6a9b77d850ccf3d642331da54442d89f79ef9e3/FONTS/PC-IBM/VGA8.F16
