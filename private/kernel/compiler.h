@@ -2,6 +2,12 @@
 
 #include <stddef.h>
 
+#ifndef NDEBUG
+#define HYDROGEN_ASSERTIONS 1
+#else
+#define HYDROGEN_ASSERTIONS 0
+#endif
+
 #define UNUSED __attribute__((unused))
 #define USED __attribute__((used))
 
@@ -18,7 +24,7 @@ extern _Noreturn void hydrogen_assert_fail(const char *expr, const char *func, c
 
 #define ENSURE(x) (likely(x) ? (void)0 : hydrogen_assert_fail(#x, __func__, __FILE__, __LINE__))
 
-#ifndef NDEBUG
+#if HYDROGEN_ASSERTIONS
 #define ASSERT(x) ENSURE(x)
 #else
 #define ASSERT(x) ((void)0)
@@ -33,7 +39,7 @@ extern _Noreturn void hydrogen_assert_fail(const char *expr, const char *func, c
         _ptr ? (type *)(_ptr - offsetof(type, name)) : NULL; \
     })
 
-#ifndef NDEBUG
+#if HYDROGEN_ASSERTIONS
 #define UNREACHABLE() ENSURE(!"unreachable")
 #else
 #define UNREACHABLE() __builtin_unreachable()

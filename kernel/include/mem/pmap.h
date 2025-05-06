@@ -32,7 +32,10 @@ void pmap_init_cpu(struct cpu *cpu);
 
 int pmap_create(pmap_t *out);
 void pmap_switch(pmap_t *target); // must be called with preemption disabled, must not be called in irq context
-void pmap_destroy(pmap_t *pmap);
+
+void pmap_prepare_destroy(pmap_t *pmap);
+void pmap_destroy_range(pmap_t *pmap, uintptr_t virt, size_t size);
+void pmap_finish_destruction(pmap_t *pmap);
 
 // note: if pmap != NULL, the caller is responsible for locking
 bool pmap_prepare(pmap_t *pmap, uintptr_t virt, size_t size);

@@ -23,7 +23,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifndef NDEBUG
+#if HYDROGEN_ASSERTIONS
 #define PT_PREPARE_DEBUG 1
 #else
 #define PT_PREPARE_DEBUG 0
@@ -268,7 +268,7 @@ void pmap_switch(pmap_t *target) {
         hlist_remove(&old->cpus, &asid->node);
 
         // this has to be done while both old->cpus_lock and target->cpus_lock is held
-        //  if old->cpus_lock isn't held, pmap_destroy(old) might free the tables before we're ready
+        //  if old->cpus_lock isn't held, destruction might free the tables before we're ready
         //  if target->cpus_lock isn't held, tlb_commit on target might not flush tlb entries for us
         arch_pt_switch(target->table, target->asid, target->table == asid->table);
 
@@ -294,17 +294,19 @@ static void switch_away(void *ctx) {
     cpu->pmap.current = NULL;
 }
 
-void pmap_destroy(pmap_t *pmap) {
+void pmap_prepare_destroy(pmap_t *pmap) {
     // ensure no cpus are using this pmap
     preempt_state_t state = preempt_lock();
     spin_acq_noirq(&pmap->cpus_lock);
+
+    cpu_t *cur_cpu = get_current_cpu();
 
     for (;;) {
         pmap_asid_data_t *asid = HLIST_HEAD(pmap->cpus, pmap_asid_data_t, node);
         ASSERT(asid->table == pmap->table);
 
         if (asid->cpu->pmap.current == pmap) {
-            if (asid->cpu == get_current_cpu()) {
+            if (asid->cpu == cur_cpu) {
                 switch_away(asid->cpu);
             } else {
                 smp_call_remote(asid->cpu, switch_away, asid->cpu);
@@ -317,9 +319,99 @@ void pmap_destroy(pmap_t *pmap) {
 
     spin_rel_noirq(&pmap->cpus_lock);
     preempt_unlock(state);
+}
 
-    unsigned level = arch_pt_levels() - 1;
-    free_tables(pmap->table, level, 0, arch_pt_get_index(arch_pt_max_user_addr(), level));
+static size_t do_destroy_range(void *table, unsigned level, uintptr_t virt, size_t size) {
+    size_t index = arch_pt_get_index(virt, level);
+    size_t entry_size = 1ul << arch_pt_entry_bits(level);
+    size_t entry_mask = entry_size - 1;
+
+    size_t leaves = 0;
+
+    do {
+        size_t cur = entry_size - (virt & entry_mask);
+        if (cur > size) cur = size;
+
+        pte_t pte = arch_pt_read(table, level, index);
+
+        if (level == 0) {
+#if PT_PREPARE_DEBUG
+            ENSURE(pte != 0);
+            arch_pt_write(table, leaves, index, 0);
+#endif
+
+            if (pte != 0 && (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
+                int flags = arch_pt_get_leaf_flags(level, pte);
+
+                if (flags & PMAP_ANONYMOUS) {
+                    page_t *page = phys_to_page(arch_pt_leaf_target(level, pte));
+
+                    if (__atomic_fetch_sub(&page->anon.references, 1, __ATOMIC_ACQ_REL)) {
+                        pmem_free(page);
+                    }
+                }
+            }
+
+            leaves += 1;
+        } else {
+            ASSERT(pte != 0);
+#if PT_PREPARE_DEBUG
+            ENSURE(pte != ARCH_PT_PREPARE_PTE);
+#endif
+            ASSERT(arch_pt_is_edge(level, pte));
+
+            void *child = arch_pt_edge_target(level, pte);
+            size_t cleaf = do_destroy_range(child, level - 1, virt, cur);
+            page_t *cpage = virt_to_page(child);
+            cpage->anon.references -= cleaf;
+
+            if (cpage->anon.references == 0) {
+#if HYDROGEN_ASSERTIONS
+                arch_pt_write(table, level, index, 0);
+#endif
+                pmem_free_now(cpage);
+            }
+
+            leaves += cleaf;
+        }
+
+        index += 1;
+        virt += cur;
+        size -= cur;
+    } while (size > 0);
+
+    return leaves;
+}
+
+void pmap_destroy_range(pmap_t *pmap, uintptr_t virt, size_t size) {
+    ASSERT(pmap != NULL);
+    ASSERT(arch_pt_get_offset(virt | size) == 0);
+    ASSERT(size > 0);
+    ASSERT(virt < virt + (size - 1));
+    ASSERT(arch_pt_is_canonical(virt));
+    ASSERT(arch_pt_is_canonical(virt + (size - 1)));
+    ASSERT(!is_kernel_address(virt + (size - 1)));
+
+    size_t leaves = do_destroy_range(pmap->table, arch_pt_levels() - 1, virt, size);
+#if HYDROGEN_ASSERTIONS
+    virt_to_page(pmap->table)->anon.references -= leaves;
+#endif
+}
+
+void pmap_finish_destruction(pmap_t *pmap) {
+#if HYDROGEN_ASSERTIONS
+    {
+        unsigned level = arch_pt_levels() - 1;
+        size_t max = arch_pt_get_index(arch_pt_max_user_addr(), level);
+
+        for (size_t i = 0; i <= max; i++) {
+            ENSURE(arch_pt_read(pmap->table, level, i) == 0);
+        }
+
+        ASSERT(virt_to_page(pmap->table)->anon.references == 0);
+    }
+#endif
+
     free_table(pmap->table);
 }
 
@@ -354,7 +446,7 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
 
         if (level == 0 || !arch_pt_is_edge(level, pte)) {
 #if PT_PREPARE_DEBUG
-            ASSERT(pte != 0);
+            ENSURE(pte != 0);
 #endif
 
             ASSERT(table != kernel_page_table);
@@ -434,7 +526,7 @@ static ssize_t do_prepare(void *table, unsigned level, uintptr_t virt, size_t si
 
         if (pte != 0) {
 #if PT_PREPARE_DEBUG
-            ASSERT(pte != ARCH_PT_PREPARE_PTE);
+            ENSURE(pte != ARCH_PT_PREPARE_PTE);
 #endif
             ASSERT(arch_pt_is_edge(level, pte));
             child = arch_pt_edge_target(level, pte);
@@ -509,7 +601,7 @@ static void do_alloc(void *table, unsigned level, uintptr_t virt, size_t size, i
         pte_t pte = arch_pt_read(table, level, index);
         ASSERT(pte != 0);
 #if PT_PREPARE_DEBUG
-        ASSERT(pte != ARCH_PT_PREPARE_PTE);
+        ENSURE(pte != ARCH_PT_PREPARE_PTE);
 #endif
         ASSERT(arch_pt_is_edge(level, pte));
         void *child = arch_pt_edge_target(level, pte);
@@ -571,7 +663,7 @@ static void do_map(void *table, unsigned level, uintptr_t virt, uint64_t phys, s
         pte_t pte = arch_pt_read(table, level, index);
         ASSERT(pte != 0);
 #if PT_PREPARE_DEBUG
-        ASSERT(pte != ARCH_PT_PREPARE_PTE);
+        ENSURE(pte != ARCH_PT_PREPARE_PTE);
 #endif
         ASSERT(arch_pt_is_edge(level, pte));
         void *child = arch_pt_edge_target(level, pte);
@@ -627,7 +719,7 @@ static void do_remap(void *table, unsigned level, uintptr_t virt, size_t size, i
 
         if (level == 0) {
 #if PT_PREPARE_DEBUG
-            ASSERT(pte != 0);
+            ENSURE(pte != 0);
 #endif
 
             ASSERT(table != kernel_page_table);
@@ -708,7 +800,7 @@ void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t
         for (unsigned i = rlevel; i > 0; i--) {
             ASSERT(pte != 0);
 #if PT_PREPARE_DEBUG
-            ASSERT(pte != PT_PREPARE_DEBUG);
+            ENSURE(pte != PT_PREPARE_DEBUG);
 #endif
             ASSERT(arch_pt_is_edge(i, pte));
 
@@ -727,7 +819,7 @@ void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t
         }
 
 #if PT_PREPARE_DEBUG
-        ASSERT(pte != 0);
+        ENSURE(pte != 0);
 #endif
 
         if (PT_PREPARE_DEBUG || pte != 0) {
@@ -744,7 +836,7 @@ void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t
             for (unsigned i = rlevel; i > 0; i--) {
                 ASSERT(dpte != 0);
 #if PT_PREPARE_DEBUG
-                ASSERT(dpte != ARCH_PT_PREPARE_PTE);
+                ENSURE(dpte != ARCH_PT_PREPARE_PTE);
 #endif
                 ASSERT(arch_pt_is_edge(i, dpte));
                 table = arch_pt_edge_target(i, dpte);
@@ -753,7 +845,7 @@ void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t
             }
 
 #if PT_PREPARE_DEBUG
-            ASSERT(dpte == ARCH_PT_PREPARE_PTE);
+            ENSURE(dpte == ARCH_PT_PREPARE_PTE);
 #endif
             arch_pt_write(table, 0, index, pte);
         }
@@ -783,7 +875,9 @@ void pmap_unmap(pmap_t *pmap, uintptr_t virt, size_t size) {
 
     tlb_ctx_t tlb;
     tlb_init(&tlb, pmap);
-    do_unmap(pmap ? pmap->table : kernel_page_table, arch_pt_levels() - 1, virt, size, &tlb);
+    void *table = pmap ? pmap->table : kernel_page_table;
+    size_t leaves = do_unmap(table, arch_pt_levels() - 1, virt, size, &tlb);
+    virt_to_page(table)->anon.references -= leaves;
     tlb_commit(&tlb);
 
     migrate_unlock(state);
@@ -1012,6 +1106,7 @@ static bool is_access_allowed(unsigned level, pte_t pte, pmap_fault_type_t type)
     case PMAP_FAULT_READ: return flags & PMAP_READABLE;
     case PMAP_FAULT_WRITE: return flags & PMAP_WRITABLE;
     case PMAP_FAULT_EXECUTE: return flags & PMAP_EXECUTABLE;
+    default: UNREACHABLE();
     }
 }
 
