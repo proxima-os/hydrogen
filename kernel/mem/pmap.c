@@ -20,6 +20,7 @@
 #include "util/panic.h"
 #include "util/shlist.h"
 #include "util/spinlock.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -725,8 +726,12 @@ static void do_remap(void *table, unsigned level, uintptr_t virt, size_t size, i
             ASSERT(table != kernel_page_table);
 
             if (pte != 0 && !(PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
+                int new_flags = flags;
+
+                if (arch_pt_get_leaf_flags(level, pte) & PMAP_COPY_ON_WRITE) new_flags &= ~PMAP_WRITABLE;
+
                 pte_t npte = pte;
-                bool global = arch_pt_change_permissions(&npte, level, flags);
+                bool global = arch_pt_change_permissions(&npte, level, new_flags);
 
                 if (pte != npte) {
                     arch_pt_write(table, level, index, npte);
@@ -764,6 +769,88 @@ void pmap_remap(pmap_t *pmap, uintptr_t virt, size_t size, int flags) {
 
     migrate_unlock(state);
     if (!pmap) mutex_rel(&kernel_pt_lock);
+}
+
+static void do_clone(void *src, void *dst, unsigned level, uintptr_t virt, size_t size, bool cow, tlb_ctx_t *tlb) {
+    size_t index = arch_pt_get_index(virt, level);
+    size_t entry_size = 1ul << arch_pt_entry_bits(level);
+    size_t entry_mask = entry_size - 1;
+
+    do {
+        size_t cur = entry_size - (virt & entry_mask);
+        if (cur > size) cur = size;
+
+        pte_t pte = arch_pt_read(src, level, index);
+
+        if (level == 0) {
+#if PT_PREPARE_DEBUG
+            ENSURE(pte != 0);
+            ENSURE(arch_pt_read(dst, level, index) == ARCH_PT_PREPARE_PTE);
+#endif
+
+            if (pte != 0 && (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
+                int flags = arch_pt_get_leaf_flags(level, pte);
+
+                if (cow) {
+                    int orig_flags = flags;
+                    flags = (flags & ~PMAP_WRITABLE) | PMAP_COPY_ON_WRITE;
+
+                    if (orig_flags != flags) {
+                        pte = arch_pt_create_leaf(level, arch_pt_leaf_target(level, pte), flags);
+                        arch_pt_write(src, level, index, pte);
+
+                        if (orig_flags & PMAP_WRITABLE) {
+                            tlb_add_edge(tlb, virt, true);
+                        }
+                    }
+                }
+
+                if (flags & PMAP_ANONYMOUS) {
+                    page_t *page = phys_to_page(arch_pt_leaf_target(level, pte));
+                    page->anon.references += 1;
+                }
+
+                arch_pt_write(dst, level, index, pte);
+            }
+        } else {
+            pte_t dpte = arch_pt_read(dst, level, index);
+
+            ASSERT(pte != 0);
+            ASSERT(dpte != 0);
+#if PT_PREPARE_DEBUG
+            ENSURE(pte != ARCH_PT_PREPARE_PTE);
+            ENSURE(dpte != ARCH_PT_PREPARE_PTE);
+#endif
+            ASSERT(arch_pt_is_edge(level, pte));
+            ASSERT(arch_pt_is_edge(level, dpte));
+
+            do_clone(arch_pt_edge_target(level, pte), arch_pt_edge_target(level, dpte), level - 1, virt, cur, cow, tlb);
+        }
+
+        index += 1;
+        virt += cur;
+        size -= cur;
+    } while (size > 0);
+}
+
+void pmap_clone(pmap_t *smap, pmap_t *dmap, uintptr_t virt, size_t size, bool cow) {
+    ASSERT(smap != NULL);
+    ASSERT(dmap != NULL);
+    ASSERT(arch_pt_get_offset(virt | size) == 0);
+    ASSERT(size > 0);
+    ASSERT(virt < virt + (size - 1));
+    ASSERT(arch_pt_is_canonical(virt));
+    ASSERT(arch_pt_is_canonical(virt + (size - 1)));
+    ASSERT(!is_kernel_address(virt + (size - 1)));
+
+    migrate_state_t state = migrate_lock();
+
+    tlb_ctx_t tlb;
+    tlb_init(&tlb, dmap);
+    do_clone(smap->table, dmap->table, arch_pt_levels() - 1, virt, size, cow, &tlb);
+    tlb_commit(&tlb);
+
+    migrate_unlock(state);
 }
 
 void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t size) {
@@ -1089,7 +1176,10 @@ static bool get_pte(get_pte_result_t *out, void *root, uintptr_t address) {
     out->root_pte = out->pte;
 
     for (;;) {
-        if (unlikely(!out->pte)) return false;
+        if (unlikely(out->pte == 0)) return false;
+#if PT_PREPARE_DEBUG
+        if (unlikely(out->pte == ARCH_PT_PREPARE_PTE)) return false;
+#endif
         if (out->level == 0 || !arch_pt_is_edge(out->level, out->pte)) return true;
 
         out->table = arch_pt_edge_target(out->level, out->pte);
@@ -1110,12 +1200,143 @@ static bool is_access_allowed(unsigned level, pte_t pte, pmap_fault_type_t type)
     }
 }
 
+static void user_fault_fail(uintptr_t pc, uintptr_t address, pmap_fault_type_t type, unsigned flags, int error) {
+    // TODO: Make user_memcpy/user_memset fail gracefully
+    panic("TODO: user_fault_fail(0x%X, 0x%X, %d, %u, %e)\n", pc, address, type, flags, error);
+}
+
+static void create_new_user_mapping(
+        pmap_t *pmap,
+        uintptr_t pc,
+        uintptr_t address,
+        pmap_fault_type_t type,
+        unsigned flags,
+        get_pte_result_t *result
+) {
+    panic("TODO: create_new_user_mapping(0x%X, 0x%X, %d, %u)\n", pc, address, type, flags);
+}
+
+static int copy_mapping(page_t **out, uint64_t source, int flags) {
+    ASSERT(flags & PMAP_ANONYMOUS); // TODO: Allow objects to provide their own copying function
+
+    page_t *src = phys_to_page(source);
+    if (__atomic_load_n(&src->anon.references, __ATOMIC_ACQUIRE) == 1) {
+        *out = src;
+        return 0;
+    }
+
+    page_t *dst = pmem_alloc();
+    dst->anon.references = 1;
+    memcpy(page_to_virt(dst), page_to_virt(src), PAGE_SIZE);
+
+    if (__atomic_fetch_sub(&src->anon.references, 1, __ATOMIC_ACQ_REL) == 1) {
+        pmem_free(src);
+    }
+
+    *out = dst;
+    return 0;
+}
+
 static void handle_user_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t type, unsigned flags) {
-    panic("TODO: handle_user_fault(0x%X, 0x%X, %d, %u)\n", pc, address, type, flags);
+    if (!arch_pt_is_canonical(address)) return user_fault_fail(pc, address, type, flags, EFAULT);
+    if (is_kernel_address(address)) return user_fault_fail(pc, address, type, flags, EFAULT);
+
+    // TODO: Lock thread VMM and get pmap from there
+
+    pmap_t *pmap = this_cpu_read_tl(pmap.current);
+    ASSERT(pmap != NULL);
+
+    get_pte_result_t result = {};
+
+    if (unlikely(!get_pte(&result, pmap->table, address))) {
+        if (unlikely(result.level != 0)) return user_fault_fail(pc, address, type, flags, EFAULT);
+
+#if PT_PREPARE_DEBUG
+        if (unlikely(result.pte) != ARCH_PT_PREPARE_PTE) return user_fault_fail(pc, address, type, flags, EFAULT);
+#endif
+
+        return create_new_user_mapping(pmap, pc, address, type, flags, &result);
+    }
+
+    if (likely(is_access_allowed(result.level, result.pte, type))) {
+        migrate_state_t state = migrate_lock();
+
+        if (arch_pt_new_edge_needs_flush()) {
+            arch_pt_flush_edge(address, pmap->table, pmap->asid, false, true);
+        }
+
+        arch_pt_flush_leaf(address, pmap->table, pmap->asid, false, true);
+
+        migrate_unlock(state);
+        return;
+    }
+
+    int pte_flags = arch_pt_get_leaf_flags(result.level, result.pte);
+
+    if (likely(type == PMAP_FAULT_WRITE) && likely(pte_flags & PMAP_COPY_ON_WRITE)) {
+        // TODO: Check if the region this mapping comes from allows writes
+        // Read-only regions have the copy-on-write flag set if after a remap
+        // that makes them writable they need to be copy-on-write.
+
+        page_t *new_page;
+        int error = copy_mapping(&new_page, arch_pt_leaf_target(result.level, result.pte), pte_flags);
+        if (unlikely(error)) return user_fault_fail(pc, address, type, flags, error);
+
+        pte_flags &= ~PMAP_COPY_ON_WRITE;
+        pte_flags |= PMAP_ANONYMOUS | PMAP_WRITABLE;
+
+        migrate_state_t state = migrate_lock();
+
+        // We can't just insert the new entry immediately, since that causes a race condition with >=3 CPUs that allows
+        // one CPU to read data from the old page after another CPU has already successfully written to the new page:
+        // 1. CPU2 reads from the page, putting the read-only mapping into CPU2's TLB, and spins until a flag is set.
+        // 2. CPU0 triggers the page fault. The page is copied and the new entry is inserted into the page table, but
+        //    the shootdown hasn't been triggered yet.
+        // 3. CPU1 writes to the page. It doesn't have the mapping in its TLB, so it fetches the new entry and writes to
+        //    the page without causing a fault. It then sets the flag CPU2 is waiting on.
+        // 4. CPU2 notices the flag is set, and reads the field CPU1 wrote. It still has the old read-only entry in its
+        //    TLB, so it reads the old value in the read-only page, not the value CPU1 wrote.
+        // 5. Only now does CPU0 trigger the shootdown, but it's too late.
+        // This can be fixed by unmapping the page and shooting it down before inserting the new entry. If any other CPU
+        // tries to access the page before the new entry is inserted, it will cause a page fault that tries to acquire
+        // the address space lock. By the time it acquires the lock, the new entry will have been inserted, so the lazy
+        // TLB code will treat it as a spurious page fault and userspace will retry the access.
+        tlb_ctx_t tlb;
+        tlb_init(&tlb, pmap);
+        arch_pt_write(result.table, result.level, result.index, 0);
+        tlb_add_leaf(&tlb, address, true);
+        tlb_commit(&tlb);
+
+        arch_pt_write(
+                result.table,
+                result.level,
+                result.index,
+                arch_pt_create_leaf(result.level, page_to_phys(new_page), pte_flags)
+        );
+
+        if (arch_pt_new_leaf_needs_flush()) {
+            arch_pt_flush_leaf(address, pmap->table, pmap->asid, false, true);
+        }
+
+        migrate_unlock(state);
+        return;
+    }
+
+    user_fault_fail(pc, address, type, flags, EFAULT);
 }
 
 void pmap_handle_page_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t type, unsigned flags) {
     if (flags & PMAP_FAULT_USER) return handle_user_fault(pc, address, type, flags);
+
+    if (!is_kernel_address(address)) {
+        // TODO: Redirect user_memcpy/user_memset faults to handle_user_fault
+
+        panic("kernel code tried to %s user memory at 0x%Z (pc: 0x%Z, flags: %u)\n",
+              type_to_string(type),
+              address,
+              pc,
+              flags);
+    }
 
     // Kernel page fault handling must not take any locks, since the fault might have come
     // from a code path that holds that lock. Luckily, we only have to do one thing that
@@ -1131,14 +1352,6 @@ void pmap_handle_page_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t t
     // result in either eventually returning through an interrupt path or panicking.
 
     disable_irq();
-
-    if (!is_kernel_address(address)) {
-        panic("kernel code tried to %s user memory at 0x%Z (pc: 0x%Z, flags: %u)\n",
-              type_to_string(type),
-              address,
-              pc,
-              flags);
-    }
 
     if (!arch_pt_is_canonical(address)) {
         panic("kernel code tried to %s non-canonical memory at 0x%Z (pc: 0x%Z, flags: %u)\n",
@@ -1187,7 +1400,7 @@ void pmap_handle_page_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t t
         ASSERT(pte == result.root_pte);
     }
 
-    if (is_access_allowed(level, result.pte, type)) {
+    if (is_access_allowed(result.level, result.pte, type)) {
         if (arch_pt_new_edge_needs_flush()) {
             arch_pt_flush_edge(address, kernel_page_table, -1, false, true);
         }

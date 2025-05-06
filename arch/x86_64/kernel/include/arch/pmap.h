@@ -24,6 +24,7 @@
 #define X86_64_PTE_HUGE (1ul << 7)
 #define X86_64_PTE_GLOBAL (1ul << 8)
 #define X86_64_PTE_ANON (1ul << 9)
+#define X86_64_PTE_COW (1ul << 10)
 #define X86_64_PTE_NX (1ul << 63)
 
 #define X86_64_PTE_PAT(x) ((((x) & 4) << 5) | (((x) & 3) << 3))
@@ -134,6 +135,7 @@ static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int fla
     }
 
     if (flags & PMAP_ANONYMOUS) pte |= X86_64_PTE_ANON;
+    if (flags & PMAP_COPY_ON_WRITE) pte |= X86_64_PTE_COW;
 
     return pte;
 }
@@ -159,6 +161,7 @@ static inline int arch_pt_get_leaf_flags(unsigned level, pte_t pte) {
 
     if (pte & X86_64_PTE_WRITABLE) flags |= PMAP_WRITABLE;
     if (pte & X86_64_PTE_ANON) flags |= PMAP_ANONYMOUS;
+    if (pte & X86_64_PTE_COW) flags |= PMAP_COPY_ON_WRITE;
     if (!x86_64_cpu_features.nx || (pte & X86_64_PTE_NX) == 0) flags |= PMAP_EXECUTABLE;
 
     if (x86_64_cpu_features.pat) {
