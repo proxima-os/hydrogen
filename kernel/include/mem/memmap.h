@@ -42,6 +42,10 @@ void *early_alloc_page(void);
 bool next_owned_ram_gap(uint64_t addr, uint64_t *head, uint64_t *tail);
 bool is_area_ram(uint64_t head, uint64_t tail);
 
+// stops iteration if the function returns false.
+// returns false if iteration was stopped.
+bool memmap_iter_reversed(bool (*func)(uint64_t, uint64_t, void *), void *ctx);
+
 static inline uint64_t page_to_phys(page_t *page) {
     return (((uintptr_t)page - page_array_base) / sizeof(page_t)) << PAGE_SHIFT;
 }

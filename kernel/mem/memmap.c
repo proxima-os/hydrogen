@@ -11,8 +11,8 @@
 #include "mem/vmalloc.h"
 #include "sections.h"
 #include "string.h"
+#include "util/list.h"
 #include "util/panic.h"
-#include "util/slist.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -31,13 +31,13 @@ static uint64_t min_page_head;
 static uint64_t max_page_tail;
 
 typedef struct {
-    slist_node_t node;
+    list_node_t node;
     uint64_t head;
     uint64_t tail;
     bool kernel_owned : 1;
 } ram_range_t;
 
-static slist_t ram_list;
+static list_t ram_list;
 
 static void bounds_func(uint64_t head, uint64_t tail, void *ctx) {
     if (head < min_page_head) min_page_head = head;
@@ -292,7 +292,7 @@ static void ram_list_add(uint64_t head, uint64_t tail, bool owned) {
     range->head = head;
     range->tail = tail;
     range->kernel_owned = owned;
-    slist_insert_tail(&ram_list, &range->node);
+    list_insert_tail(&ram_list, &range->node);
 }
 
 static void ram_list_commit(struct build_ram_list_ctx *ctx) {
@@ -580,7 +580,7 @@ bool next_owned_ram_gap(uint64_t addr, uint64_t *head, uint64_t *tail) {
     uint64_t gap_head = 0;
     uint64_t max = cpu_max_phys_addr();
 
-    SLIST_FOREACH(ram_list, ram_range_t, node, range) {
+    LIST_FOREACH(ram_list, ram_range_t, node, range) {
         if (range->kernel_owned) {
             if (gap_head < range->head) {
                 uint64_t gap_tail = range->head - 1;
@@ -606,7 +606,7 @@ bool next_owned_ram_gap(uint64_t addr, uint64_t *head, uint64_t *tail) {
 }
 
 bool is_area_ram(uint64_t head, uint64_t tail) {
-    SLIST_FOREACH(ram_list, ram_range_t, node, range) {
+    LIST_FOREACH(ram_list, ram_range_t, node, range) {
         if (range->tail < head) continue;
         if (head < range->head) return false;
         if (tail <= range->tail) return true;
@@ -614,4 +614,18 @@ bool is_area_ram(uint64_t head, uint64_t tail) {
     }
 
     return false;
+}
+
+bool memmap_iter_reversed(bool (*func)(uint64_t, uint64_t, void *), void *ctx) {
+    ram_range_t *cur = LIST_TAIL(ram_list, ram_range_t, node);
+
+    while (cur) {
+        if (cur->kernel_owned) {
+            if (!func(cur->head, cur->tail, ctx)) return false;
+        }
+
+        cur = LIST_PREV(*cur, ram_range_t, node);
+    }
+
+    return true;
 }

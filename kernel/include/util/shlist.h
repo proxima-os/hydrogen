@@ -25,10 +25,20 @@ static inline void shlist_clear(shlist_t *list) {
     list->head = NULL;
 }
 
+static inline void shlist_remove(shlist_t *list, shlist_node_t *node, shlist_node_t *prev) {
+    if (prev != NULL) {
+        ASSERT(prev->next == node);
+        prev->next = node->next;
+    } else {
+        ASSERT(list->head == node);
+        list->head = node->next;
+    }
+}
+
 static inline shlist_node_t *shlist_remove_head(shlist_t *list) {
     shlist_node_t *node = list->head;
 
-    if (node) {
+    if (node != NULL) {
         list->head = node->next;
     }
 
@@ -40,4 +50,14 @@ static inline shlist_node_t *shlist_remove_head(shlist_t *list) {
 static inline void shlist_insert_head(shlist_t *list, shlist_node_t *node) {
     node->next = list->head;
     list->head = node;
+}
+
+static inline void shlist_insert_after(shlist_t *list, shlist_node_t *anchor, shlist_node_t *node) {
+    if (anchor != NULL) {
+        node->next = anchor->next;
+        anchor->next = node;
+    } else {
+        node->next = list->head;
+        list->head = node;
+    }
 }
