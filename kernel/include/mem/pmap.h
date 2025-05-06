@@ -45,3 +45,14 @@ void pmap_unmap(pmap_t *pmap, uintptr_t virt, size_t size);                     
 void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags);
 void pmap_early_alloc(uintptr_t virt, size_t size, int flags);
 void pmap_early_cleanup(void);
+
+typedef enum {
+    PMAP_FAULT_READ,
+    PMAP_FAULT_WRITE,
+    PMAP_FAULT_EXECUTE,
+} pmap_fault_type_t;
+
+#define PMAP_FAULT_USER (1u << 0)
+
+// NOTE: This might disable IRQs!
+void pmap_handle_page_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t type, unsigned flags);

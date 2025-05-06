@@ -1,6 +1,8 @@
 #include "x86_64/idt.h"
+#include "arch/irq.h"
 #include "cpu/smp.h"
 #include "kernel/compiler.h"
+#include "mem/pmap.h"
 #include "proc/sched.h"
 #include "sections.h"
 #include "util/panic.h"
@@ -83,6 +85,21 @@ _Noreturn void x86_64_idt_handle_fatal(x86_64_idt_frame_t *frame) {
 
 USED void x86_64_idt_dispatch(x86_64_idt_frame_t *frame) {
     switch (frame->vector) {
+    case X86_64_IDT_PF: {
+        uintptr_t address = x86_64_read_cr2();
+        enable_irq();
+
+        pmap_fault_type_t type;
+        unsigned flags = 0;
+
+        if (frame->error & (1u << 4)) type = PMAP_FAULT_EXECUTE;
+        else if (frame->error & (1u << 1)) type = PMAP_FAULT_WRITE;
+        else type = PMAP_FAULT_READ;
+
+        if (frame->error & (1u << 2)) flags |= PMAP_FAULT_USER;
+
+        return pmap_handle_page_fault(frame->rip, address, type, flags);
+    }
     case X86_64_IDT_NMI:
     case X86_64_IDT_DF:
     case X86_64_IDT_MC:

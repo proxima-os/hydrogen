@@ -50,7 +50,8 @@ static void tlb_init(tlb_ctx_t *tlb, pmap_t *pmap) {
     tlb->pmap = pmap;
     tlb->table = pmap ? pmap->table : kernel_page_table;
     tlb->asid = pmap ? pmap->asid : -1;
-    tlb->current = __atomic_load_n(&kernel_pt_switched, __ATOMIC_RELAXED);
+    tlb->current = pmap ? this_cpu_read(pmap.asids)[pmap->asid].table == pmap->table
+                        : __atomic_load_n(&kernel_pt_switched, __ATOMIC_RELAXED);
 }
 
 static void tlb_add_leaf(tlb_ctx_t *tlb, uintptr_t addr, bool global) {
@@ -964,4 +965,145 @@ INIT_TEXT void pmap_early_cleanup(void) {
     mutex_acq(&kernel_pt_lock, 0, false);
     build_leaf_counts(kernel_page_table, arch_pt_levels() - 1);
     mutex_rel(&kernel_pt_lock);
+}
+
+static const char *type_to_string(pmap_fault_type_t type) {
+    switch (type) {
+    case PMAP_FAULT_READ: return "read";
+    case PMAP_FAULT_WRITE: return "write";
+    case PMAP_FAULT_EXECUTE: return "execute";
+    default: UNREACHABLE();
+    }
+}
+
+typedef struct {
+    size_t root_index;
+    pte_t root_pte;
+    void *table;
+    unsigned level;
+    size_t index;
+    pte_t pte;
+} get_pte_result_t;
+
+static bool get_pte(get_pte_result_t *out, void *root, uintptr_t address) {
+    out->table = root;
+    out->level = arch_pt_levels() - 1;
+    out->index = arch_pt_get_index(address, out->level);
+    out->pte = arch_pt_read(root, out->level, out->index);
+
+    out->root_index = out->index;
+    out->root_pte = out->pte;
+
+    for (;;) {
+        if (unlikely(!out->pte)) return false;
+        if (out->level == 0 || !arch_pt_is_edge(out->level, out->pte)) return true;
+
+        out->table = arch_pt_edge_target(out->level, out->pte);
+        out->level -= 1;
+        out->index = arch_pt_get_index(address, out->level);
+        out->pte = arch_pt_read(out->table, out->level, out->index);
+    }
+}
+
+static bool is_access_allowed(unsigned level, pte_t pte, pmap_fault_type_t type) {
+    unsigned flags = arch_pt_get_leaf_flags(level, pte);
+
+    switch (type) {
+    case PMAP_FAULT_READ: return flags & PMAP_READABLE;
+    case PMAP_FAULT_WRITE: return flags & PMAP_WRITABLE;
+    case PMAP_FAULT_EXECUTE: return flags & PMAP_EXECUTABLE;
+    }
+}
+
+static void handle_user_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t type, unsigned flags) {
+    panic("TODO: handle_user_fault(0x%X, 0x%X, %d, %u)\n", pc, address, type, flags);
+}
+
+void pmap_handle_page_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t type, unsigned flags) {
+    if (flags & PMAP_FAULT_USER) return handle_user_fault(pc, address, type, flags);
+
+    // Kernel page fault handling must not take any locks, since the fault might have come
+    // from a code path that holds that lock. Luckily, we only have to do one thing that
+    // requires locking: looking up a PTE by its address. The only reason this requires
+    // locking is because one of the page tables might get freed before it has been read
+    // from. CPU-originating accesses don't suffer from this because the page tables
+    // don't actually get freed until all CPUs that could possibly be accessing them
+    // have received a shootdown IRQ. We can take advantage of this to alleviate the need
+    // for locking entirely: as long as IRQs are disabled during the lookup, the page tables
+    // involved can't possibly get freed.
+
+    // Note that we don't save and restore IRQs. This is fine, since all code paths
+    // result in either eventually returning through an interrupt path or panicking.
+
+    disable_irq();
+
+    if (!is_kernel_address(address)) {
+        panic("kernel code tried to %s user memory at 0x%Z (pc: 0x%Z, flags: %u)\n",
+              type_to_string(type),
+              address,
+              pc,
+              flags);
+    }
+
+    if (!arch_pt_is_canonical(address)) {
+        panic("kernel code tried to %s non-canonical memory at 0x%Z (pc: 0x%Z, flags: %u)\n",
+              type_to_string(type),
+              address,
+              pc,
+              flags);
+    }
+
+    get_pte_result_t result = {};
+    if (unlikely(!get_pte(&result, kernel_page_table, address))) {
+        panic("kernel code tried to %s unmapped memory at 0x%Z (pc: 0x%Z, flags: %u)\n",
+              type_to_string(type),
+              address,
+              pc,
+              flags);
+    }
+
+    pmap_t *cur_pmap = this_cpu_read_tl(pmap.current);
+    unsigned level = arch_pt_levels() - 1;
+
+    if (cur_pmap != NULL) {
+        pte_t pte = arch_pt_read(cur_pmap->table, level, result.root_index);
+
+        if (pte == 0) {
+            // Despite not holding any locks here, this is completely free of race conditions:
+            // - The value we're writing can't be stale, because non-zero PTEs in the top
+            //   level kernel page table are permanent.
+            // - The write cannot conflict with anything other CPUs are doing:
+            //   The kernel part of user page tables is only ever written to during
+            //   initialization and here. It can't be in the process of being initialized,
+            //   because we're using it, so the only writes we have to worry about occur
+            //   here. While it is certainly possible for other CPUs to be performing
+            //   such a write at the same time as us, they will be writing the exact same
+            //   value, because non-zero PTEs in the top level kernel page table are
+            //   permanent.
+            arch_pt_write(cur_pmap->table, level, result.root_index, result.root_pte);
+
+            if (arch_pt_new_edge_needs_flush()) {
+                arch_pt_flush_edge(address, kernel_page_table, -1, false, true);
+            }
+
+            return;
+        }
+
+        ASSERT(pte == result.root_pte);
+    }
+
+    if (is_access_allowed(level, result.pte, type)) {
+        if (arch_pt_new_edge_needs_flush()) {
+            arch_pt_flush_edge(address, kernel_page_table, -1, false, true);
+        }
+
+        arch_pt_flush_leaf(address, kernel_page_table, -1, false, true);
+        return;
+    }
+
+    panic("kernel code tried to %s memory that disallows such accesses at 0x%Z (pc: 0x%Z, flags: %u)\n",
+          type_to_string(type),
+          address,
+          pc,
+          flags);
 }
