@@ -48,7 +48,7 @@ __attribute__((noinline)) static _Noreturn void finalize_init(void) {
     if (unlikely(error)) panic("failed to create init process (%e)", error);
 
     thread_t *thread;
-    error = sched_create_thread(&thread, launch_init_process, NULL, NULL, init_process);
+    error = sched_create_thread(&thread, launch_init_process, NULL, NULL, init_process, THREAD_USER);
     if (unlikely(error)) panic("failed to create init process main thread (%d)", error);
     sched_wake(thread);
     thread_deref(thread);
@@ -85,7 +85,7 @@ INIT_TEXT USED _Noreturn void kernel_main(void) {
     proc_init();
 
     thread_t *init_thread;
-    int error = sched_create_thread(&init_thread, kernel_init, NULL, NULL, &kernel_process);
+    int error = sched_create_thread(&init_thread, kernel_init, NULL, NULL, &kernel_process, 0);
     if (unlikely(error)) panic("failed to create init thread (%e)", error);
     wake_init_thread_and_idle(init_thread);
 }

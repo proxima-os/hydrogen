@@ -88,11 +88,18 @@ INIT_TEXT void sched_init_late(void) {
     proc_ref(&kernel_process);
     proc_thread_create(&kernel_process, &cpu->sched.idle_thread);
 
-    int error = sched_create_thread(&cpu->sched.reaper, reaper_func, NULL, cpu, &kernel_process);
+    int error = sched_create_thread(&cpu->sched.reaper, reaper_func, NULL, cpu, &kernel_process, 0);
     if (unlikely(error)) panic("sched: failed to create reaper thread (%e)", error);
 }
 
-int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx, cpu_t *cpu, struct process *process) {
+int sched_create_thread(
+        thread_t **out,
+        void (*func)(void *),
+        void *ctx,
+        cpu_t *cpu,
+        struct process *process,
+        unsigned flags
+) {
     thread_t *thread = vmalloc(sizeof(*thread));
     if (unlikely(!thread)) return ENOMEM;
     memset(thread, 0, sizeof(*thread));
@@ -103,7 +110,7 @@ int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx, cpu_t *
         return ENOMEM;
     }
 
-    int error = arch_init_thread(&thread->arch, func, ctx, thread->stack);
+    int error = arch_init_thread(&thread->arch, func, ctx, thread->stack, flags);
     if (unlikely(error)) {
         free_kernel_stack(thread->stack);
         vfree(thread, sizeof(*thread));

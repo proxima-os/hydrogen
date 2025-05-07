@@ -12,6 +12,7 @@
 #include "x86_64/smp.h"
 #include "x86_64/time.h"
 #include "x86_64/tss.h"
+#include "x86_64/xsave.h"
 #include <stdint.h>
 
 _Alignas(KERNEL_STACK_ALIGN) static unsigned char bsp_ist_stacks[X86_64_IST_MAX][KERNEL_STACK_SIZE];
@@ -28,6 +29,7 @@ INIT_TEXT USED void x86_64_prepare_main(void) {
 }
 
 INIT_TEXT void arch_init_early(void) {
+    x86_64_xsave_init();
     acpi_init();
     x86_64_lapic_init();
     x86_64_ioapic_init();
@@ -40,6 +42,7 @@ INIT_TEXT void arch_init_late(void) {
 }
 
 INIT_TEXT void arch_init_current(void *ctx) {
+    x86_64_xsave_init_local();
     x86_64_lapic_init_local(ctx);
     enable_irq();
     x86_64_time_init_local();

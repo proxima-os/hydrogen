@@ -63,9 +63,19 @@ typedef struct {
 void sched_init(void);
 void sched_init_late(void);
 
+#define THREAD_USER (1u << 0)
+
 // creates a thread in the THREAD_CREATED state with 1 reference
 // if `cpu` isn't `NULL`, the thread is pinned on the specified cpu
-int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx, struct cpu *cpu, process_t *process);
+// user-mode state will be copied from the current thread
+int sched_create_thread(
+        thread_t **out,
+        void (*func)(void *),
+        void *ctx,
+        struct cpu *cpu,
+        process_t *process,
+        unsigned flags
+);
 
 preempt_state_t preempt_lock(void);
 void preempt_unlock(preempt_state_t state);
@@ -100,5 +110,5 @@ _Noreturn void sched_init_thread(thread_t *prev, void (*func)(void *), void *ctx
 
 // returns the thread that was switched from
 thread_t *arch_switch_thread(thread_t *from, thread_t *to);
-int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, void *stack);
+int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, void *stack, unsigned flags);
 void arch_reap_thread(arch_thread_t *thread);

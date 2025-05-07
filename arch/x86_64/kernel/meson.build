@@ -8,6 +8,7 @@ kernel_sources += files(
     'cpu/mca.c',
     'cpu/smp.c',
     'cpu/smp.S',
+    'cpu/xsave.c',
     'drv/debugcon.c',
     'drv/ioapic.c',
     'init/main.c',

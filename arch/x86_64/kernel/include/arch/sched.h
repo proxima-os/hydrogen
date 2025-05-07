@@ -5,4 +5,5 @@
 
 typedef struct {
     size_t rsp;
+    void *xsave;
 } arch_thread_t;
