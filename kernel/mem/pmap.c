@@ -563,7 +563,7 @@ bool pmap_prepare(vmm_t *vmm, uintptr_t virt, size_t size) {
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, &vmm->pmap);
+    tlb_init(&tlb, vmm ? &vmm->pmap : NULL);
     bool ok = do_prepare(vmm, vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, size, &tlb) >= 0;
     tlb_commit(&tlb, vmm);
 
@@ -629,7 +629,7 @@ void pmap_alloc(vmm_t *vmm, uintptr_t virt, size_t size, int flags) {
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, &vmm->pmap);
+    tlb_init(&tlb, vmm ? &vmm->pmap : NULL);
     do_alloc(vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, size, flags, &tlb);
     tlb_commit(&tlb, vmm);
 
@@ -693,7 +693,7 @@ void pmap_map(vmm_t *vmm, uintptr_t virt, uint64_t phys, size_t size, int flags)
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, &vmm->pmap);
+    tlb_init(&tlb, vmm ? &vmm->pmap : NULL);
     do_map(vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, phys, size, flags, &tlb);
     tlb_commit(&tlb, vmm);
 
@@ -757,7 +757,7 @@ void pmap_remap(vmm_t *vmm, uintptr_t virt, size_t size, int flags) {
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, &vmm->pmap);
+    tlb_init(&tlb, vmm ? &vmm->pmap : NULL);
     do_remap(vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, size, flags, &tlb);
     tlb_commit(&tlb, vmm);
 
@@ -840,7 +840,7 @@ void pmap_clone(vmm_t *vmm, vmm_t *dest, uintptr_t virt, size_t size, bool cow) 
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, &vmm->pmap);
+    tlb_init(&tlb, vmm ? &vmm->pmap : NULL);
     do_clone(vmm->pmap.table, dest->pmap.table, arch_pt_levels() - 1, virt, size, cow, &tlb);
     tlb_commit(&tlb, vmm);
 
@@ -866,7 +866,7 @@ void pmap_move(vmm_t *svmm, uintptr_t src, vmm_t *dvmm, uintptr_t dest, size_t s
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, &svmm->pmap);
+    tlb_init(&tlb, svmm ? &svmm->pmap : NULL);
 
     void *sroot = svmm ? svmm->pmap.table : kernel_page_table;
     void *droot = dvmm ? dvmm->pmap.table : kernel_page_table;
@@ -955,7 +955,7 @@ void pmap_unmap(vmm_t *vmm, uintptr_t virt, size_t size) {
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, &vmm->pmap);
+    tlb_init(&tlb, vmm ? &vmm->pmap : NULL);
     void *table = vmm ? vmm->pmap.table : kernel_page_table;
     size_t leaves = do_unmap(table, arch_pt_levels() - 1, virt, size, &tlb);
     virt_to_page(table)->anon.references -= leaves;
@@ -1209,7 +1209,7 @@ static void user_fault_fail(
     }
 
     // TODO: Make user_memcpy/user_memset fail gracefully
-    panic("TODO: user_fault_fail(0x%X, 0x%X, %d, %u, %e)\n", pc, address, type, flags, error);
+    panic("TODO: user_fault_fail(0x%X, 0x%X, %d, %u, %e)", pc, address, type, flags, error);
 }
 
 static bool region_allows_access(vmm_region_t *region, pmap_fault_type_t type) {
@@ -1426,7 +1426,7 @@ void pmap_handle_page_fault(
     if (!is_kernel_address(address)) {
         if (arch_is_user_copy(pc)) return handle_user_fault(context, pc, address, type, flags);
 
-        panic("kernel code tried to %s user memory at 0x%Z (pc: 0x%Z, flags: %u)\n",
+        panic("kernel code tried to %s user memory at 0x%Z (pc: 0x%Z, flags: %u)",
               type_to_string(type),
               address,
               pc,
@@ -1449,7 +1449,7 @@ void pmap_handle_page_fault(
     disable_irq();
 
     if (!arch_pt_is_canonical(address)) {
-        panic("kernel code tried to %s non-canonical memory at 0x%Z (pc: 0x%Z, flags: %u)\n",
+        panic("kernel code tried to %s non-canonical memory at 0x%Z (pc: 0x%Z, flags: %u)",
               type_to_string(type),
               address,
               pc,
@@ -1458,7 +1458,7 @@ void pmap_handle_page_fault(
 
     get_pte_result_t result = {};
     if (unlikely(!get_pte(&result, kernel_page_table, address))) {
-        panic("kernel code tried to %s unmapped memory at 0x%Z (pc: 0x%Z, flags: %u)\n",
+        panic("kernel code tried to %s unmapped memory at 0x%Z (pc: 0x%Z, flags: %u)",
               type_to_string(type),
               address,
               pc,
@@ -1504,7 +1504,7 @@ void pmap_handle_page_fault(
         return;
     }
 
-    panic("kernel code tried to %s memory that disallows such accesses at 0x%Z (pc: 0x%Z, flags: %u)\n",
+    panic("kernel code tried to %s memory that disallows such accesses at 0x%Z (pc: 0x%Z, flags: %u)",
           type_to_string(type),
           address,
           pc,
