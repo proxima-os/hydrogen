@@ -51,6 +51,7 @@ typedef struct {
     thread_t idle_thread;
     preempt_state_t preempt_state;
     bool preempt_queued;
+    bool preempt_work;
     spinlock_t lock;
     slist_t tasks;
 } sched_t;

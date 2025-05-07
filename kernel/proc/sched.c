@@ -172,7 +172,9 @@ static void do_yield(cpu_t *cpu, bool migrating) {
 static void queue_yield(cpu_t *cpu) {
     ASSERT(cpu == get_current_cpu());
     ASSERT(cpu->sched.preempt_state == PREEMPT_DISABLED);
-    __atomic_store_n(&cpu->sched.preempt_queued, true, __ATOMIC_RELAXED);
+    // don't need atomics here, interrupts are currently disabled
+    cpu->sched.preempt_queued = true;
+    cpu->sched.preempt_work = true;
 }
 
 preempt_state_t preempt_lock(void) {
@@ -182,9 +184,19 @@ preempt_state_t preempt_lock(void) {
 }
 
 bool preempt_unlock(preempt_state_t state) {
-    if (state == PREEMPT_ENABLED) {
+    if (state != PREEMPT_ENABLED) return false;
+
+    this_cpu_write(sched.preempt_state, state);
+    if (likely(!this_cpu_read(sched.preempt_work))) return false;
+
+    bool yielded = false;
+
+    do {
+        this_cpu_write(sched.preempt_state, PREEMPT_DISABLED);
+
         // preemption is disabled, so we don't need to worry about migration
         cpu_t *cpu = get_current_cpu();
+        __atomic_store_n(&cpu->sched.preempt_work, false, __ATOMIC_RELAXED);
 
         for (;;) {
             task_t *task = SLIST_REMOVE_HEAD(cpu->sched.tasks, task_t, node);
@@ -192,23 +204,19 @@ bool preempt_unlock(preempt_state_t state) {
             task->func(task);
         }
 
-        irq_state_t istate = spin_acq(&cpu->sched.lock);
-
-        bool yield = __atomic_load_n(&cpu->sched.preempt_queued, __ATOMIC_RELAXED);
-
-        while (yield) {
-            __atomic_store_n(&cpu->sched.preempt_queued, false, __ATOMIC_RELAXED);
+        if (__atomic_load_n(&cpu->sched.preempt_queued, __ATOMIC_RELAXED)) {
+            yielded = true;
+            irq_state_t state = spin_acq(&cpu->sched.lock);
+            cpu->sched.preempt_queued = false;
             do_yield(cpu, false);
             cpu = get_current_cpu();
-            yield = __atomic_load_n(&cpu->sched.preempt_queued, __ATOMIC_RELAXED);
+            spin_rel(&cpu->sched.lock, state);
         }
 
-        __atomic_store_n(&cpu->sched.preempt_state, state, __ATOMIC_RELEASE); // avoid torn writes by using atomics
-        spin_rel(&cpu->sched.lock, istate);
-        return yield;
-    }
+        this_cpu_write(sched.preempt_state, state);
+    } while (unlikely(this_cpu_read(sched.preempt_work)));
 
-    return false;
+    return yielded;
 }
 
 void sched_yield(void) {
@@ -463,6 +471,7 @@ void sched_queue_task(task_t *task) {
     preempt_state_t state = preempt_lock();
     cpu_t *cpu = get_current_cpu();
     slist_insert_tail(&cpu->sched.tasks, &task->node);
+    __atomic_store_n(&cpu->sched.preempt_work, true, __ATOMIC_RELAXED);
     preempt_unlock(state);
 }
 
