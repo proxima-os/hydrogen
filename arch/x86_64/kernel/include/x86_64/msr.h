@@ -49,7 +49,9 @@
 #define X86_64_MSR_EFER_LMA (1ull << 10)
 #define X86_64_MSR_EFER_NXE (1ull << 11)
 
+#define X86_64_MSR_FS_BASE 0xc0000100
 #define X86_64_MSR_GS_BASE 0xc0000101
+#define X86_64_MSR_KERNEL_GS_BASE 0xc0000102
 
 #ifndef __ASSEMBLER__
 

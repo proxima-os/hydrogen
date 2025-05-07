@@ -3,6 +3,8 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "kernel/compiler.h"
+#include "x86_64/msr.h"
+#include "x86_64/segreg.h"
 #include "x86_64/xsave.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -25,10 +27,26 @@ thread_t *arch_switch_thread(thread_t *from, thread_t *to) {
 
     if (from->arch.xsave != NULL) {
         x86_64_xsave_save(from->arch.xsave);
+        from->arch.ds = x86_64_read_ds();
+        from->arch.es = x86_64_read_es();
+        from->arch.fs = x86_64_read_fs();
+        from->arch.gs = x86_64_read_gs();
     }
 
     if (to->arch.xsave != NULL) {
         x86_64_xsave_restore(to->arch.xsave);
+        x86_64_write_ds(to->arch.ds);
+        x86_64_write_es(to->arch.es);
+        x86_64_write_fs(to->arch.fs);
+
+        if (to->arch.gs != x86_64_read_gs()) {
+            uint64_t cur = (uintptr_t)get_current_cpu();
+            x86_64_write_gs(to->arch.gs);
+            x86_64_wrmsr(X86_64_MSR_GS_BASE, cur);
+        }
+
+        x86_64_wrmsr(X86_64_MSR_FS_BASE, to->arch.fs_base);
+        x86_64_wrmsr(X86_64_MSR_KERNEL_GS_BASE, to->arch.gs_base);
     }
 
     return CONTAINER(thread_t, arch.rsp, x86_64_switch_thread(&from->arch.rsp, to->arch.rsp));
@@ -48,6 +66,13 @@ int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, voi
     if (flags & THREAD_USER) {
         thread->xsave = x86_64_xsave_alloc();
         if (unlikely(!thread->xsave)) return ENOMEM;
+
+        thread->ds = x86_64_read_ds();
+        thread->es = x86_64_read_es();
+        thread->fs = x86_64_read_fs();
+        thread->gs = x86_64_read_gs();
+        thread->fs_base = x86_64_rdmsr(X86_64_MSR_FS_BASE);
+        thread->gs_base = x86_64_rdmsr(X86_64_MSR_KERNEL_GS_BASE);
     }
 
     return 0;

@@ -104,7 +104,7 @@ USED void x86_64_idt_dispatch(arch_context_t *context) {
     case X86_64_IDT_NMI:
     case X86_64_IDT_DF:
     case X86_64_IDT_MC:
-        if (x86_64_rdmsr(X86_64_MSR_GS_BASE) != *(uintptr_t *)&context[1]) asm("swapgs");
+        x86_64_wrmsr(X86_64_MSR_GS_BASE, *(uintptr_t *)&context[1]);
         return x86_64_idt_handle_fatal(context);
     case X86_64_IDT_IPI_REMOTE_CALL: {
         preempt_state_t state = preempt_lock();

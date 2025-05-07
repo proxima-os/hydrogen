@@ -108,7 +108,7 @@ void free_kernel_stack(void *stack);
 
 _Noreturn void sched_init_thread(thread_t *prev, void (*func)(void *), void *ctx);
 
-// returns the thread that was switched from
+// returns the thread that was switched from. called with interrupts and preemption disabled.
 thread_t *arch_switch_thread(thread_t *from, thread_t *to);
 int arch_init_thread(arch_thread_t *thread, void (*func)(void *), void *ctx, void *stack, unsigned flags);
 void arch_reap_thread(arch_thread_t *thread);
