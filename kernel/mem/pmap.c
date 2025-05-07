@@ -249,7 +249,7 @@ void pmap_switch(pmap_t *target) {
     // tlb_remote accesses this stuff from irq context
     irq_state_t state = save_disable_irq();
 
-    if (old->asid == target->asid) {
+    if (old != NULL && old->asid == target->asid) {
         if ((uintptr_t)old < (uintptr_t)target) {
             spin_acq_noirq(&old->cpus_lock);
             spin_acq_noirq(&target->cpus_lock);
@@ -296,6 +296,7 @@ void pmap_prepare_destroy(pmap_t *pmap) {
 
     for (;;) {
         pmap_asid_data_t *asid = HLIST_HEAD(pmap->cpus, pmap_asid_data_t, node);
+        if (!asid) break;
         ASSERT(asid->table == pmap->table);
 
         if (asid->cpu->pmap.current == pmap) {

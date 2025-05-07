@@ -29,6 +29,7 @@ typedef struct cpu {
 
 extern cpu_t boot_cpu;
 extern slist_t cpus;
+extern size_t num_cpus;
 
 /* _tl-suffixed cpu-local macros are for data that is thread-local:
  * in other words, nothing gets messed up if the value is read/written

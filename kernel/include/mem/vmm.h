@@ -4,6 +4,7 @@
 #include "mem/pmap.h"
 #include "proc/mutex.h"
 #include "util/list.h"
+#include "util/refcount.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -27,7 +28,7 @@ struct vmm_region {
 };
 
 struct vmm {
-    size_t references;
+    refcnt_t references;
     mutex_t lock;
     pmap_t pmap;
     vmm_region_t *regtree;

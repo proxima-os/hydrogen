@@ -10,6 +10,7 @@
 #include "proc/mutex.h"
 #include "string.h"
 #include "util/list.h"
+#include "util/refcount.h"
 #include <stdint.h>
 
 static void replace_child(vmm_t *vmm, vmm_region_t *parent, vmm_region_t *from, vmm_region_t *to) {
@@ -299,7 +300,7 @@ int vmm_create(vmm_t **out) {
         return error;
     }
 
-    vmm->references = 1;
+    vmm->references = REF_INIT(1);
     *out = vmm;
     return 0;
 }
@@ -940,11 +941,11 @@ ret:
     if (vmm == dest_vmm) {
         mutex_rel(&vmm->lock);
     } else if ((uintptr_t)vmm < (uintptr_t)dest_vmm) {
-        mutex_rel(&vmm->lock);
         mutex_rel(&dest_vmm->lock);
+        mutex_rel(&vmm->lock);
     } else {
-        mutex_rel(&dest_vmm->lock);
         mutex_rel(&vmm->lock);
+        mutex_rel(&dest_vmm->lock);
     }
 
     if (likely(error == 0)) {
@@ -982,7 +983,7 @@ vmm_region_t *vmm_get_region(vmm_t *vmm, uintptr_t address) {
 }
 
 void vmm_ref(vmm_t *vmm) {
-    __atomic_fetch_add(&vmm->references, 1, __ATOMIC_ACQUIRE);
+    ref_inc(&vmm->references);
 }
 
 static void destroy_vmm(vmm_t *vmm) {
@@ -1001,7 +1002,7 @@ static void destroy_vmm(vmm_t *vmm) {
 }
 
 void vmm_deref(vmm_t *vmm) {
-    if (__atomic_fetch_sub(&vmm->references, 1, __ATOMIC_ACQ_REL) == 1) {
+    if (ref_dec(&vmm->references) == 1) {
         destroy_vmm(vmm);
     }
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cpu/cpudata.h"
 #include "string.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -20,8 +21,7 @@ static inline void cpu_mask_clear(cpu_mask_t *mask) {
 }
 
 static inline void cpu_mask_fill(cpu_mask_t *mask) {
-    // TODO
-    mask->data = 1;
+    mask->data = (1ull << num_cpus) - 1;
 }
 
 static inline bool cpu_mask_get(cpu_mask_t *mask, size_t cpu) {

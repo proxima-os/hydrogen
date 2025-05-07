@@ -15,6 +15,7 @@ kernel_sources += files(
     'mem/vmm.c',
     'proc/event.c',
     'proc/mutex.c',
+    'proc/process.c',
     'proc/rcu.c',
     'proc/sched.c',
     'util/panic.c',

@@ -2,13 +2,17 @@
 #include "arch/idle.h"
 #include "arch/irq.h"
 #include "arch/stack.h"
+#include "arch/time.h"
 #include "cpu/cpudata.h"
 #include "cpu/smp.h"
 #include "errno.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
+#include "mem/pmap.h"
 #include "mem/vmalloc.h"
 #include "mem/vmm.h"
+#include "proc/mutex.h"
+#include "proc/process.h"
 #include "proc/rcu.h"
 #include "sections.h"
 #include "string.h"
@@ -33,13 +37,25 @@ INIT_TEXT void sched_init(void) {
     sched->current->references = REF_INIT(2); // one for sched->idle_thread, one for sched->current
     sched->current->cpu = cpu;
     sched->current->state = THREAD_RUNNING;
+    sched->current->process = &kernel_process;
 }
 
 static void reap_thread(thread_t *thread) {
+    __atomic_fetch_sub(&thread->cpu->sched.num_threads, 1, __ATOMIC_RELAXED);
+
     arch_reap_thread(&thread->arch);
     free_kernel_stack(thread->stack);
-
     if (thread->vmm) vmm_deref(thread->vmm);
+
+    if (thread->pid) {
+        pid_t *pid = thread->pid;
+        mutex_acq(&pid->remove_lock, 0, false);
+        rcu_write(pid->thread, NULL);
+        pid_handle_removal_and_unlock(pid);
+    }
+
+    proc_thread_exit(thread->process, thread);
+    proc_deref(thread->process);
 
     thread->state = THREAD_EXITED;
 }
@@ -67,11 +83,16 @@ static void reaper_func(void *ctx) {
 
 INIT_TEXT void sched_init_late(void) {
     cpu_t *cpu = get_current_cpu();
-    int error = sched_create_thread(&cpu->sched.reaper, reaper_func, NULL, cpu);
+
+    cpu->sched.idle_thread.process = &kernel_process;
+    proc_ref(&kernel_process);
+    proc_thread_create(&kernel_process, &cpu->sched.idle_thread);
+
+    int error = sched_create_thread(&cpu->sched.reaper, reaper_func, NULL, cpu, &kernel_process);
     if (unlikely(error)) panic("sched: failed to create reaper thread (%e)", error);
 }
 
-int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx, cpu_t *cpu) {
+int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx, cpu_t *cpu, struct process *process) {
     thread_t *thread = vmalloc(sizeof(*thread));
     if (unlikely(!thread)) return ENOMEM;
     memset(thread, 0, sizeof(*thread));
@@ -98,7 +119,7 @@ int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx, cpu_t *
         size_t cur_count = SIZE_MAX;
 
         SLIST_FOREACH(cpus, cpu_t, node, cpu) {
-            size_t count = __atomic_load_n(&cpu->sched.num_queued, __ATOMIC_RELAXED);
+            size_t count = __atomic_load_n(&cpu->sched.num_threads, __ATOMIC_RELAXED);
 
             if (count < cur_count) {
                 thread->cpu = cpu;
@@ -108,6 +129,12 @@ int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx, cpu_t *
 
         ASSERT(thread->cpu != NULL);
     }
+
+    thread->process = process;
+    proc_ref(process);
+    proc_thread_create(process, thread);
+
+    __atomic_fetch_add(&thread->cpu->sched.num_threads, 1, __ATOMIC_RELAXED);
 
     *out = thread;
     return 0;
@@ -131,19 +158,19 @@ static void post_switch(thread_t *prev) {
             do_wake(cpu, cpu->sched.reaper, 0);
         }
     }
+
+    thread_t *current = cpu->sched.current;
+    if (current->vmm) pmap_switch(&current->vmm->pmap);
 }
 
 static void enqueue(cpu_t *cpu, thread_t *thread) {
     ASSERT(cpu == thread->cpu);
 
     list_insert_tail(&cpu->sched.queue, &thread->queue_node);
-    __atomic_fetch_add(&cpu->sched.num_queued, 1, __ATOMIC_RELAXED);
 }
 
 static thread_t *dequeue(cpu_t *cpu) {
-    thread_t *thread = LIST_REMOVE_HEAD(cpu->sched.queue, thread_t, queue_node);
-    if (thread) __atomic_fetch_sub(&cpu->sched.num_queued, 1, __ATOMIC_RELAXED);
-    return thread;
+    return LIST_REMOVE_HEAD(cpu->sched.queue, thread_t, queue_node);
 }
 
 static void do_yield(cpu_t *cpu, bool migrating) {
@@ -183,13 +210,11 @@ preempt_state_t preempt_lock(void) {
     return state;
 }
 
-bool preempt_unlock(preempt_state_t state) {
-    if (state != PREEMPT_ENABLED) return false;
+void preempt_unlock(preempt_state_t state) {
+    if (state != PREEMPT_ENABLED) return;
 
     this_cpu_write(sched.preempt_state, state);
-    if (likely(!this_cpu_read(sched.preempt_work))) return false;
-
-    bool yielded = false;
+    if (likely(!this_cpu_read(sched.preempt_work))) return;
 
     do {
         this_cpu_write(sched.preempt_state, PREEMPT_DISABLED);
@@ -199,13 +224,14 @@ bool preempt_unlock(preempt_state_t state) {
         __atomic_store_n(&cpu->sched.preempt_work, false, __ATOMIC_RELAXED);
 
         for (;;) {
+            irq_state_t state = save_disable_irq();
             task_t *task = SLIST_REMOVE_HEAD(cpu->sched.tasks, task_t, node);
+            restore_irq(state);
             if (!task) break;
             task->func(task);
         }
 
         if (__atomic_load_n(&cpu->sched.preempt_queued, __ATOMIC_RELAXED)) {
-            yielded = true;
             irq_state_t state = spin_acq(&cpu->sched.lock);
             cpu->sched.preempt_queued = false;
             do_yield(cpu, false);
@@ -215,8 +241,6 @@ bool preempt_unlock(preempt_state_t state) {
 
         this_cpu_write(sched.preempt_state, state);
     } while (unlikely(this_cpu_read(sched.preempt_work)));
-
-    return yielded;
 }
 
 void sched_yield(void) {
@@ -433,6 +457,9 @@ void sched_migrate(struct cpu *dest) {
     enqueue(dest, thread);
     maybe_preempt(dest);
 
+    __atomic_fetch_sub(&src->sched.num_threads, 1, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&dest->sched.num_threads, 1, __ATOMIC_RELAXED);
+
     // do_yield unlocks thread->cpu_lock to avoid the scenario where the destination
     // cpu has interrupts disabled while waiting on thread->cpu_lock
     do_yield(src, true);
@@ -468,25 +495,47 @@ void thread_deref(thread_t *thread) {
 }
 
 void sched_queue_task(task_t *task) {
-    preempt_state_t state = preempt_lock();
+    irq_state_t state = save_disable_irq();
     cpu_t *cpu = get_current_cpu();
     slist_insert_tail(&cpu->sched.tasks, &task->node);
     __atomic_store_n(&cpu->sched.preempt_work, true, __ATOMIC_RELAXED);
-    preempt_unlock(state);
+    restore_irq(state);
+}
+
+#define RCU_QUIET_INTERVAL (1 * NS_PER_MS)
+
+typedef struct {
+    task_t base;
+    timer_event_t event;
+} rcu_quiet_task_t;
+
+static void queued_rcu_quiet(task_t *ptr) {
+    rcu_quiet(get_current_cpu());
+
+    rcu_quiet_task_t *self = (rcu_quiet_task_t *)ptr;
+    self->event.deadline = arch_read_time() + RCU_QUIET_INTERVAL;
+    timer_queue_event(&self->event);
+}
+
+static void queue_rcu_quiet(timer_event_t *ptr) {
+    rcu_quiet_task_t *self = CONTAINER(rcu_quiet_task_t, event, ptr);
+    sched_queue_task(&self->base);
 }
 
 _Noreturn void sched_idle(void) {
-    cpu_t *cpu = get_current_cpu();
+    UNUSED cpu_t *cpu = get_current_cpu();
     ASSERT(current_thread == &cpu->sched.idle_thread);
 
+    // Without this, fully idle CPUs break RCU.
+    rcu_quiet_task_t task = {
+            .base.func = queued_rcu_quiet,
+            .event.deadline = arch_read_time() + RCU_QUIET_INTERVAL,
+            .event.func = queue_rcu_quiet,
+    };
+    timer_queue_event(&task.event);
+
     for (;;) {
-        preempt_state_t state = preempt_lock();
-
-        rcu_quiet(cpu);
-
-        if (!preempt_unlock(state)) {
-            cpu_idle();
-        }
+        cpu_idle();
     }
 }
 

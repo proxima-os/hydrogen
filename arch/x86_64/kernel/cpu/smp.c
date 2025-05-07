@@ -415,7 +415,6 @@ INIT_TEXT static void launch_cpu(
         uint32_t apic_id,
         uint32_t flags,
         struct acpi_madt *madt,
-        size_t *num_cpus,
         size_t *num_extra,
         launch_func_t func,
         void *ctx
@@ -432,7 +431,7 @@ INIT_TEXT static void launch_cpu(
         return;
     }
 
-    size_t id = *num_cpus;
+    size_t id = num_cpus;
     if (id >= MAX_CPUS) {
         *num_extra += 1;
         return;
@@ -458,7 +457,7 @@ INIT_TEXT static void launch_cpu(
 
     event_wait(&smp_current_online, 0, false);
 
-    *num_cpus = id + 1;
+    num_cpus = id + 1;
     slist_insert_tail(&cpus, &cpu->node);
 
     sched_migrate(cpu);
@@ -522,7 +521,6 @@ INIT_TEXT void x86_64_smp_init(void) {
     // away
     migrate_state_t state = migrate_lock();
 
-    size_t num_cpus = 1;
     size_t num_extra = 0;
 
     cur = madt->entries;
@@ -530,10 +528,10 @@ INIT_TEXT void x86_64_smp_init(void) {
     while (cur < end) {
         if (cur->type == ACPI_MADT_ENTRY_TYPE_LAPIC) {
             struct acpi_madt_lapic *entry = (void *)cur;
-            launch_cpu(entry->uid, entry->id, entry->flags, madt, &num_cpus, &num_extra, launch_func, launch_ctx);
+            launch_cpu(entry->uid, entry->id, entry->flags, madt, &num_extra, launch_func, launch_ctx);
         } else if (cur->type == ACPI_MADT_ENTRY_TYPE_LOCAL_X2APIC) {
             struct acpi_madt_x2apic *entry = (void *)cur;
-            launch_cpu(entry->uid, entry->id, entry->flags, madt, &num_cpus, &num_extra, launch_func, launch_ctx);
+            launch_cpu(entry->uid, entry->id, entry->flags, madt, &num_extra, launch_func, launch_ctx);
         }
 
         cur = (void *)cur + cur->length;

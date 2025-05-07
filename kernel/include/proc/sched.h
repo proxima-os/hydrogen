@@ -2,6 +2,7 @@
 
 #include "arch/sched.h"
 #include "mem/vmm.h"
+#include "proc/process.h"
 #include "util/list.h"
 #include "util/refcount.h"
 #include "util/slist.h"
@@ -23,6 +24,7 @@ typedef enum {
 } thread_state_t;
 
 typedef struct thread {
+    pid_t *pid;
     refcnt_t references;
     struct cpu *cpu;
     list_node_t queue_node;
@@ -30,6 +32,8 @@ typedef struct thread {
     arch_thread_t arch;
     void *stack;
     vmm_t *vmm;
+    process_t *process;
+    list_node_t process_node;
     thread_state_t state;
     timer_event_t timeout_event;
     int wake_status;
@@ -44,7 +48,7 @@ typedef struct task {
 
 typedef struct {
     list_t queue;
-    size_t num_queued;
+    size_t num_threads;
     thread_t *current;
     thread_t *reaper;
     list_t reaper_queue;
@@ -61,10 +65,10 @@ void sched_init_late(void);
 
 // creates a thread in the THREAD_CREATED state with 1 reference
 // if `cpu` isn't `NULL`, the thread is pinned on the specified cpu
-int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx, struct cpu *cpu);
+int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx, struct cpu *cpu, process_t *process);
 
 preempt_state_t preempt_lock(void);
-bool preempt_unlock(preempt_state_t state);
+void preempt_unlock(preempt_state_t state);
 
 void sched_yield(void);
 bool sched_wake(thread_t *thread); // if thread is in THREAD_CREATED, increments its reference count

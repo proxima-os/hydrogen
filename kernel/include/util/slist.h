@@ -54,7 +54,7 @@ static inline void slist_insert_head(slist_t *list, slist_node_t *node) {
 static inline void slist_insert_tail(slist_t *list, slist_node_t *node) {
     node->next = NULL;
 
-    if (list->tail) list->tail->next = node;
+    if (list->head) list->tail->next = node;
     else list->head = node;
 
     list->tail = node;
@@ -62,7 +62,7 @@ static inline void slist_insert_tail(slist_t *list, slist_node_t *node) {
 
 static inline void slist_append_end(slist_t *dest, slist_t *src) {
     if (!slist_empty(src)) {
-        if (dest->tail) dest->tail->next = src->head;
+        if (dest->head) dest->tail->next = src->head;
         else dest->head = src->tail;
 
         dest->tail = src->tail;

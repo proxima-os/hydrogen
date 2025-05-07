@@ -1,4 +1,5 @@
 #include "init/main.h"
+#include "cpu/cpudata.h"
 #include "drv/framebuffer.h"
 #include "init/cmdline.h"
 #include "kernel/compiler.h"
@@ -7,7 +8,9 @@
 #include "mem/memmap.h"
 #include "mem/pmap.h"
 #include "mem/pmem.h"
+#include "mem/vmm.h"
 #include "proc/event.h"
+#include "proc/process.h"
 #include "proc/rcu.h"
 #include "proc/sched.h"
 #include "sections.h"
@@ -20,6 +23,17 @@ __attribute__((used, section(".requests2"))) static LIMINE_REQUESTS_END_MARKER;
 
 LIMINE_REQ LIMINE_BASE_REVISION(3);
 
+static void launch_init_process(void *ctx) {
+    int error = vmm_create(&current_thread->vmm);
+    if (unlikely(error)) panic("failed to create init process vmm (%e)", error);
+    pmap_switch(&current_thread->vmm->pmap);
+
+    error = setsid();
+    if (unlikely(error < 0)) panic("failed to create init session (%e)", -error);
+
+    // TODO
+}
+
 // this is in a separate function so that kernel_init can be INIT_TEXT
 __attribute__((noinline)) static _Noreturn void finalize_init(void) {
     memmap_reclaim_init();
@@ -29,6 +43,16 @@ __attribute__((noinline)) static _Noreturn void finalize_init(void) {
            stats.total * (PAGE_SIZE / 1024),
            stats.available * (PAGE_SIZE / 1024),
            stats.free * (PAGE_SIZE / 1024));
+
+    int error = proc_clone(&init_process);
+    if (unlikely(error)) panic("failed to create init process (%e)", error);
+
+    thread_t *thread;
+    error = sched_create_thread(&thread, launch_init_process, NULL, NULL, init_process);
+    if (unlikely(error)) panic("failed to create init process main thread (%d)", error);
+    sched_wake(thread);
+    thread_deref(thread);
+
     sched_exit();
 }
 
@@ -58,9 +82,10 @@ INIT_TEXT USED _Noreturn void kernel_main(void) {
     }
 
     arch_init_early();
+    proc_init();
 
     thread_t *init_thread;
-    int error = sched_create_thread(&init_thread, kernel_init, NULL, NULL);
+    int error = sched_create_thread(&init_thread, kernel_init, NULL, NULL, &kernel_process);
     if (unlikely(error)) panic("failed to create init thread (%e)", error);
     wake_init_thread_and_idle(init_thread);
 }
