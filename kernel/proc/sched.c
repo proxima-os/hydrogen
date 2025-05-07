@@ -8,6 +8,7 @@
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "mem/vmalloc.h"
+#include "mem/vmm.h"
 #include "proc/rcu.h"
 #include "sections.h"
 #include "string.h"
@@ -37,6 +38,9 @@ INIT_TEXT void sched_init(void) {
 static void reap_thread(thread_t *thread) {
     arch_reap_thread(&thread->arch);
     free_kernel_stack(thread->stack);
+
+    if (thread->vmm) vmm_deref(thread->vmm);
+
     thread->state = THREAD_EXITED;
 }
 

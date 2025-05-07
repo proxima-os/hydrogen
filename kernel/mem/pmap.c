@@ -1,4 +1,5 @@
 #include "mem/pmap.h"
+#include "arch/context.h"
 #include "arch/idle.h"
 #include "arch/irq.h"
 #include "arch/memmap.h"
@@ -6,12 +7,15 @@
 #include "cpu/cpudata.h"
 #include "cpu/smp.h"
 #include "errno.h"
+#include "hydrogen/memory.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/types.h"
 #include "mem/memmap.h"
 #include "mem/pmem.h"
+#include "mem/usercopy.h"
 #include "mem/vmalloc.h"
+#include "mem/vmm.h"
 #include "proc/mutex.h"
 #include "proc/sched.h"
 #include "sections.h"
@@ -103,7 +107,23 @@ static void tlb_remote(void *ptr) {
     }
 }
 
-static void tlb_commit(tlb_ctx_t *tlb) {
+static void anon_free(page_t *page, vmm_t *vmm) {
+    if (!page->anon.autounreserve) {
+        pmem_free(page);
+    } else {
+        if (vmm) {
+            if (!page->anon.is_page_table) {
+                vmm->num_reserved -= 1;
+            } else {
+                vmm->num_tables -= 1;
+            }
+        }
+
+        pmem_free_now(page);
+    }
+}
+
+static void tlb_commit(tlb_ctx_t *tlb, vmm_t *vmm) {
     if (tlb->edge) {
         arch_pt_flush_edge(0, tlb->table, tlb->asid, tlb->edge_global, tlb->current);
 
@@ -148,7 +168,7 @@ static void tlb_commit(tlb_ctx_t *tlb) {
     for (;;) {
         page_t *page = SHLIST_REMOVE_HEAD(tlb->free_queue, page_t, anon.free_node);
         if (!page) break;
-        pmem_free(page);
+        anon_free(page, vmm);
     }
 }
 
@@ -179,66 +199,38 @@ INIT_TEXT void pmap_init_cpu(cpu_t *cpu) {
     }
 }
 
-static void *alloc_table(unsigned level) {
+static void *alloc_table(vmm_t *vmm, unsigned level) {
     page_t *page = pmem_alloc_now();
     if (unlikely(!page)) return NULL;
     page->anon.references = 0;
+    page->anon.autounreserve = false;
+    page->anon.is_page_table = true;
     void *table = page_to_virt(page);
     bool ok = arch_pt_init_table(table, level);
-    if (unlikely(!ok)) pmem_free_now(page);
-    return ok ? table : NULL;
-}
 
-static void free_table(void *table) {
-    pmem_free_now(virt_to_page(table));
-}
-
-static void free_tables(void *table, unsigned level, size_t min_idx, size_t max_idx);
-
-static void free_entry(pte_t pte, unsigned level) {
-#if PT_PREPARE_DEBUG
-    if (pte == ARCH_PT_PREPARE_PTE) return;
-#endif
-
-    if (level == 0 || !arch_pt_is_edge(level, pte)) {
-        int flags = arch_pt_get_leaf_flags(level, pte);
-
-        if ((flags & PMAP_ANONYMOUS) != 0) {
-            ASSERT(level == 0);
-
-            page_t *page = phys_to_page(arch_pt_leaf_target(level, pte));
-
-            if (__atomic_fetch_sub(&page->anon.references, 1, __ATOMIC_ACQ_REL) == 1) {
-                pmem_free(page);
-            }
-        }
+    if (likely(ok)) {
+        vmm->num_tables += 1;
+        return table;
     } else {
-        void *table = arch_pt_edge_target(level, pte);
-        free_tables(table, level - 1, 0, arch_pt_max_index(level - 1));
-        free_table(table);
+        pmem_free_now(page);
+        return NULL;
     }
 }
 
-static void free_tables(void *table, unsigned level, size_t min_idx, size_t max_idx) {
-    for (size_t index = min_idx; index <= max_idx; index++) {
-        free_entry(arch_pt_read(table, level, index), level);
-    }
-}
-
-int pmap_create(pmap_t *out) {
+int pmap_create(vmm_t *vmm) {
     static uint64_t next_asid;
 
     unsigned level = arch_pt_levels() - 1;
 
-    memset(out, 0, sizeof(*out));
-    if (unlikely(!(out = alloc_table(level)))) return ENOMEM;
-    out->asid = __atomic_fetch_add(&next_asid, 1, __ATOMIC_RELAXED) % (arch_pt_max_asid() + 1);
+    memset(&vmm->pmap, 0, sizeof(vmm->pmap));
+    if (unlikely(!(vmm->pmap.table = alloc_table(vmm, level)))) return ENOMEM;
+    vmm->pmap.asid = __atomic_fetch_add(&next_asid, 1, __ATOMIC_RELAXED) % (arch_pt_max_asid() + 1);
 
     size_t min_idx = arch_pt_get_index(arch_pt_max_user_addr(), level) + 1;
     size_t max_idx = arch_pt_max_index(level);
 
     while (min_idx <= max_idx) {
-        arch_pt_write(out->table, level, min_idx, arch_pt_read(kernel_page_table, level, min_idx));
+        arch_pt_write(vmm->pmap.table, level, min_idx, arch_pt_read(kernel_page_table, level, min_idx));
         min_idx += 1;
     }
 
@@ -322,7 +314,7 @@ void pmap_prepare_destroy(pmap_t *pmap) {
     preempt_unlock(state);
 }
 
-static size_t do_destroy_range(void *table, unsigned level, uintptr_t virt, size_t size) {
+static size_t do_destroy_range(vmm_t *vmm, void *table, unsigned level, uintptr_t virt, size_t size) {
     size_t index = arch_pt_get_index(virt, level);
     size_t entry_size = 1ul << arch_pt_entry_bits(level);
     size_t entry_mask = entry_size - 1;
@@ -348,7 +340,7 @@ static size_t do_destroy_range(void *table, unsigned level, uintptr_t virt, size
                     page_t *page = phys_to_page(arch_pt_leaf_target(level, pte));
 
                     if (__atomic_fetch_sub(&page->anon.references, 1, __ATOMIC_ACQ_REL)) {
-                        pmem_free(page);
+                        anon_free(page, vmm);
                     }
                 }
             }
@@ -362,7 +354,7 @@ static size_t do_destroy_range(void *table, unsigned level, uintptr_t virt, size
             ASSERT(arch_pt_is_edge(level, pte));
 
             void *child = arch_pt_edge_target(level, pte);
-            size_t cleaf = do_destroy_range(child, level - 1, virt, cur);
+            size_t cleaf = do_destroy_range(vmm, child, level - 1, virt, cur);
             page_t *cpage = virt_to_page(child);
             cpage->anon.references -= cleaf;
 
@@ -370,7 +362,7 @@ static size_t do_destroy_range(void *table, unsigned level, uintptr_t virt, size
 #if HYDROGEN_ASSERTIONS
                 arch_pt_write(table, level, index, 0);
 #endif
-                pmem_free_now(cpage);
+                anon_free(cpage, vmm);
             }
 
             leaves += cleaf;
@@ -384,8 +376,8 @@ static size_t do_destroy_range(void *table, unsigned level, uintptr_t virt, size
     return leaves;
 }
 
-void pmap_destroy_range(pmap_t *pmap, uintptr_t virt, size_t size) {
-    ASSERT(pmap != NULL);
+void pmap_destroy_range(vmm_t *vmm, uintptr_t virt, size_t size) {
+    ASSERT(vmm != NULL);
     ASSERT(arch_pt_get_offset(virt | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
@@ -393,27 +385,27 @@ void pmap_destroy_range(pmap_t *pmap, uintptr_t virt, size_t size) {
     ASSERT(arch_pt_is_canonical(virt + (size - 1)));
     ASSERT(!is_kernel_address(virt + (size - 1)));
 
-    UNUSED size_t leaves = do_destroy_range(pmap->table, arch_pt_levels() - 1, virt, size);
+    UNUSED size_t leaves = do_destroy_range(vmm, vmm->pmap.table, arch_pt_levels() - 1, virt, size);
 #if HYDROGEN_ASSERTIONS
-    virt_to_page(pmap->table)->anon.references -= leaves;
+    virt_to_page(vmm->pmap.table)->anon.references -= leaves;
 #endif
 }
 
-void pmap_finish_destruction(pmap_t *pmap) {
+void pmap_finish_destruction(vmm_t *vmm) {
 #if HYDROGEN_ASSERTIONS
     {
         unsigned level = arch_pt_levels() - 1;
         size_t max = arch_pt_get_index(arch_pt_max_user_addr(), level);
 
         for (size_t i = 0; i <= max; i++) {
-            ENSURE(arch_pt_read(pmap->table, level, i) == 0);
+            ENSURE(arch_pt_read(vmm->pmap.table, level, i) == 0);
         }
 
-        ASSERT(virt_to_page(pmap->table)->anon.references == 0);
+        ASSERT(virt_to_page(vmm->pmap.table)->anon.references == 0);
     }
 #endif
 
-    free_table(pmap->table);
+    anon_free(virt_to_page(vmm->pmap.table), vmm);
 }
 
 static void tlb_add_unmap_anon(tlb_ctx_t *tlb, page_t *page) {
@@ -487,7 +479,7 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
     return leaves;
 }
 
-static ssize_t do_prepare(void *table, unsigned level, uintptr_t virt, size_t size, tlb_ctx_t *tlb) {
+static ssize_t do_prepare(vmm_t *vmm, void *table, unsigned level, uintptr_t virt, size_t size, tlb_ctx_t *tlb) {
     size_t index = arch_pt_get_index(virt, level);
     ssize_t leaves;
 
@@ -532,7 +524,7 @@ static ssize_t do_prepare(void *table, unsigned level, uintptr_t virt, size_t si
             ASSERT(arch_pt_is_edge(level, pte));
             child = arch_pt_edge_target(level, pte);
         } else {
-            child = alloc_table(level - 1);
+            child = alloc_table(vmm, level - 1);
             if (unlikely(!child)) goto err;
             arch_pt_write(table, level, index, arch_pt_create_edge(level, child));
 
@@ -541,7 +533,7 @@ static ssize_t do_prepare(void *table, unsigned level, uintptr_t virt, size_t si
             }
         }
 
-        ssize_t ret = do_prepare(child, level - 1, virt, cur, tlb);
+        ssize_t ret = do_prepare(vmm, child, level - 1, virt, cur, tlb);
         if (unlikely(ret < 0)) goto err;
 
         index += 1;
@@ -558,25 +550,25 @@ static ssize_t do_prepare(void *table, unsigned level, uintptr_t virt, size_t si
     return leaves;
 }
 
-bool pmap_prepare(pmap_t *pmap, uintptr_t virt, size_t size) {
+bool pmap_prepare(vmm_t *vmm, uintptr_t virt, size_t size) {
     ASSERT(arch_pt_get_offset(virt | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
     ASSERT(arch_pt_is_canonical(virt));
     ASSERT(arch_pt_is_canonical(virt + (size - 1)));
     ASSERT(is_kernel_address(virt) == is_kernel_address(virt + (size - 1)));
-    ASSERT(is_kernel_address(virt) == (pmap == NULL));
+    ASSERT(is_kernel_address(virt) == (vmm == NULL));
 
-    if (!pmap) mutex_acq(&kernel_pt_lock, 0, false);
+    if (!vmm) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, pmap);
-    bool ok = do_prepare(pmap ? pmap->table : kernel_page_table, arch_pt_levels() - 1, virt, size, &tlb) >= 0;
-    tlb_commit(&tlb);
+    tlb_init(&tlb, &vmm->pmap);
+    bool ok = do_prepare(vmm, vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, size, &tlb) >= 0;
+    tlb_commit(&tlb, vmm);
 
     migrate_unlock(state);
-    if (!pmap) mutex_rel(&kernel_pt_lock);
+    if (!vmm) mutex_rel(&kernel_pt_lock);
     return ok;
 }
 
@@ -592,6 +584,8 @@ static void do_alloc(void *table, unsigned level, uintptr_t virt, size_t size, i
 #endif
             page_t *page = pmem_alloc();
             page->anon.references = 1;
+            page->anon.autounreserve = false;
+            page->anon.is_page_table = false;
             arch_pt_write(table, level, index, arch_pt_create_leaf(level, page_to_phys(page), flags));
             index += 1;
             virt += entry_size;
@@ -618,29 +612,29 @@ static void do_alloc(void *table, unsigned level, uintptr_t virt, size_t size, i
     } while (size > 0);
 }
 
-void pmap_alloc(pmap_t *pmap, uintptr_t virt, size_t size, int flags) {
+void pmap_alloc(vmm_t *vmm, uintptr_t virt, size_t size, int flags) {
     ASSERT(arch_pt_get_offset(virt | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
     ASSERT(arch_pt_is_canonical(virt));
     ASSERT(arch_pt_is_canonical(virt + (size - 1)));
     ASSERT(is_kernel_address(virt) == is_kernel_address(virt + (size - 1)));
-    ASSERT(is_kernel_address(virt) == (pmap == NULL));
+    ASSERT(is_kernel_address(virt) == (vmm == NULL));
     ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE)) == 0);
 
     if (!is_kernel_address(virt)) flags |= PMAP_USER;
     flags |= PMAP_ANONYMOUS;
 
-    if (!pmap) mutex_acq(&kernel_pt_lock, 0, false);
+    if (!vmm) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, pmap);
-    do_alloc(pmap ? pmap->table : kernel_page_table, arch_pt_levels() - 1, virt, size, flags, &tlb);
-    tlb_commit(&tlb);
+    tlb_init(&tlb, &vmm->pmap);
+    do_alloc(vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, size, flags, &tlb);
+    tlb_commit(&tlb, vmm);
 
     migrate_unlock(state);
-    if (!pmap) mutex_rel(&kernel_pt_lock);
+    if (!vmm) mutex_rel(&kernel_pt_lock);
 }
 
 static void do_map(void *table, unsigned level, uintptr_t virt, uint64_t phys, size_t size, int flags, tlb_ctx_t *tlb) {
@@ -681,30 +675,30 @@ static void do_map(void *table, unsigned level, uintptr_t virt, uint64_t phys, s
     } while (size > 0);
 }
 
-void pmap_map(pmap_t *pmap, uintptr_t virt, uint64_t phys, size_t size, int flags) {
+void pmap_map(vmm_t *vmm, uintptr_t virt, uint64_t phys, size_t size, int flags) {
     ASSERT(arch_pt_get_offset(virt | phys | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
     ASSERT(arch_pt_is_canonical(virt));
     ASSERT(arch_pt_is_canonical(virt + (size - 1)));
     ASSERT(is_kernel_address(virt) == is_kernel_address(virt + (size - 1)));
-    ASSERT(is_kernel_address(virt) == (pmap == NULL));
+    ASSERT(is_kernel_address(virt) == (vmm == NULL));
     ASSERT(phys < phys + (size - 1));
     ASSERT(phys + (size - 1) <= cpu_max_phys_addr());
     ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE | PMAP_CACHE_MASK)) == 0);
 
     if (!is_kernel_address(virt)) flags |= PMAP_USER;
 
-    if (!pmap) mutex_acq(&kernel_pt_lock, 0, false);
+    if (!vmm) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, pmap);
-    do_map(pmap ? pmap->table : kernel_page_table, arch_pt_levels() - 1, virt, phys, size, flags, &tlb);
-    tlb_commit(&tlb);
+    tlb_init(&tlb, &vmm->pmap);
+    do_map(vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, phys, size, flags, &tlb);
+    tlb_commit(&tlb, vmm);
 
     migrate_unlock(state);
-    if (!pmap) mutex_rel(&kernel_pt_lock);
+    if (!vmm) mutex_rel(&kernel_pt_lock);
 }
 
 static void do_remap(void *table, unsigned level, uintptr_t virt, size_t size, int flags, tlb_ctx_t *tlb) {
@@ -749,26 +743,26 @@ static void do_remap(void *table, unsigned level, uintptr_t virt, size_t size, i
     } while (size > 0);
 }
 
-void pmap_remap(pmap_t *pmap, uintptr_t virt, size_t size, int flags) {
+void pmap_remap(vmm_t *vmm, uintptr_t virt, size_t size, int flags) {
     ASSERT(arch_pt_get_offset(virt | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
     ASSERT(arch_pt_is_canonical(virt));
     ASSERT(arch_pt_is_canonical(virt + (size - 1)));
     ASSERT(is_kernel_address(virt) == is_kernel_address(virt + (size - 1)));
-    ASSERT(is_kernel_address(virt) == (pmap == NULL));
+    ASSERT(is_kernel_address(virt) == (vmm == NULL));
     ASSERT((flags & ~(PMAP_READABLE | PMAP_WRITABLE | PMAP_EXECUTABLE)) == 0);
 
-    if (!pmap) mutex_acq(&kernel_pt_lock, 0, false);
+    if (!vmm) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, pmap);
-    do_remap(pmap ? pmap->table : kernel_page_table, arch_pt_levels() - 1, virt, size, flags, &tlb);
-    tlb_commit(&tlb);
+    tlb_init(&tlb, &vmm->pmap);
+    do_remap(vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, size, flags, &tlb);
+    tlb_commit(&tlb, vmm);
 
     migrate_unlock(state);
-    if (!pmap) mutex_rel(&kernel_pt_lock);
+    if (!vmm) mutex_rel(&kernel_pt_lock);
 }
 
 static void do_clone(void *src, void *dst, unsigned level, uintptr_t virt, size_t size, bool cow, tlb_ctx_t *tlb) {
@@ -807,7 +801,7 @@ static void do_clone(void *src, void *dst, unsigned level, uintptr_t virt, size_
 
                 if (flags & PMAP_ANONYMOUS) {
                     page_t *page = phys_to_page(arch_pt_leaf_target(level, pte));
-                    page->anon.references += 1;
+                    __atomic_fetch_add(&page->anon.references, 1, __ATOMIC_ACQUIRE);
                 }
 
                 arch_pt_write(dst, level, index, pte);
@@ -833,9 +827,9 @@ static void do_clone(void *src, void *dst, unsigned level, uintptr_t virt, size_
     } while (size > 0);
 }
 
-void pmap_clone(pmap_t *smap, pmap_t *dmap, uintptr_t virt, size_t size, bool cow) {
-    ASSERT(smap != NULL);
-    ASSERT(dmap != NULL);
+void pmap_clone(vmm_t *vmm, vmm_t *dest, uintptr_t virt, size_t size, bool cow) {
+    ASSERT(vmm != NULL);
+    ASSERT(dest != NULL);
     ASSERT(arch_pt_get_offset(virt | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
@@ -846,14 +840,14 @@ void pmap_clone(pmap_t *smap, pmap_t *dmap, uintptr_t virt, size_t size, bool co
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, dmap);
-    do_clone(smap->table, dmap->table, arch_pt_levels() - 1, virt, size, cow, &tlb);
-    tlb_commit(&tlb);
+    tlb_init(&tlb, &vmm->pmap);
+    do_clone(vmm->pmap.table, dest->pmap.table, arch_pt_levels() - 1, virt, size, cow, &tlb);
+    tlb_commit(&tlb, vmm);
 
     migrate_unlock(state);
 }
 
-void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t size) {
+void pmap_move(vmm_t *svmm, uintptr_t src, vmm_t *dvmm, uintptr_t dest, size_t size) {
     ASSERT(arch_pt_get_offset(src | dest | size) == 0);
     ASSERT(size > 0);
     ASSERT(src < src + (size - 1));
@@ -864,18 +858,18 @@ void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t
     ASSERT(arch_pt_is_canonical(dest));
     ASSERT(arch_pt_is_canonical(dest + (size - 1)));
     ASSERT(is_kernel_address(dest) == is_kernel_address(dest + (size - 1)));
-    ASSERT(is_kernel_address(dest) == (dmap == NULL));
-    ASSERT((smap != NULL) == (dmap != NULL));
-    ASSERT(smap != dmap || src + (size - 1) < dest || src > dest + (size - 1));
+    ASSERT(is_kernel_address(dest) == (dvmm == NULL));
+    ASSERT((svmm != NULL) == (dvmm != NULL));
+    ASSERT(svmm != dvmm || src + (size - 1) < dest || src > dest + (size - 1));
 
-    if (!smap) mutex_acq(&kernel_pt_lock, 0, false);
+    if (!svmm) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, smap);
+    tlb_init(&tlb, &svmm->pmap);
 
-    void *sroot = smap ? smap->table : kernel_page_table;
-    void *droot = dmap ? dmap->table : kernel_page_table;
+    void *sroot = svmm ? svmm->pmap.table : kernel_page_table;
+    void *droot = dvmm ? dvmm->pmap.table : kernel_page_table;
     unsigned rlevel = arch_pt_levels() - 1;
     size_t advance = 1ul << arch_pt_entry_bits(0);
 
@@ -942,33 +936,33 @@ void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t
         size -= advance;
     }
 
-    tlb_commit(&tlb);
+    tlb_commit(&tlb, svmm);
 
     migrate_unlock(state);
-    if (!smap) mutex_rel(&kernel_pt_lock);
+    if (!svmm) mutex_rel(&kernel_pt_lock);
 }
 
-void pmap_unmap(pmap_t *pmap, uintptr_t virt, size_t size) {
+void pmap_unmap(vmm_t *vmm, uintptr_t virt, size_t size) {
     ASSERT(arch_pt_get_offset(virt | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
     ASSERT(arch_pt_is_canonical(virt));
     ASSERT(arch_pt_is_canonical(virt + (size - 1)));
     ASSERT(is_kernel_address(virt) == is_kernel_address(virt + (size - 1)));
-    ASSERT(is_kernel_address(virt) == (pmap == NULL));
+    ASSERT(is_kernel_address(virt) == (vmm == NULL));
 
-    if (!pmap) mutex_acq(&kernel_pt_lock, 0, false);
+    if (!vmm) mutex_acq(&kernel_pt_lock, 0, false);
     migrate_state_t state = migrate_lock();
 
     tlb_ctx_t tlb;
-    tlb_init(&tlb, pmap);
-    void *table = pmap ? pmap->table : kernel_page_table;
+    tlb_init(&tlb, &vmm->pmap);
+    void *table = vmm ? vmm->pmap.table : kernel_page_table;
     size_t leaves = do_unmap(table, arch_pt_levels() - 1, virt, size, &tlb);
     virt_to_page(table)->anon.references -= leaves;
-    tlb_commit(&tlb);
+    tlb_commit(&tlb, vmm);
 
     migrate_unlock(state);
-    if (!pmap) mutex_rel(&kernel_pt_lock);
+    if (!vmm) mutex_rel(&kernel_pt_lock);
 }
 
 INIT_TEXT static void do_early_map(
@@ -1043,7 +1037,7 @@ INIT_TEXT void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int fl
     tlb_ctx_t tlb;
     tlb_init(&tlb, NULL);
     do_early_map(kernel_page_table, arch_pt_levels() - 1, virt, phys, size, flags, &tlb);
-    tlb_commit(&tlb);
+    tlb_commit(&tlb, NULL);
 
     migrate_unlock(state);
     mutex_rel(&kernel_pt_lock);
@@ -1117,7 +1111,7 @@ INIT_TEXT void pmap_early_alloc(uintptr_t virt, size_t size, int flags) {
     tlb_ctx_t tlb;
     tlb_init(&tlb, NULL);
     do_early_alloc(kernel_page_table, arch_pt_levels() - 1, virt, size, flags, &tlb);
-    tlb_commit(&tlb);
+    tlb_commit(&tlb, NULL);
 
     migrate_unlock(state);
     mutex_rel(&kernel_pt_lock);
@@ -1200,72 +1194,145 @@ static bool is_access_allowed(unsigned level, pte_t pte, pmap_fault_type_t type)
     }
 }
 
-static void user_fault_fail(uintptr_t pc, uintptr_t address, pmap_fault_type_t type, unsigned flags, int error) {
+static void user_fault_fail(
+        arch_context_t *context,
+        uintptr_t pc,
+        uintptr_t address,
+        pmap_fault_type_t type,
+        unsigned flags,
+        int error
+) {
+    if ((flags & PMAP_FAULT_USER) == 0) {
+        ASSERT(arch_is_user_copy(pc));
+        arch_user_copy_fail(context, error);
+        return;
+    }
+
     // TODO: Make user_memcpy/user_memset fail gracefully
     panic("TODO: user_fault_fail(0x%X, 0x%X, %d, %u, %e)\n", pc, address, type, flags, error);
 }
 
+static bool region_allows_access(vmm_region_t *region, pmap_fault_type_t type) {
+    switch (type) {
+    case PMAP_FAULT_READ: return region->flags & HYDROGEN_MEM_READ;
+    case PMAP_FAULT_WRITE: return region->flags & HYDROGEN_MEM_WRITE;
+    case PMAP_FAULT_EXECUTE: return region->flags & HYDROGEN_MEM_EXEC;
+    default: UNREACHABLE();
+    }
+}
+
 static void create_new_user_mapping(
-        pmap_t *pmap,
+        arch_context_t *context,
+        vmm_t *vmm,
         uintptr_t pc,
         uintptr_t address,
         pmap_fault_type_t type,
         unsigned flags,
         get_pte_result_t *result
 ) {
-    panic("TODO: create_new_user_mapping(0x%X, 0x%X, %d, %u)\n", pc, address, type, flags);
+    vmm_region_t *region = vmm_get_region(vmm, address);
+    if (unlikely(!region)) return user_fault_fail(context, pc, address, type, flags, EFAULT);
+    if (unlikely(!region_allows_access(region, type))) {
+        return user_fault_fail(context, pc, address, type, flags, EFAULT);
+    }
+
+    // TODO: Object mappings
+
+    page_t *page;
+
+    if ((region->flags & HYDROGEN_MEM_LAZY_RESERVE) == 0) {
+        page = pmem_alloc();
+        page->anon.autounreserve = false;
+    } else {
+        page = pmem_alloc_now();
+        if (unlikely(!page)) return user_fault_fail(context, pc, address, type, flags, ENOMEM);
+        page->anon.autounreserve = true;
+        vmm->num_reserved += 1;
+    }
+
+    page->anon.references = 1;
+    page->anon.is_page_table = false;
+    memset(page_to_virt(page), 0, PAGE_SIZE);
+
+    int pte_flags = PMAP_USER | PMAP_ANONYMOUS;
+    if (region->flags & HYDROGEN_MEM_READ) pte_flags |= PMAP_READABLE;
+    if (region->flags & HYDROGEN_MEM_WRITE) pte_flags |= PMAP_WRITABLE;
+    if (region->flags & HYDROGEN_MEM_EXEC) pte_flags |= PMAP_EXECUTABLE;
+
+    pte_t pte = arch_pt_create_leaf(result->level, page_to_phys(page), pte_flags);
+    arch_pt_write(result->table, result->level, result->index, pte);
+
+    if (arch_pt_new_leaf_needs_flush()) {
+        arch_pt_flush_leaf(address, vmm->pmap.table, vmm->pmap.asid, false, true);
+    }
 }
 
 static int copy_mapping(page_t **out, uint64_t source, int flags) {
     ASSERT(flags & PMAP_ANONYMOUS); // TODO: Allow objects to provide their own copying function
 
     page_t *src = phys_to_page(source);
-    if (__atomic_load_n(&src->anon.references, __ATOMIC_ACQUIRE) == 1) {
-        *out = src;
-        return 0;
+    size_t refs = __atomic_load_n(&src->anon.references, __ATOMIC_ACQUIRE);
+
+    // We can't unref normally (aka with an atomic decrement), because we need to ensure
+    // we don't get rid of the last reference. Instead, use a cmpxchg loop.
+    for (;;) {
+        if (refs == 1) {
+            *out = src;
+            return 0;
+        }
+
+        if (__atomic_compare_exchange_n(
+                    &src->anon.references,
+                    &refs,
+                    refs - 1,
+                    true,
+                    __ATOMIC_ACQ_REL,
+                    __ATOMIC_ACQUIRE
+            )) {
+            break;
+        }
     }
 
     page_t *dst = pmem_alloc();
     dst->anon.references = 1;
+    dst->anon.autounreserve = src->anon.autounreserve;
+    dst->anon.is_page_table = false;
     memcpy(page_to_virt(dst), page_to_virt(src), PAGE_SIZE);
-
-    if (__atomic_fetch_sub(&src->anon.references, 1, __ATOMIC_ACQ_REL) == 1) {
-        pmem_free(src);
-    }
 
     *out = dst;
     return 0;
 }
 
-static void handle_user_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t type, unsigned flags) {
-    if (!arch_pt_is_canonical(address)) return user_fault_fail(pc, address, type, flags, EFAULT);
-    if (is_kernel_address(address)) return user_fault_fail(pc, address, type, flags, EFAULT);
-
-    // TODO: Lock thread VMM and get pmap from there
-
-    pmap_t *pmap = this_cpu_read_tl(pmap.current);
-    ASSERT(pmap != NULL);
-
+static void do_handle_user_fault(
+        arch_context_t *context,
+        vmm_t *vmm,
+        uintptr_t pc,
+        uintptr_t address,
+        pmap_fault_type_t type,
+        unsigned flags
+) {
     get_pte_result_t result = {};
 
-    if (unlikely(!get_pte(&result, pmap->table, address))) {
-        if (unlikely(result.level != 0)) return user_fault_fail(pc, address, type, flags, EFAULT);
+    if (unlikely(!get_pte(&result, vmm->pmap.table, address))) {
+        if (unlikely(result.level != 0)) return user_fault_fail(context, pc, address, type, flags, EFAULT);
 
 #if PT_PREPARE_DEBUG
-        if (unlikely(result.pte) != ARCH_PT_PREPARE_PTE) return user_fault_fail(pc, address, type, flags, EFAULT);
+        if (unlikely(result.pte) != ARCH_PT_PREPARE_PTE) {
+            return user_fault_fail(context, pc, address, type, flags, EFAULT);
+        }
 #endif
 
-        return create_new_user_mapping(pmap, pc, address, type, flags, &result);
+        return create_new_user_mapping(context, vmm, pc, address, type, flags, &result);
     }
 
     if (likely(is_access_allowed(result.level, result.pte, type))) {
         migrate_state_t state = migrate_lock();
 
         if (arch_pt_new_edge_needs_flush()) {
-            arch_pt_flush_edge(address, pmap->table, pmap->asid, false, true);
+            arch_pt_flush_edge(address, vmm->pmap.table, vmm->pmap.asid, false, true);
         }
 
-        arch_pt_flush_leaf(address, pmap->table, pmap->asid, false, true);
+        arch_pt_flush_leaf(address, vmm->pmap.table, vmm->pmap.asid, false, true);
 
         migrate_unlock(state);
         return;
@@ -1274,13 +1341,16 @@ static void handle_user_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t
     int pte_flags = arch_pt_get_leaf_flags(result.level, result.pte);
 
     if (likely(type == PMAP_FAULT_WRITE) && likely(pte_flags & PMAP_COPY_ON_WRITE)) {
-        // TODO: Check if the region this mapping comes from allows writes
-        // Read-only regions have the copy-on-write flag set if after a remap
-        // that makes them writable they need to be copy-on-write.
+        vmm_region_t *region = vmm_get_region(vmm, address);
+        ASSERT(region != NULL);
+
+        if (unlikely((region->flags & HYDROGEN_MEM_WRITE) == 0)) {
+            return user_fault_fail(context, pc, address, type, flags, EFAULT);
+        }
 
         page_t *new_page;
         int error = copy_mapping(&new_page, arch_pt_leaf_target(result.level, result.pte), pte_flags);
-        if (unlikely(error)) return user_fault_fail(pc, address, type, flags, error);
+        if (unlikely(error)) return user_fault_fail(context, pc, address, type, flags, error);
 
         pte_flags &= ~PMAP_COPY_ON_WRITE;
         pte_flags |= PMAP_ANONYMOUS | PMAP_WRITABLE;
@@ -1302,10 +1372,10 @@ static void handle_user_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t
         // the address space lock. By the time it acquires the lock, the new entry will have been inserted, so the lazy
         // TLB code will treat it as a spurious page fault and userspace will retry the access.
         tlb_ctx_t tlb;
-        tlb_init(&tlb, pmap);
+        tlb_init(&tlb, &vmm->pmap);
         arch_pt_write(result.table, result.level, result.index, 0);
         tlb_add_leaf(&tlb, address, true);
-        tlb_commit(&tlb);
+        tlb_commit(&tlb, vmm);
 
         arch_pt_write(
                 result.table,
@@ -1315,21 +1385,46 @@ static void handle_user_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t
         );
 
         if (arch_pt_new_leaf_needs_flush()) {
-            arch_pt_flush_leaf(address, pmap->table, pmap->asid, false, true);
+            arch_pt_flush_leaf(address, vmm->pmap.table, vmm->pmap.asid, false, true);
         }
 
         migrate_unlock(state);
         return;
     }
 
-    user_fault_fail(pc, address, type, flags, EFAULT);
+    user_fault_fail(context, pc, address, type, flags, EFAULT);
 }
 
-void pmap_handle_page_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t type, unsigned flags) {
-    if (flags & PMAP_FAULT_USER) return handle_user_fault(pc, address, type, flags);
+static void handle_user_fault(
+        arch_context_t *context,
+        uintptr_t pc,
+        uintptr_t address,
+        pmap_fault_type_t type,
+        unsigned flags
+) {
+    if (!arch_pt_is_canonical(address)) return user_fault_fail(context, pc, address, type, flags, EFAULT);
+    if (is_kernel_address(address)) return user_fault_fail(context, pc, address, type, flags, EFAULT);
+
+    vmm_t *vmm = current_thread->vmm;
+    ASSERT(vmm != NULL);
+    ASSERT(&vmm->pmap == this_cpu_read_tl(pmap.current));
+
+    mutex_acq(&vmm->lock, 0, false);
+    do_handle_user_fault(context, vmm, pc, address, type, flags);
+    mutex_rel(&vmm->lock);
+}
+
+void pmap_handle_page_fault(
+        arch_context_t *context,
+        uintptr_t pc,
+        uintptr_t address,
+        pmap_fault_type_t type,
+        unsigned flags
+) {
+    if (flags & PMAP_FAULT_USER) return handle_user_fault(context, pc, address, type, flags);
 
     if (!is_kernel_address(address)) {
-        // TODO: Redirect user_memcpy/user_memset faults to handle_user_fault
+        if (arch_is_user_copy(pc)) return handle_user_fault(context, pc, address, type, flags);
 
         panic("kernel code tried to %s user memory at 0x%Z (pc: 0x%Z, flags: %u)\n",
               type_to_string(type),

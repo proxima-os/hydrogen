@@ -1,6 +1,7 @@
 #pragma once
 
 #include "arch/sched.h"
+#include "mem/vmm.h"
 #include "util/list.h"
 #include "util/refcount.h"
 #include "util/slist.h"
@@ -28,6 +29,7 @@ typedef struct thread {
     list_node_t wait_node;
     arch_thread_t arch;
     void *stack;
+    vmm_t *vmm;
     thread_state_t state;
     timer_event_t timeout_event;
     int wake_status;

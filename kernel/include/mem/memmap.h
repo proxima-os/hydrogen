@@ -23,6 +23,8 @@ typedef struct {
         struct {
             size_t references; // used as a leaf counter in page table pages
             shlist_node_t free_node;
+            bool autounreserve : 1;
+            bool is_page_table : 1;
         } anon;
     };
 } __attribute__((aligned(64))) page_t;

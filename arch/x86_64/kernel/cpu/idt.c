@@ -1,4 +1,5 @@
 #include "x86_64/idt.h"
+#include "arch/context.h"
 #include "arch/irq.h"
 #include "cpu/smp.h"
 #include "kernel/compiler.h"
@@ -46,7 +47,7 @@ INIT_TEXT void x86_64_idt_init(void) {
     set_ist_idx(X86_64_IDT_MC, X86_64_IST_FATAL);
 }
 
-_Noreturn void x86_64_idt_handle_fatal(x86_64_idt_frame_t *frame) {
+_Noreturn void x86_64_idt_handle_fatal(arch_context_t *context) {
     panic("fatal interrupt %U at 0x%X\n"
           "rax=%16X rbx=%16X rcx=%16X rdx=%16X\n"
           "rsi=%16X rdi=%16X rbp=%16X rsp=%16X\n"
@@ -54,37 +55,37 @@ _Noreturn void x86_64_idt_handle_fatal(x86_64_idt_frame_t *frame) {
           "r12=%16X r13=%16X r14=%16X r15=%16X\n"
           "rfl=%16X cr2=%16X cr3=%16X err=%16X\n"
           "cr0=0x%X cr4=0x%X cr8=0x%X cs=0x%X ss=0x%X",
-          frame->vector,
-          frame->rip,
-          frame->rax,
-          frame->rbx,
-          frame->rcx,
-          frame->rdx,
-          frame->rsi,
-          frame->rdi,
-          frame->rbp,
-          frame->rsp,
-          frame->r8,
-          frame->r9,
-          frame->r10,
-          frame->r11,
-          frame->r12,
-          frame->r13,
-          frame->r14,
-          frame->r15,
-          frame->rflags,
+          context->vector,
+          context->rip,
+          context->rax,
+          context->rbx,
+          context->rcx,
+          context->rdx,
+          context->rsi,
+          context->rdi,
+          context->rbp,
+          context->rsp,
+          context->r8,
+          context->r9,
+          context->r10,
+          context->r11,
+          context->r12,
+          context->r13,
+          context->r14,
+          context->r15,
+          context->rflags,
           x86_64_read_cr2(),
           x86_64_read_cr3(),
-          frame->error,
+          context->error,
           x86_64_read_cr0(),
           x86_64_read_cr4(),
           x86_64_read_cr8(),
-          frame->cs,
-          frame->ss);
+          context->cs,
+          context->ss);
 }
 
-USED void x86_64_idt_dispatch(x86_64_idt_frame_t *frame) {
-    switch (frame->vector) {
+USED void x86_64_idt_dispatch(arch_context_t *context) {
+    switch (context->vector) {
     case X86_64_IDT_PF: {
         uintptr_t address = x86_64_read_cr2();
         enable_irq();
@@ -92,19 +93,19 @@ USED void x86_64_idt_dispatch(x86_64_idt_frame_t *frame) {
         pmap_fault_type_t type;
         unsigned flags = 0;
 
-        if (frame->error & (1u << 4)) type = PMAP_FAULT_EXECUTE;
-        else if (frame->error & (1u << 1)) type = PMAP_FAULT_WRITE;
+        if (context->error & (1u << 4)) type = PMAP_FAULT_EXECUTE;
+        else if (context->error & (1u << 1)) type = PMAP_FAULT_WRITE;
         else type = PMAP_FAULT_READ;
 
-        if (frame->error & (1u << 2)) flags |= PMAP_FAULT_USER;
+        if (context->error & (1u << 2)) flags |= PMAP_FAULT_USER;
 
-        return pmap_handle_page_fault(frame->rip, address, type, flags);
+        return pmap_handle_page_fault(context, context->rip, address, type, flags);
     }
     case X86_64_IDT_NMI:
     case X86_64_IDT_DF:
     case X86_64_IDT_MC:
-        if (x86_64_rdmsr(X86_64_MSR_GS_BASE) != *(uintptr_t *)&frame[1]) asm("swapgs");
-        return x86_64_idt_handle_fatal(frame);
+        if (x86_64_rdmsr(X86_64_MSR_GS_BASE) != *(uintptr_t *)&context[1]) asm("swapgs");
+        return x86_64_idt_handle_fatal(context);
     case X86_64_IDT_IPI_REMOTE_CALL: {
         preempt_state_t state = preempt_lock();
         smp_handle_remote_call();
@@ -115,6 +116,6 @@ USED void x86_64_idt_dispatch(x86_64_idt_frame_t *frame) {
     case X86_64_IDT_LAPIC_TIMER: return x86_64_handle_timer();
     case X86_64_IDT_LAPIC_ERROR: return x86_64_lapic_irq_error();
     case X86_64_IDT_LAPIC_SPURIOUS: return x86_64_lapic_irq_spurious();
-    default: return x86_64_idt_handle_fatal(frame);
+    default: return x86_64_idt_handle_fatal(context);
     }
 }

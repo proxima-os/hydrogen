@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arch/context.h"
 #include "util/hlist.h"
 #include "util/spinlock.h"
 #include <stdbool.h>
@@ -7,6 +8,7 @@
 #include <stdint.h>
 
 struct cpu;
+struct vmm;
 
 typedef struct {
     void *table;
@@ -30,21 +32,21 @@ void pmap_init(void);
 void pmap_init_switch(void);
 void pmap_init_cpu(struct cpu *cpu);
 
-int pmap_create(pmap_t *out);
+int pmap_create(struct vmm *vmm);
 void pmap_switch(pmap_t *target); // must be called with preemption disabled, must not be called in irq context
 
 void pmap_prepare_destroy(pmap_t *pmap);
-void pmap_destroy_range(pmap_t *pmap, uintptr_t virt, size_t size);
-void pmap_finish_destruction(pmap_t *pmap);
+void pmap_destroy_range(struct vmm *vmm, uintptr_t virt, size_t size);
+void pmap_finish_destruction(struct vmm *vmm);
 
-// note: if pmap != NULL, the caller is responsible for locking
-bool pmap_prepare(pmap_t *pmap, uintptr_t virt, size_t size);
-void pmap_alloc(pmap_t *pmap, uintptr_t virt, size_t size, int flags); // you have to call pmem_reserve first
-void pmap_map(pmap_t *pmap, uintptr_t virt, uint64_t phys, size_t size, int flags);
-void pmap_remap(pmap_t *pmap, uintptr_t virt, size_t size, int flags);
-void pmap_clone(pmap_t *smap, pmap_t *dmap, uintptr_t virt, size_t size, bool cow);
-void pmap_move(pmap_t *smap, uintptr_t src, pmap_t *dmap, uintptr_t dest, size_t size); // undoes pmap_prepare
-void pmap_unmap(pmap_t *pmap, uintptr_t virt, size_t size);                             // undoes pmap_prepare
+// note: if vmm != NULL, the caller is responsible for locking
+bool pmap_prepare(struct vmm *vmm, uintptr_t virt, size_t size);
+void pmap_alloc(struct vmm *vmm, uintptr_t virt, size_t size, int flags); // you have to call pmem_reserve first
+void pmap_map(struct vmm *vmm, uintptr_t virt, uint64_t phys, size_t size, int flags);
+void pmap_remap(struct vmm *vmm, uintptr_t virt, size_t size, int flags);
+void pmap_clone(struct vmm *vmm, struct vmm *dest, uintptr_t virt, size_t size, bool cow);
+void pmap_move(struct vmm *svmm, uintptr_t src, struct vmm *dvmm, uintptr_t dest, size_t size); // undoes pmap_prepare
+void pmap_unmap(struct vmm *vmm, uintptr_t virt, size_t size);                                  // undoes pmap_prepare
 
 void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags);
 void pmap_early_alloc(uintptr_t virt, size_t size, int flags);
@@ -59,4 +61,10 @@ typedef enum {
 #define PMAP_FAULT_USER (1u << 0)
 
 // NOTE: This might disable IRQs!
-void pmap_handle_page_fault(uintptr_t pc, uintptr_t address, pmap_fault_type_t type, unsigned flags);
+void pmap_handle_page_fault(
+        arch_context_t *context,
+        uintptr_t pc,
+        uintptr_t address,
+        pmap_fault_type_t type,
+        unsigned flags
+);

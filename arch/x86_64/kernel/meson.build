@@ -12,6 +12,8 @@ kernel_sources += files(
     'drv/ioapic.c',
     'init/main.c',
     'init/main.S',
+    'mem/usercopy.c',
+    'mem/usercopy.S',
     'proc/sched.c',
     'proc/sched.S',
     'time/hpet.c',

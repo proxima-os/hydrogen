@@ -106,8 +106,14 @@ static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int fla
     pte_t pte = target | X86_64_PTE_DIRTY | X86_64_PTE_ACCESSED | X86_64_PTE_PRESENT;
     if (level != 0) pte |= X86_64_PTE_HUGE;
 
-    if (flags & PMAP_WRITABLE) pte |= X86_64_PTE_WRITABLE;
-    if (!(flags & PMAP_EXECUTABLE) && x86_64_cpu_features.nx) pte |= X86_64_PTE_NX;
+    if (flags & PMAP_READABLE) pte |= X86_64_PTE_PRESENT;
+    if (flags & PMAP_WRITABLE) pte |= X86_64_PTE_PRESENT | X86_64_PTE_WRITABLE;
+
+    if (flags & PMAP_EXECUTABLE) {
+        pte |= X86_64_PTE_PRESENT;
+    } else if (x86_64_cpu_features.nx) {
+        pte |= X86_64_PTE_NX;
+    }
 
     if (flags & PMAP_USER) pte |= X86_64_PTE_USER;
     else if (x86_64_cpu_features.pge) pte |= X86_64_PTE_GLOBAL;
@@ -141,7 +147,6 @@ static inline pte_t arch_pt_create_leaf(unsigned level, uint64_t target, int fla
 }
 
 static inline bool arch_pt_is_edge(unsigned level, pte_t pte) {
-    ASSERT(pte & X86_64_PTE_PRESENT);
     return level != 0 && (pte & X86_64_PTE_HUGE) == 0;
 }
 
@@ -157,8 +162,9 @@ static inline uint64_t arch_pt_leaf_target(unsigned level, pte_t pte) {
 
 static inline int arch_pt_get_leaf_flags(unsigned level, pte_t pte) {
     ASSERT(!arch_pt_is_edge(level, pte));
-    int flags = PMAP_READABLE;
+    int flags = 0;
 
+    if (pte & X86_64_PTE_PRESENT) flags |= PMAP_READABLE;
     if (pte & X86_64_PTE_WRITABLE) flags |= PMAP_WRITABLE;
     if (pte & X86_64_PTE_ANON) flags |= PMAP_ANONYMOUS;
     if (pte & X86_64_PTE_COW) flags |= PMAP_COPY_ON_WRITE;
@@ -333,27 +339,34 @@ static inline bool arch_pt_init_table(void *table, unsigned level) {
 }
 
 static inline bool arch_pt_change_permissions(pte_t *pte, unsigned level, int new_flags) {
-    pte_t value = *pte;
-    bool need_flush = false;
+    pte_t original = *pte;
+    ASSERT(!arch_pt_is_edge(level, original));
 
-    ASSERT(!arch_pt_is_edge(level, value));
+    pte_t value = original & ~(X86_64_PTE_PRESENT | X86_64_PTE_WRITABLE);
 
-    if (new_flags & PMAP_WRITABLE) {
-        value |= X86_64_PTE_WRITABLE;
-    } else if (value & X86_64_PTE_WRITABLE) {
-        value &= ~X86_64_PTE_WRITABLE;
-        need_flush = true;
-    }
+    if (new_flags & PMAP_READABLE) value |= X86_64_PTE_PRESENT;
+    if (new_flags & PMAP_WRITABLE) value |= X86_64_PTE_PRESENT | X86_64_PTE_WRITABLE;
 
     if (x86_64_cpu_features.nx) {
         if (new_flags & PMAP_EXECUTABLE) {
             value &= ~X86_64_PTE_NX;
-        } else if (!(value & X86_64_PTE_NX)) {
+            value |= X86_64_PTE_PRESENT;
+        } else {
             value |= X86_64_PTE_NX;
-            need_flush = true;
         }
+    } else if (new_flags & PMAP_EXECUTABLE) {
+        value |= X86_64_PTE_PRESENT;
     }
 
     *pte = value;
-    return need_flush;
+
+    if ((original & X86_64_PTE_PRESENT) != 0) {
+        if ((original & X86_64_PTE_WRITABLE) != 0 && (value & X86_64_PTE_WRITABLE) == 0) return true;
+
+        if (x86_64_cpu_features.nx) {
+            if ((original & X86_64_PTE_NX) == 0 && (value & X86_64_PTE_NX) != 0) return true;
+        }
+    }
+
+    return false;
 }
