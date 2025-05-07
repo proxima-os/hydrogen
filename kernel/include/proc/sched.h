@@ -42,7 +42,10 @@ typedef struct task {
 
 typedef struct {
     list_t queue;
+    size_t num_queued;
     thread_t *current;
+    thread_t *reaper;
+    list_t reaper_queue;
     thread_t idle_thread;
     preempt_state_t preempt_state;
     bool preempt_queued;
@@ -51,9 +54,11 @@ typedef struct {
 } sched_t;
 
 void sched_init(void);
+void sched_init_late(void);
 
 // creates a thread in the THREAD_CREATED state with 1 reference
-int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx);
+// if `cpu` isn't `NULL`, the thread is pinned on the specified cpu
+int sched_create_thread(thread_t **out, void (*func)(void *), void *ctx, struct cpu *cpu);
 
 preempt_state_t preempt_lock(void);
 bool preempt_unlock(preempt_state_t state);
@@ -66,6 +71,7 @@ void sched_prepare_wait(bool interruptible);
 int sched_perform_wait(uint64_t deadline);
 void sched_cancel_wait(void);
 _Noreturn void sched_exit(void);
+void sched_migrate(struct cpu *dest);
 
 void thread_ref(thread_t *thread);
 void thread_deref(thread_t *thread);
@@ -73,6 +79,8 @@ void thread_deref(thread_t *thread);
 void sched_queue_task(task_t *task);
 _Noreturn void sched_idle(void);
 
+// note: migration locks only prevent automatic migration. explicit migrations
+// via sched_migrate are still allowed.
 migrate_state_t migrate_lock(void);
 void migrate_unlock(migrate_state_t state);
 

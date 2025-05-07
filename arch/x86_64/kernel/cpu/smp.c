@@ -460,6 +460,9 @@ INIT_TEXT static void launch_cpu(
 
     *num_cpus = id + 1;
     slist_insert_tail(&cpus, &cpu->node);
+
+    sched_migrate(cpu);
+    smp_init_current_late();
 }
 
 INIT_TEXT void x86_64_smp_init(void) {
@@ -514,6 +517,9 @@ INIT_TEXT void x86_64_smp_init(void) {
         cur = (void *)cur + cur->length;
     }
 
+    // launch_cpu migrates itself to the launched cpu and does some work there,
+    // wrap the entire thing in a migration lock to ensure it doesn't get migrated
+    // away
     migrate_state_t state = migrate_lock();
 
     size_t num_cpus = 1;

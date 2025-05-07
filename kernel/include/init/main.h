@@ -12,3 +12,4 @@ void arch_init_late(void);
 void arch_init_current(void *ctx);
 
 _Noreturn void smp_init_current(event_t *event, void *ctx);
+void smp_init_current_late(void);

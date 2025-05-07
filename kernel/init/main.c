@@ -34,6 +34,7 @@ __attribute__((noinline)) static _Noreturn void finalize_init(void) {
 
 INIT_TEXT static void kernel_init(void *ctx) {
     memmap_reclaim_loader(); // don't move below anything that can create threads, see memmap.h
+    sched_init_late();
     arch_init_late();
     finalize_init();
 }
@@ -59,7 +60,7 @@ INIT_TEXT USED _Noreturn void kernel_main(void) {
     arch_init_early();
 
     thread_t *init_thread;
-    int error = sched_create_thread(&init_thread, kernel_init, NULL);
+    int error = sched_create_thread(&init_thread, kernel_init, NULL, NULL);
     if (unlikely(error)) panic("failed to create init thread (%e)", error);
     wake_init_thread_and_idle(init_thread);
 }
@@ -76,4 +77,8 @@ INIT_TEXT _Noreturn void smp_init_current(event_t *event, void *ctx) {
     pmap_init_switch();
     arch_init_current(ctx);
     signal_and_idle(event);
+}
+
+INIT_TEXT void smp_init_current_late(void) {
+    sched_init_late();
 }
