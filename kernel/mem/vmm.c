@@ -413,7 +413,7 @@ int vmm_clone(vmm_t **out, vmm_t *src) {
 
     mutex_acq(&src->lock, 0, false);
 
-    if (unlikely(!pmem_reserve(src->num_reserved))) {
+    if (src->num_reserved != 0 && unlikely(!pmem_reserve(src->num_reserved))) {
         mutex_rel(&src->lock);
         obj_deref(&vmm->base);
         return ENOMEM;
