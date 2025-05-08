@@ -82,6 +82,7 @@ INIT_TEXT USED _Noreturn void kernel_main(void) {
     }
 
     arch_init_early();
+    time_init();
     proc_init();
 
     thread_t *init_thread;

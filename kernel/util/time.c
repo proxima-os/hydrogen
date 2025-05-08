@@ -4,9 +4,29 @@
 #include "arch/time.h"
 #include "cpu/cpudata.h"
 #include "kernel/compiler.h"
+#include "limine.h"
+#include "sections.h"
 #include "util/list.h"
 #include "util/spinlock.h"
 #include <stdint.h>
+
+INIT_TEXT void time_init(void) {
+    static LIMINE_REQ struct limine_date_at_boot_request time_req = {.id = LIMINE_DATE_AT_BOOT_REQUEST};
+
+    if (time_req.response) {
+        set_current_timestamp((timestamp_t)time_req.response->timestamp * NS_PER_SEC);
+    }
+}
+
+static int64_t boot_timestamp;
+
+timestamp_t get_current_timestamp(void) {
+    return __atomic_load_n(&boot_timestamp, __ATOMIC_ACQUIRE) + arch_read_time();
+}
+
+void set_current_timestamp(timestamp_t time) {
+    __atomic_store_n(&boot_timestamp, time - arch_read_time(), __ATOMIC_RELEASE);
+}
 
 timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq) {
     /*

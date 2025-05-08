@@ -20,6 +20,12 @@ typedef struct timer_event {
     bool running;
 } timer_event_t;
 
+typedef int64_t timestamp_t; // posix time in nanoseconds
+
+void time_init(void);
+timestamp_t get_current_timestamp(void);
+void set_current_timestamp(timestamp_t time);
+
 // NOTE: The caller is responsible for ensuring this function is not called while
 // the event is queued!
 void timer_queue_event(timer_event_t *event);

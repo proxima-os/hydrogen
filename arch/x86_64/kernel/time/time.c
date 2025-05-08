@@ -28,6 +28,7 @@ uint64_t (*x86_64_timer_get_tsc)(uint64_t);
 INIT_DATA void (*x86_64_timer_cleanup)(void);
 INIT_DATA void (*x86_64_timer_confirm)(bool) = no_time_confirm;
 timeconv_t x86_64_ns2lapic_conv;
+uint64_t x86_64_time_offset;
 
 INIT_TEXT void x86_64_time_init(void) {
     x86_64_hpet_init();
@@ -35,6 +36,7 @@ INIT_TEXT void x86_64_time_init(void) {
     x86_64_tsc_init();
     if (x86_64_timer_confirm) x86_64_timer_confirm(true);
 
+    x86_64_time_offset = x86_64_read_time();
     x86_64_time_init_local();
 }
 

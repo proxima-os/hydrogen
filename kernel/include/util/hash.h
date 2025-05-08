@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 
 static inline uint32_t make_hash_i32(uint32_t x) {
@@ -28,4 +29,16 @@ static inline uintptr_t make_hash_iptr(uintptr_t x) {
 #else
 #error "Unsupported address width"
 #endif
+}
+
+// FNV-1a
+static inline uint64_t make_hash_blob(const void *data, size_t size) {
+    uint64_t hash = 0xcbf29ce484222325;
+
+    while (size--) {
+        hash ^= *(const unsigned char *)data++;
+        hash *= 0x100000001b3;
+    }
+
+    return hash;
 }
