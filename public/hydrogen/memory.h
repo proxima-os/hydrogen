@@ -5,6 +5,10 @@
 extern "C" {
 #endif
 
+#define HYDROGEN_MEM_OBJECT_READ (1u << 0)  /**< Allow this object to explicitly be mapped for reading. */
+#define HYDROGEN_MEM_OBJECT_WRITE (1u << 1) /**< Allow this object to be mapped for shared writing. */
+#define HYDROGEN_MEM_OBJECT_EXEC (1u << 2)  /**< Allow this object to explicitly be mapped for execution. */
+
 /**
  * Allow memory to be read from this region.
  *
@@ -30,7 +34,9 @@ extern "C" {
 #define HYDROGEN_MEM_EXACT (1u << 3)
 
 /**
- * Remove overlapping memory regions. Must be accompanied by #HYDROGEN_MEM_EXACT.
+ * Remove overlapping memory regions.
+ *
+ * Must be accompanied by #HYDROGEN_MEM_EXACT.
  */
 #define HYDROGEN_MEM_OVERWRITE (1u << 4)
 
@@ -38,6 +44,13 @@ extern "C" {
  * Only reserve pages once they are accessed for the first time.
  */
 #define HYDROGEN_MEM_LAZY_RESERVE (1u << 5)
+
+/**
+ * Propagate writes to the backing object and don't make it copy-on-write when cloned.
+ *
+ * Illegal on anonymous mappings.
+ */
+#define HYDROGEN_MEM_SHARED (1u << 6)
 
 #ifdef __cplusplus
 };

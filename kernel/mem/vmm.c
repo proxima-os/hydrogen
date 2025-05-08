@@ -2,15 +2,17 @@
 #include "arch/pmap.h"
 #include "errno.h"
 #include "hydrogen/memory.h"
+#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
+#include "kernel/return.h"
 #include "mem/pmap.h"
 #include "mem/pmem.h"
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
 #include "string.h"
 #include "util/list.h"
-#include "util/refcount.h"
+#include "util/object.h"
 #include <stdint.h>
 
 static void replace_child(vmm_t *vmm, vmm_region_t *parent, vmm_region_t *from, vmm_region_t *to) {
@@ -289,6 +291,25 @@ static void tree_mov(vmm_t *vmm, vmm_region_t *region, uintptr_t new_head) {
     tree_add(vmm, region);
 }
 
+static void vmm_free(object_t *ptr) {
+    vmm_t *vmm = (vmm_t *)ptr;
+
+    pmap_prepare_destroy(&vmm->pmap);
+
+    for (;;) {
+        vmm_region_t *region = LIST_REMOVE_HEAD(vmm->regions, vmm_region_t, node);
+        if (!region) break;
+        pmap_destroy_range(vmm, region->head, region->tail - region->head + 1);
+        vfree(region, sizeof(*region));
+    }
+
+    pmap_finish_destruction(vmm);
+    pmem_unreserve(vmm->num_reserved);
+    vfree(vmm, sizeof(*vmm));
+}
+
+static const object_ops_t vmm_object_ops = {.free = vmm_free};
+
 int vmm_create(vmm_t **out) {
     vmm_t *vmm = vmalloc(sizeof(*vmm));
     if (unlikely(!vmm)) return ENOMEM;
@@ -300,9 +321,51 @@ int vmm_create(vmm_t **out) {
         return error;
     }
 
-    vmm->references = REF_INIT(1);
+    vmm->base.ops = &vmm_object_ops;
+    obj_init(&vmm->base, OBJECT_VMM);
+
     *out = vmm;
     return 0;
+}
+
+static void obj_add(vmm_region_t *region) {
+    if (!region->object) return;
+
+    obj_ref(&region->object->base);
+    mutex_acq(&region->object->regions_lock, 0, false);
+    list_insert_tail(&region->object->regions, &region->object_node);
+    mutex_rel(&region->object->regions_lock);
+}
+
+static void obj_add_two(vmm_region_t *r1, vmm_region_t *r2) {
+    ASSERT(r1->object == r2->object);
+    if (!r1->object) return;
+
+    obj_ref_n(&r1->object->base, 2);
+    mutex_acq(&r1->object->regions_lock, 0, false);
+    list_insert_tail(&r1->object->regions, &r1->object_node);
+    list_insert_tail(&r1->object->regions, &r2->object_node);
+    mutex_rel(&r1->object->regions_lock);
+}
+
+static void obj_rem(vmm_region_t *region) {
+    if (!region->object) return;
+
+    mutex_acq(&region->object->regions_lock, 0, false);
+    list_remove(&region->object->regions, &region->object_node);
+    mutex_rel(&region->object->regions_lock);
+    obj_deref(&region->object->base);
+}
+
+static void obj_rem_two(vmm_region_t *r1, vmm_region_t *r2) {
+    ASSERT(r1->object == r2->object);
+    if (!r1->object) return;
+
+    mutex_acq(&r1->object->regions_lock, 0, false);
+    list_remove(&r1->object->regions, &r1->object_node);
+    list_remove(&r1->object->regions, &r2->object_node);
+    mutex_rel(&r1->object->regions_lock);
+    obj_deref_n(&r1->object->base, 2);
 }
 
 int clone_region(vmm_region_t **out, vmm_t *dvmm, vmm_t *svmm, vmm_region_t *src) {
@@ -314,13 +377,18 @@ int clone_region(vmm_region_t **out, vmm_t *dvmm, vmm_t *svmm, vmm_region_t *src
     dst->head = src->head;
     dst->tail = src->tail;
     dst->flags = src->flags;
+    dst->object = src->object;
+    dst->rights = src->rights;
+    dst->offset = src->offset;
 
     if (unlikely(!pmap_prepare(dvmm, dst->head, dst->tail - dst->head + 1))) {
         vfree(dst, sizeof(*dst));
         return ENOMEM;
     }
 
-    pmap_clone(dvmm, svmm, dst->head, dst->tail - dst->head + 1, true);
+    obj_add(dst);
+
+    pmap_clone(dvmm, svmm, dst->head, dst->tail - dst->head + 1, (dst->flags & HYDROGEN_MEM_SHARED) == 0);
     *out = dst;
     return 0;
 }
@@ -347,7 +415,7 @@ int vmm_clone(vmm_t **out, vmm_t *src) {
 
     if (unlikely(!pmem_reserve(src->num_reserved))) {
         mutex_rel(&src->lock);
-        vmm_deref(vmm);
+        obj_deref(&vmm->base);
         return ENOMEM;
     }
 
@@ -357,7 +425,7 @@ int vmm_clone(vmm_t **out, vmm_t *src) {
     error = clone_regions(vmm, src);
     mutex_rel(&src->lock);
     if (unlikely(error)) {
-        vmm_deref(vmm);
+        obj_deref(&vmm->base);
         return error;
     }
 
@@ -401,7 +469,7 @@ static void process_unmap(vmm_t *vmm, uintptr_t head, uintptr_t tail, bool reser
 }
 
 static bool need_reserve_memory(unsigned flags) {
-    return (flags & HYDROGEN_MEM_LAZY_RESERVE) == 0;
+    return (flags & (HYDROGEN_MEM_SHARED | HYDROGEN_MEM_LAZY_RESERVE)) == 0;
 }
 
 static int remove_overlapping_regions(
@@ -435,8 +503,13 @@ static int remove_overlapping_regions(
             nreg->head = tail + 1;
             nreg->tail = cur->tail;
             nreg->flags = cur->flags;
+            nreg->object = cur->object;
+            nreg->rights = cur->rights;
+            nreg->offset = cur->offset + (nreg->head - cur->head);
+            obj_add(nreg);
 
             cur->tail = head - 1;
+
             tree_add(vmm, nreg);
             list_insert_after(&vmm->regions, &cur->node, &nreg->node);
 
@@ -469,6 +542,8 @@ static int remove_overlapping_regions(
 
             tree_del(vmm, cur);
             list_remove(&vmm->regions, &cur->node);
+
+            obj_rem(cur);
             vfree(cur, sizeof(*cur));
 
             cur = n;
@@ -485,6 +560,12 @@ static bool can_merge(vmm_region_t *r1, vmm_region_t *r2) {
     if (r1->tail + 1 != r2->head) return false;
     if (r1->flags != r2->flags) return false;
 
+    if (r1->object != NULL) {
+        if (r1->object != r2->object) return false;
+        if (r1->rights != r2->rights) return false;
+        if (r1->offset + (r2->head - r1->head) != r2->offset) return false;
+    }
+
     return true;
 }
 
@@ -499,15 +580,20 @@ static vmm_region_t *merge_or_insert(vmm_t *vmm, vmm_region_t *prev, vmm_region_
         tree_del(vmm, next);
         list_remove(&vmm->regions, &next->node);
 
+        obj_rem_two(region, next);
         vfree(region, sizeof(*region));
         vfree(next, sizeof(*next));
         return prev;
     } else if (prev_merge) {
         prev->tail = region->tail;
+
+        obj_rem(region);
         vfree(region, sizeof(*region));
         return prev;
     } else if (next_merge) {
         tree_mov(vmm, next, region->head);
+
+        obj_rem(region);
         vfree(region, sizeof(*region));
         return next;
     } else {
@@ -517,7 +603,17 @@ static vmm_region_t *merge_or_insert(vmm_t *vmm, vmm_region_t *prev, vmm_region_
     }
 }
 
-static int do_map(vmm_t *vmm, uintptr_t head, uintptr_t tail, unsigned flags, vmm_region_t *prev, vmm_region_t *next) {
+static int do_map(
+        vmm_t *vmm,
+        uintptr_t head,
+        uintptr_t tail,
+        unsigned flags,
+        mem_object_t *object,
+        object_rights_t rights,
+        size_t offset,
+        vmm_region_t *prev,
+        vmm_region_t *next
+) {
     size_t pages = (tail - head + 1) >> PAGE_SHIFT;
 
     vmm_region_t *region = vmalloc(sizeof(*region));
@@ -528,6 +624,9 @@ static int do_map(vmm_t *vmm, uintptr_t head, uintptr_t tail, unsigned flags, vm
     region->head = head;
     region->tail = tail;
     region->flags = flags & VMM_REGION_FLAGS;
+    region->object = object;
+    region->rights = rights;
+    region->offset = offset;
 
     bool reserve = need_reserve_memory(flags);
     if (reserve && unlikely(!pmem_reserve(pages))) {
@@ -549,15 +648,32 @@ static int do_map(vmm_t *vmm, uintptr_t head, uintptr_t tail, unsigned flags, vm
         return error;
     }
 
+    obj_add(region);
     merge_or_insert(vmm, prev, next, region);
 
     vmm->num_mapped += pages;
     if (reserve) vmm->num_reserved += pages;
 
+    if (object != NULL) {
+        const mem_object_ops_t *ops = (const mem_object_ops_t *)object->base.ops;
+
+        if (ops->post_map != NULL) {
+            ops->post_map(object, vmm, head, tail, flags, offset);
+        }
+    }
+
     return 0;
 }
 
-static int try_map_exact(vmm_t *vmm, uintptr_t head, size_t size, unsigned flags) {
+static int try_map_exact(
+        vmm_t *vmm,
+        uintptr_t head,
+        size_t size,
+        unsigned flags,
+        mem_object_t *object,
+        object_rights_t rights,
+        size_t offset
+) {
     if (unlikely(head < PAGE_SIZE)) return ENOMEM;
 
     uintptr_t tail = head + (size - 1);
@@ -569,7 +685,7 @@ static int try_map_exact(vmm_t *vmm, uintptr_t head, size_t size, unsigned flags
 
     if ((flags & HYDROGEN_MEM_OVERWRITE) == 0 && get_next(vmm, prev) != next) return EEXIST;
 
-    return do_map(vmm, head, tail, flags, prev, next);
+    return do_map(vmm, head, tail, flags, object, rights, offset, prev, next);
 }
 
 static uintptr_t get_tail(vmm_region_t *region) {
@@ -612,30 +728,51 @@ static int find_map_location(
     return 0;
 }
 
-intptr_t vmm_map(vmm_t *vmm, uintptr_t hint, size_t size, unsigned flags) {
-    if (unlikely(((hint | size) & PAGE_MASK) != 0)) return -EINVAL;
-    if (unlikely((flags & ~VMM_MAP_FLAGS) != 0)) return -EINVAL;
-    if (unlikely(size == 0)) return -EINVAL;
-    if (unlikely((flags & (HYDROGEN_MEM_EXACT | HYDROGEN_MEM_OVERWRITE)) == HYDROGEN_MEM_OVERWRITE)) return -EINVAL;
+#define SHARED_WRITE (HYDROGEN_MEM_SHARED | HYDROGEN_MEM_WRITE)
+
+static bool check_rights(object_rights_t rights, unsigned flags) {
+    if ((flags & HYDROGEN_MEM_READ) != 0 && (rights & HYDROGEN_MEM_OBJECT_READ) == 0) return false;
+    if ((flags & SHARED_WRITE) == SHARED_WRITE && (rights & HYDROGEN_MEM_OBJECT_WRITE) == 0) return false;
+    if ((flags & HYDROGEN_MEM_EXEC) != 0 && (rights & HYDROGEN_MEM_OBJECT_EXEC) == 0) return false;
+    return true;
+}
+
+hydrogen_ret_t vmm_map(
+        vmm_t *vmm,
+        uintptr_t hint,
+        size_t size,
+        unsigned flags,
+        mem_object_t *object,
+        object_rights_t rights,
+        size_t offset
+) {
+    if (unlikely(((hint | size | offset) & PAGE_MASK) != 0)) return ret_error(EINVAL);
+    if (unlikely((flags & ~VMM_MAP_FLAGS) != 0)) return ret_error(EINVAL);
+    if (unlikely(size == 0)) return ret_error(EINVAL);
+    if (unlikely((flags & (HYDROGEN_MEM_EXACT | HYDROGEN_MEM_OVERWRITE)) == HYDROGEN_MEM_OVERWRITE)) {
+        return ret_error(EINVAL);
+    }
+
+    if (object != NULL) {
+        if (unlikely(!check_rights(rights, flags))) return ret_error(EACCES);
+    } else if (unlikely((flags & HYDROGEN_MEM_SHARED) != 0)) {
+        return ret_error(EINVAL);
+    }
 
     mutex_acq(&vmm->lock, 0, false);
 
-    int error = try_map_exact(vmm, hint, size, flags);
-    if (error != 0 && (flags & HYDROGEN_MEM_EXACT) != 0) goto err;
+    int error = try_map_exact(vmm, hint, size, flags, object, rights, offset);
+    if (error == 0 || (flags & HYDROGEN_MEM_EXACT) != 0) goto ret;
 
     vmm_region_t *prev, *next;
     uintptr_t head, tail;
     error = find_map_location(vmm, size, &prev, &next, &head, &tail);
-    if (unlikely(error)) goto err;
+    if (unlikely(error)) goto ret;
 
-    error = do_map(vmm, head, tail, flags, prev, next);
-    if (unlikely(error)) goto err;
-
+    error = do_map(vmm, head, tail, flags, object, rights, offset, prev, next);
+ret:
     mutex_rel(&vmm->lock);
-    return head;
-err:
-    mutex_rel(&vmm->lock);
-    return -error;
+    return RET_MAYBE(integer, error, head);
 }
 
 static int split_to_exact(
@@ -712,11 +849,19 @@ static int split_to_exact(
             new_regions[0]->head = head;
             new_regions[0]->tail = tail;
             new_regions[0]->flags = cur->flags;
+            new_regions[0]->object = cur->object;
+            new_regions[0]->rights = cur->rights;
+            new_regions[0]->offset = cur->offset + (new_regions[0]->head - cur->head);
 
             new_regions[1]->vmm = vmm;
             new_regions[1]->head = tail + 1;
             new_regions[1]->tail = cur->tail;
             new_regions[1]->flags = cur->flags;
+            new_regions[1]->object = cur->object;
+            new_regions[1]->rights = cur->rights;
+            new_regions[1]->offset = cur->offset + (new_regions[1]->head - cur->head);
+
+            obj_add_two(new_regions[0], new_regions[1]);
 
             cur->tail = head - 1;
             tree_add(vmm, new_regions[0]);
@@ -737,6 +882,10 @@ static int split_to_exact(
             region->head = head;
             region->tail = cur->tail;
             region->flags = cur->flags;
+            region->object = cur->object;
+            region->rights = cur->rights;
+            region->offset = cur->offset + (region->head - cur->head);
+            obj_add(region);
 
             cur->tail = head - 1;
             tree_add(vmm, region);
@@ -753,6 +902,10 @@ static int split_to_exact(
             cur->head = tail + 1;
             cur->tail = region->tail;
             cur->flags = region->flags;
+            cur->object = region->object;
+            cur->rights = region->rights;
+            cur->offset = region->offset + (cur->head - region->head);
+            obj_add(cur);
 
             region->tail = tail;
             tree_add(vmm, cur);
@@ -772,6 +925,7 @@ static int split_to_exact(
 static int remap_check_cb(vmm_region_t *region, void *ctx) {
     unsigned new_flags = (region->flags & ~VMM_PERM_FLAGS) | (uintptr_t)ctx;
     if (new_flags == region->flags) return 1;
+    if (unlikely(!check_rights(region->rights, new_flags))) return -EACCES;
 
     return 0;
 }
@@ -849,23 +1003,30 @@ static void move_final_cb(vmm_t *vmm, vmm_region_t *region, void *ptr) {
     ctx->last = region;
 }
 
-intptr_t vmm_move(vmm_t *vmm, uintptr_t addr, size_t size, vmm_t *dest_vmm, uintptr_t dest_addr, size_t dest_size) {
-    if (unlikely(((addr | dest_addr | size | dest_size) & PAGE_MASK) != 0)) return -EINVAL;
-    if (unlikely(addr < PAGE_SIZE)) return -EINVAL;
-    if (unlikely(size == 0)) return -EINVAL;
-    if (unlikely(size > dest_size)) return -EINVAL;
+hydrogen_ret_t vmm_move(
+        vmm_t *vmm,
+        uintptr_t addr,
+        size_t size,
+        vmm_t *dest_vmm,
+        uintptr_t dest_addr,
+        size_t dest_size
+) {
+    if (unlikely(((addr | dest_addr | size | dest_size) & PAGE_MASK) != 0)) return ret_error(EINVAL);
+    if (unlikely(addr < PAGE_SIZE)) return ret_error(EINVAL);
+    if (unlikely(size == 0)) return ret_error(EINVAL);
+    if (unlikely(size > dest_size)) return ret_error(EINVAL);
 
     uintptr_t tail = addr + (size - 1);
-    if (unlikely(addr > tail)) return -EINVAL;
-    if (unlikely(tail > arch_pt_max_user_addr())) return -EINVAL;
+    if (unlikely(addr > tail)) return ret_error(EINVAL);
+    if (unlikely(tail > arch_pt_max_user_addr())) return ret_error(EINVAL);
 
     uintptr_t dest_tail;
 
     if (dest_addr != 0) {
-        if (unlikely(dest_addr < PAGE_SIZE)) return -EINVAL;
+        if (unlikely(dest_addr < PAGE_SIZE)) return ret_error(EINVAL);
         dest_tail = dest_addr + (dest_size - 1);
-        if (unlikely(dest_addr > dest_tail)) return -EINVAL;
-        if (unlikely(dest_tail > arch_pt_max_user_addr())) return -EINVAL;
+        if (unlikely(dest_addr > dest_tail)) return ret_error(EINVAL);
+        if (unlikely(dest_tail > arch_pt_max_user_addr())) return ret_error(EINVAL);
     }
 
     if (vmm == dest_vmm) {
@@ -948,11 +1109,7 @@ ret:
         mutex_rel(&dest_vmm->lock);
     }
 
-    if (likely(error == 0)) {
-        return dest_addr;
-    } else {
-        return -error;
-    }
+    return RET_MAYBE(integer, error, dest_addr);
 }
 
 int vmm_unmap(vmm_t *vmm, uintptr_t address, size_t size) {
@@ -979,30 +1136,5 @@ vmm_region_t *vmm_get_region(vmm_t *vmm, uintptr_t address) {
         if (unlikely(cur == NULL)) return NULL;
         if (cur->head <= address && address <= cur->tail) return cur;
         cur = address < cur->head ? cur->left : cur->right;
-    }
-}
-
-void vmm_ref(vmm_t *vmm) {
-    ref_inc(&vmm->references);
-}
-
-static void destroy_vmm(vmm_t *vmm) {
-    pmap_prepare_destroy(&vmm->pmap);
-
-    for (;;) {
-        vmm_region_t *region = LIST_REMOVE_HEAD(vmm->regions, vmm_region_t, node);
-        if (!region) break;
-        pmap_destroy_range(vmm, region->head, region->tail - region->head + 1);
-        vfree(region, sizeof(*region));
-    }
-
-    pmap_finish_destruction(vmm);
-    pmem_unreserve(vmm->num_reserved);
-    vfree(vmm, sizeof(*vmm));
-}
-
-void vmm_deref(vmm_t *vmm) {
-    if (ref_dec(&vmm->references) == 1) {
-        destroy_vmm(vmm);
     }
 }

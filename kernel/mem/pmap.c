@@ -8,6 +8,7 @@
 #include "cpu/smp.h"
 #include "errno.h"
 #include "hydrogen/memory.h"
+#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/types.h"
@@ -53,10 +54,16 @@ typedef struct {
 static void tlb_init(tlb_ctx_t *tlb, pmap_t *pmap) {
     memset(tlb, 0, sizeof(*tlb));
     tlb->pmap = pmap;
-    tlb->table = pmap ? pmap->table : kernel_page_table;
-    tlb->asid = pmap ? pmap->asid : -1;
-    tlb->current = pmap ? this_cpu_read(pmap.asids)[pmap->asid].table == pmap->table
-                        : __atomic_load_n(&kernel_pt_switched, __ATOMIC_RELAXED);
+
+    if (pmap) {
+        tlb->table = this_cpu_read(pmap.asids)[pmap->asid].table;
+        tlb->asid = pmap->asid;
+        tlb->current = tlb->table == pmap->table;
+    } else {
+        tlb->table = kernel_page_table;
+        tlb->asid = -1;
+        tlb->current = __atomic_load_n(&kernel_pt_switched, __ATOMIC_RELAXED);
+    }
 }
 
 static void tlb_add_leaf(tlb_ctx_t *tlb, uintptr_t addr, bool global) {
@@ -97,8 +104,8 @@ static void tlb_remote(void *ptr) {
     struct tlb_remote_ctx *ctx = ptr;
 
     if (ctx->tlb->pmap) {
-        if (get_current_cpu()->pmap.asids[ctx->tlb->asid].table == ctx->tlb->table) {
-            arch_pt_flush(ctx->tlb->table, ctx->tlb->asid);
+        if (this_cpu_read(pmap.asids)[ctx->tlb->asid].table == ctx->tlb->pmap->table) {
+            arch_pt_flush(ctx->tlb->pmap->table, ctx->tlb->asid);
         }
 
         __atomic_fetch_sub(&ctx->pending, 1, __ATOMIC_RELEASE);
@@ -202,6 +209,7 @@ INIT_TEXT void pmap_init_cpu(cpu_t *cpu) {
 static void *alloc_table(vmm_t *vmm, unsigned level) {
     page_t *page = pmem_alloc_now();
     if (unlikely(!page)) return NULL;
+    memset(&page->anon.deref_lock, 0, sizeof(page->anon.deref_lock));
     page->anon.references = 0;
     page->anon.autounreserve = false;
     page->anon.is_page_table = true;
@@ -339,8 +347,11 @@ static size_t do_destroy_range(vmm_t *vmm, void *table, unsigned level, uintptr_
 
                 if (flags & PMAP_ANONYMOUS) {
                     page_t *page = phys_to_page(arch_pt_leaf_target(level, pte));
+                    mutex_acq(&page->anon.deref_lock, 0, false);
+                    size_t refs = __atomic_fetch_sub(&page->anon.references, 1, __ATOMIC_ACQ_REL);
+                    mutex_rel(&page->anon.deref_lock);
 
-                    if (__atomic_fetch_sub(&page->anon.references, 1, __ATOMIC_ACQ_REL)) {
+                    if (refs == 1) {
                         anon_free(page, vmm);
                     }
                 }
@@ -409,19 +420,18 @@ void pmap_finish_destruction(vmm_t *vmm) {
     anon_free(virt_to_page(vmm->pmap.table), vmm);
 }
 
-static void tlb_add_unmap_anon(tlb_ctx_t *tlb, page_t *page) {
-    if (__atomic_fetch_sub(&page->anon.references, 1, __ATOMIC_ACQ_REL) == 1) {
-        shlist_insert_head(&tlb->free_queue, &page->anon.free_node);
-    }
-}
-
 static void tlb_add_unmap_leaf(tlb_ctx_t *tlb, uintptr_t addr, unsigned level, pte_t pte) {
     tlb_add_leaf(tlb, addr, true);
 
     int flags = arch_pt_get_leaf_flags(level, pte);
 
     if (flags & PMAP_ANONYMOUS) {
-        tlb_add_unmap_anon(tlb, phys_to_page(arch_pt_leaf_target(level, pte)));
+        page_t *page = phys_to_page(arch_pt_leaf_target(level, pte));
+        mutex_acq(&page->anon.deref_lock, 0, false);
+        size_t refs = __atomic_fetch_sub(&page->anon.references, 1, __ATOMIC_ACQ_REL);
+        mutex_rel(&page->anon.deref_lock);
+
+        if (refs == 1) shlist_insert_head(&tlb->free_queue, &page->anon.free_node);
     }
 }
 
@@ -468,7 +478,7 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
             if (page->anon.references == 0 && table != kernel_page_table) {
                 arch_pt_write(table, level, index, 0);
                 tlb_add_edge(tlb, virt, true);
-                tlb_add_unmap_anon(tlb, page);
+                shlist_insert_head(&tlb->free_queue, &page->anon.free_node);
             }
         }
 
@@ -584,6 +594,7 @@ static void do_alloc(void *table, unsigned level, uintptr_t virt, size_t size, i
             ENSURE(arch_pt_read(table, level, index) == ARCH_PT_PREPARE_PTE);
 #endif
             page_t *page = pmem_alloc();
+            memset(&page->anon.deref_lock, 0, sizeof(page->anon.deref_lock));
             page->anon.references = 1;
             page->anon.autounreserve = false;
             page->anon.is_page_table = false;
@@ -892,7 +903,7 @@ void pmap_move(vmm_t *svmm, uintptr_t src, vmm_t *dvmm, uintptr_t dest, size_t s
             if (--virt_to_page(child)->anon.references == 0) {
                 arch_pt_write(table, i, index, 0);
                 tlb_add_edge(&tlb, src, true);
-                tlb_add_unmap_anon(&tlb, page);
+                shlist_insert_head(&tlb.free_queue, &page->anon.free_node);
             }
 
             table = child;
@@ -1222,6 +1233,25 @@ static bool region_allows_access(vmm_region_t *region, pmap_fault_type_t type) {
     }
 }
 
+static page_t *alloc_page_for_user_mapping(vmm_t *vmm, vmm_region_t *region) {
+    page_t *page;
+
+    if ((region->flags & HYDROGEN_MEM_LAZY_RESERVE) == 0) {
+        page = pmem_alloc();
+        page->anon.autounreserve = false;
+    } else {
+        page = pmem_alloc_now();
+        if (unlikely(!page)) return NULL;
+        page->anon.autounreserve = true;
+        vmm->num_reserved += 1;
+    }
+
+    memset(&page->anon.deref_lock, 0, sizeof(page->anon.deref_lock));
+    page->anon.references = 1;
+    page->anon.is_page_table = false;
+    return page;
+}
+
 static void create_new_user_mapping(
         arch_context_t *context,
         vmm_t *vmm,
@@ -1237,30 +1267,34 @@ static void create_new_user_mapping(
         return user_fault_fail(context, pc, address, type, flags, EFAULT);
     }
 
-    // TODO: Object mappings
-
-    page_t *page;
-
-    if ((region->flags & HYDROGEN_MEM_LAZY_RESERVE) == 0) {
-        page = pmem_alloc();
-        page->anon.autounreserve = false;
-    } else {
-        page = pmem_alloc_now();
-        if (unlikely(!page)) return user_fault_fail(context, pc, address, type, flags, ENOMEM);
-        page->anon.autounreserve = true;
-        vmm->num_reserved += 1;
-    }
-
-    page->anon.references = 1;
-    page->anon.is_page_table = false;
-    memset(page_to_virt(page), 0, PAGE_SIZE);
-
-    int pte_flags = PMAP_USER | PMAP_ANONYMOUS;
+    uint64_t target;
+    int pte_flags = PMAP_USER;
     if (region->flags & HYDROGEN_MEM_READ) pte_flags |= PMAP_READABLE;
     if (region->flags & HYDROGEN_MEM_WRITE) pte_flags |= PMAP_WRITABLE;
     if (region->flags & HYDROGEN_MEM_EXEC) pte_flags |= PMAP_EXECUTABLE;
 
-    pte_t pte = arch_pt_create_leaf(result->level, page_to_phys(page), pte_flags);
+    if (region->object == NULL) {
+        page_t *page = alloc_page_for_user_mapping(vmm, region);
+        if (unlikely(!page)) return user_fault_fail(context, pc, address, type, flags, ENOMEM);
+        memset(page_to_virt(page), 0, PAGE_SIZE);
+        target = page_to_phys(page);
+
+        pte_flags |= PMAP_ANONYMOUS;
+    } else {
+        const mem_object_ops_t *ops = (const mem_object_ops_t *)region->object->base.ops;
+        if (unlikely(!ops->get_page)) return user_fault_fail(context, pc, address, type, flags, ENXIO);
+
+        hydrogen_ret_t ret = ops->get_page(region->object, region, (address & ~PAGE_MASK) - region->head);
+        if (unlikely(ret.error)) return user_fault_fail(context, pc, address, type, flags, ret.error);
+        target = page_to_phys(ret.pointer);
+
+        if ((region->flags & HYDROGEN_MEM_SHARED) == 0) {
+            pte_flags &= ~PMAP_WRITABLE;
+            pte_flags |= PMAP_COPY_ON_WRITE;
+        }
+    }
+
+    pte_t pte = arch_pt_create_leaf(result->level, target, pte_flags);
     arch_pt_write(result->table, result->level, result->index, pte);
 
     if (arch_pt_new_leaf_needs_flush()) {
@@ -1268,37 +1302,55 @@ static void create_new_user_mapping(
     }
 }
 
-static int copy_mapping(page_t **out, uint64_t source, int flags) {
-    ASSERT(flags & PMAP_ANONYMOUS); // TODO: Allow objects to provide their own copying function
+static int copy_mapping(vmm_t *vmm, vmm_region_t *region, page_t **out, uint64_t source, int flags) {
+    ASSERT(flags & PMAP_COPY_ON_WRITE);
+
+    if ((flags & PMAP_ANONYMOUS) == 0) {
+        page_t *page = alloc_page_for_user_mapping(vmm, region);
+        if (unlikely(!page)) return ENOMEM;
+        memcpy(page_to_virt(page), phys_to_virt(source), PAGE_SIZE);
+
+        *out = page;
+        return 0;
+    }
 
     page_t *src = phys_to_page(source);
-    size_t refs = __atomic_load_n(&src->anon.references, __ATOMIC_ACQUIRE);
 
-    // We can't unref normally (aka with an atomic decrement), because we need to ensure
-    // we don't get rid of the last reference. Instead, use a cmpxchg loop.
-    for (;;) {
-        if (refs == 1) {
-            *out = src;
-            return 0;
-        }
+    if (__atomic_load_n(&src->anon.references, __ATOMIC_ACQUIRE) == 1) {
+        *out = src;
+        return 0;
+    }
 
-        if (__atomic_compare_exchange_n(
-                    &src->anon.references,
-                    &refs,
-                    refs - 1,
-                    true,
-                    __ATOMIC_ACQ_REL,
-                    __ATOMIC_ACQUIRE
-            )) {
-            break;
-        }
+    // CoW requires the reference count to have a lock, because it must not
+    // allocate a new page if the old one only has one reference; there would
+    // not be a reservation for this allocation. Checking for this beforehand
+    // without a lock is not sufficient, since another address space might get
+    // rid of its reference before we've finished copying and dereferenced.
+    // Doing the dereference beforehand wouldn't work either, since then another
+    // address space might free the page before we've finished copying. Normally
+    // this would be solved by making the copy fallible and rechecking afterwards,
+    // but we can't make the copy fallible, because then we'd potentially allocate
+    // without a reservation.
+    mutex_acq(&src->anon.deref_lock, 0, false);
+
+    // Still need to read atomically: deref_lock only protects from derefs,
+    // new refs are allowed to be added without taking a lock.
+    if (__atomic_load_n(&src->anon.references, __ATOMIC_ACQUIRE) == 1) {
+        mutex_rel(&src->anon.deref_lock);
+        *out = src;
+        return 0;
     }
 
     page_t *dst = pmem_alloc();
+    memset(&dst->anon.deref_lock, 0, sizeof(dst->anon.deref_lock));
     dst->anon.references = 1;
     dst->anon.autounreserve = src->anon.autounreserve;
     dst->anon.is_page_table = false;
     memcpy(page_to_virt(dst), page_to_virt(src), PAGE_SIZE);
+
+    UNUSED size_t old = __atomic_fetch_sub(&src->anon.references, 1, __ATOMIC_ACQ_REL);
+    ASSERT(old != 1);
+    mutex_rel(&src->anon.deref_lock);
 
     *out = dst;
     return 0;
@@ -1350,7 +1402,7 @@ static void do_handle_user_fault(
         }
 
         page_t *new_page;
-        int error = copy_mapping(&new_page, arch_pt_leaf_target(result.level, result.pte), pte_flags);
+        int error = copy_mapping(vmm, region, &new_page, arch_pt_leaf_target(result.level, result.pte), pte_flags);
         if (unlikely(error)) return user_fault_fail(context, pc, address, type, flags, error);
 
         pte_flags &= ~PMAP_COPY_ON_WRITE;

@@ -17,6 +17,7 @@
 #include "sections.h"
 #include "string.h"
 #include "util/list.h"
+#include "util/object.h"
 #include "util/panic.h"
 #include "util/refcount.h"
 #include "util/slist.h"
@@ -45,7 +46,7 @@ static void reap_thread(thread_t *thread) {
 
     arch_reap_thread(&thread->arch);
     free_kernel_stack(thread->stack);
-    if (thread->vmm) vmm_deref(thread->vmm);
+    if (thread->vmm) obj_deref(&thread->vmm->base);
 
     if (thread->pid) {
         pid_t *pid = thread->pid;

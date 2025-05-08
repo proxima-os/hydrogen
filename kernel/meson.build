@@ -18,6 +18,7 @@ kernel_sources += files(
     'proc/process.c',
     'proc/rcu.c',
     'proc/sched.c',
+    'util/object.c',
     'util/panic.c',
     'util/printk.c',
     'util/spinlock.c',
