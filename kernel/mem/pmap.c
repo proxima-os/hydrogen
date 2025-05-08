@@ -211,7 +211,7 @@ static void *alloc_table(vmm_t *vmm, unsigned level) {
     if (unlikely(!page)) return NULL;
     memset(&page->anon.deref_lock, 0, sizeof(page->anon.deref_lock));
     page->anon.references = 0;
-    page->anon.autounreserve = false;
+    page->anon.autounreserve = true;
     page->anon.is_page_table = true;
     void *table = page_to_virt(page);
     bool ok = arch_pt_init_table(table, level);
