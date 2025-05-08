@@ -1,5 +1,6 @@
 #pragma once
 
+#include "hydrogen/types.h"
 #include <stddef.h>
 
 typedef struct {
@@ -26,3 +27,8 @@ typedef struct {
     size_t rsp;
     size_t ss;
 } arch_context_t;
+
+static inline void arch_context_set_syscall_return(arch_context_t *context, hydrogen_ret_t value) {
+    context->rax = value.error;
+    context->rdx = value.integer;
+}

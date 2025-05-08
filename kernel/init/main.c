@@ -1,6 +1,8 @@
 #include "init/main.h"
 #include "cpu/cpudata.h"
 #include "drv/framebuffer.h"
+#include "hydrogen/memory.h"
+#include "hydrogen/types.h"
 #include "init/cmdline.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -14,14 +16,19 @@
 #include "proc/rcu.h"
 #include "proc/sched.h"
 #include "sections.h"
+#include "sys/transition.h"
+#include "sys/vdso.h"
 #include "util/panic.h"
 #include "util/printk.h"
 #include <stddef.h>
+#include <stdint.h>
 
 __attribute__((used, section(".requests0"))) static LIMINE_REQUESTS_START_MARKER;
 __attribute__((used, section(".requests2"))) static LIMINE_REQUESTS_END_MARKER;
 
 LIMINE_REQ LIMINE_BASE_REVISION(3);
+
+#define USER_STACK_SIZE 0x800000
 
 static void launch_init_process(void *ctx) {
     int error = vmm_create(&current_thread->vmm);
@@ -31,7 +38,26 @@ static void launch_init_process(void *ctx) {
     error = setsid();
     if (unlikely(error < 0)) panic("failed to create init session (%e)", -error);
 
-    // TODO
+    hydrogen_ret_t ret = vmm_map(
+            current_thread->vmm,
+            0,
+            vdso_size,
+            HYDROGEN_MEM_READ | HYDROGEN_MEM_EXEC | HYDROGEN_MEM_SHARED,
+            &vdso_object,
+            HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_EXEC,
+            0
+    );
+    if (unlikely(ret.error)) panic("failed to map vdso (%e)", ret.error);
+    uintptr_t vdso_base = ret.integer;
+
+    ret = vmm_map(current_thread->vmm, 0, USER_STACK_SIZE + PAGE_SIZE, 0, NULL, 0, 0);
+    if (unlikely(ret.error)) panic("failed to allocate stack area (%e)", ret.error);
+    uintptr_t stack_base = ret.integer + PAGE_SIZE;
+
+    error = vmm_remap(current_thread->vmm, stack_base, USER_STACK_SIZE, HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE);
+    if (unlikely(error)) panic("failed to make stack writable (%e)", error);
+
+    arch_enter_user_mode(vdso_base + vdso_image_offset + vdso_image.entry, stack_base, USER_STACK_SIZE);
 }
 
 // this is in a separate function so that kernel_init can be INIT_TEXT
@@ -60,6 +86,7 @@ INIT_TEXT static void kernel_init(void *ctx) {
     memmap_reclaim_loader(); // don't move below anything that can create threads, see memmap.h
     sched_init_late();
     arch_init_late();
+    vdso_init();
     finalize_init();
 }
 

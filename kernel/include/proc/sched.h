@@ -1,5 +1,6 @@
 #pragma once
 
+#include "arch/context.h"
 #include "arch/sched.h"
 #include "mem/vmm.h"
 #include "proc/process.h"
@@ -33,6 +34,7 @@ typedef struct thread {
     void *stack;
     vmm_t *vmm;
     process_t *process;
+    arch_context_t *user_ctx;
     list_node_t process_node;
     thread_state_t state;
     timer_event_t timeout_event;

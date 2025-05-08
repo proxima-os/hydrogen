@@ -4,8 +4,10 @@
 #include "arch/time.h"
 #include "kernel/compiler.h"
 #include "kernel/time.h"
+#include "kernel/vdso.h"
 #include "kernel/x86_64/tsc.h"
 #include "sections.h"
+#include "util/panic.h"
 #include "util/printk.h"
 #include "util/time.h"
 #include "x86_64/cpu.h"
@@ -14,14 +16,13 @@
 #include "x86_64/time.h"
 #include <stdint.h>
 
-#define STABLE_READ_THRESHOLD 1000 /* read must not take more than 1us */
+#define STABLE_READ_THRESHOLD 5000 /* read must not take more than 5us */
 #define STABLE_READ_TRIES 10000
 
 #define CALIBRATION_TIME_NS 500000000 /* 500ms */
 
 INIT_DATA static uint64_t tsc_freq;
 INIT_DATA static uint64_t lapic_freq;
-static timeconv_t tsc2time_conv;
 static timeconv_t time2tsc_conv;
 
 typedef struct {
@@ -106,7 +107,7 @@ INIT_TEXT static bool determine_frequency(void) {
     }
 
     timer_data_t start, end;
-    read_time_stable(&start);
+    if (!read_time_stable(&start)) return false;
 
     for (;;) {
         if (ref_elapsed(start.nanoseconds, arch_read_time()) >= calibration_time) {
@@ -114,7 +115,10 @@ INIT_TEXT static bool determine_frequency(void) {
         }
     }
 
-    read_time_stable(&end);
+    if (!read_time_stable(&end)) {
+        x86_64_lapic_timer_stop();
+        return false;
+    }
 
     uint64_t elapsed = ref_elapsed(start.nanoseconds, end.nanoseconds);
 
@@ -132,7 +136,7 @@ INIT_TEXT static bool determine_frequency(void) {
 }
 
 static uint64_t tsc_read_time(void) {
-    return timeconv_apply(tsc2time_conv, x86_64_read_tsc());
+    return timeconv_apply(vdso_info.arch.tsc2ns_conv, x86_64_read_tsc());
 }
 
 static uint64_t time_to_tsc(uint64_t time) {
@@ -140,11 +144,20 @@ static uint64_t time_to_tsc(uint64_t time) {
     return tsc ? tsc : 1;
 }
 
+INIT_TEXT static void tsc_confirm(bool final) {
+    if (final) {
+        vdso_info.arch.time_source = X86_64_TIME_TSC;
+    }
+}
+
 INIT_TEXT void x86_64_tsc_init(void) {
     if (!x86_64_cpu_features.tsc_invariant) x86_64_cpu_features.tsc_deadline = false;
 
     // do this even if tsc isn't invariant, since it determins lapic frequency too
-    if (!determine_frequency()) return;
+    if (!determine_frequency()) {
+        if (!x86_64_cpu_features.tsc_deadline) panic("failed to get lapic frequency");
+        return;
+    }
 
     if (lapic_freq != 0) {
         printk("lapic: %U.%6U MHz\n", lapic_freq / 1000000, lapic_freq % 1000000);
@@ -158,8 +171,8 @@ INIT_TEXT void x86_64_tsc_init(void) {
 
     printk("tsc: %U.%6U MHz\n", tsc_freq / 1000000, tsc_freq % 1000000);
 
-    tsc2time_conv = timeconv_create(tsc_freq, NS_PER_SEC);
+    vdso_info.arch.tsc2ns_conv = timeconv_create(tsc_freq, NS_PER_SEC);
     time2tsc_conv = timeconv_create(NS_PER_SEC, tsc_freq);
 
-    x86_64_switch_timer(tsc_read_time, time_to_tsc, NULL, NULL);
+    x86_64_switch_timer(tsc_read_time, time_to_tsc, NULL, tsc_confirm);
 }

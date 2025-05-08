@@ -1,5 +1,8 @@
 inc += include_directories('private')
 wanted_components += ['acpi']
 
-subdir('kernel')
+bfd_elf_name = 'elf64-x86-64'
+
 subdir('lib')
+subdir('vdso')
+subdir('kernel')

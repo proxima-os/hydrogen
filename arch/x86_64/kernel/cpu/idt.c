@@ -6,6 +6,7 @@
 #include "mem/pmap.h"
 #include "proc/sched.h"
 #include "sections.h"
+#include "sys/transition.h"
 #include "util/panic.h"
 #include "x86_64/cpu.h"
 #include "x86_64/cr.h"
@@ -85,6 +86,13 @@ _Noreturn void x86_64_idt_handle_fatal(arch_context_t *context) {
 }
 
 USED void x86_64_idt_dispatch(arch_context_t *context) {
+    if (context->vector == X86_64_IDT_NMI || context->vector == X86_64_IDT_DF || context->vector == X86_64_IDT_MC) {
+        x86_64_wrmsr(X86_64_MSR_GS_BASE, *(uintptr_t *)&context[1]);
+        return x86_64_idt_handle_fatal(context);
+    }
+
+    if (context->cs & 3) enter_from_user_mode(context);
+
     switch (context->vector) {
     case X86_64_IDT_PF: {
         uintptr_t address = x86_64_read_cr2();
@@ -101,11 +109,6 @@ USED void x86_64_idt_dispatch(arch_context_t *context) {
 
         return pmap_handle_page_fault(context, context->rip, address, type, flags);
     }
-    case X86_64_IDT_NMI:
-    case X86_64_IDT_DF:
-    case X86_64_IDT_MC:
-        x86_64_wrmsr(X86_64_MSR_GS_BASE, *(uintptr_t *)&context[1]);
-        return x86_64_idt_handle_fatal(context);
     case X86_64_IDT_IPI_REMOTE_CALL: {
         preempt_state_t state = preempt_lock();
         smp_handle_remote_call();
@@ -118,4 +121,6 @@ USED void x86_64_idt_dispatch(arch_context_t *context) {
     case X86_64_IDT_LAPIC_SPURIOUS: return x86_64_lapic_irq_spurious();
     default: return x86_64_idt_handle_fatal(context);
     }
+
+    if (context->cs & 3) exit_to_user_mode();
 }

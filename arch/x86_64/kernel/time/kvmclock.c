@@ -1,4 +1,6 @@
 #include "x86_64/kvmclock.h"
+#include "kernel/arch/vdso.h"
+#include "kernel/vdso.h"
 #include "kernel/x86_64/kvmclock.h"
 #include "mem/memmap.h"
 #include "sections.h"
@@ -13,15 +15,20 @@
 #define KVM_FEATURE_CLOCKSOURCE (1u << 0)
 #define KVM_FEATURE_CLOCKSOURCE2 (1u << 3)
 
-static kvmclock_info_t kvmclock_info;
 static uint32_t kvmclock_msr;
 
 static uint64_t kvmclock_read(void) {
-    return x86_64_read_kvmclock(&kvmclock_info);
+    return x86_64_read_kvmclock(&vdso_info.arch.kvmclock);
 }
 
 INIT_TEXT static void kvmclock_cleanup(void) {
     x86_64_wrmsr(kvmclock_msr, 0);
+}
+
+INIT_TEXT static void kvmclock_confirm(bool final) {
+    if (final) {
+        vdso_info.arch.time_source = X86_64_TIME_KVMCLOCK;
+    }
 }
 
 INIT_TEXT void x86_64_kvmclock_init(void) {
@@ -52,9 +59,9 @@ INIT_TEXT void x86_64_kvmclock_init(void) {
         return;
     }
 
-    kvmclock_info.version = 1;
-    x86_64_wrmsr(kvmclock_msr, sym_to_phys(&kvmclock_info) | 1);
+    vdso_info.arch.kvmclock.version = 1;
+    x86_64_wrmsr(kvmclock_msr, sym_to_phys(&vdso_info.arch.kvmclock) | 1);
 
-    x86_64_switch_timer(kvmclock_read, NULL, kvmclock_cleanup, NULL);
+    x86_64_switch_timer(kvmclock_read, NULL, kvmclock_cleanup, kvmclock_confirm);
     printk("kvmclock: initialized\n");
 }

@@ -110,7 +110,7 @@ static uint64_t gdt[7] = {
         0x209b0000000000, // kernel code
         0x40930000000000, // kernel data
         0x40f30000000000, // user data
-        0x40fb0000000000, // user code
+        0x20fb0000000000, // user code
         0,                // tss low
         0,                // tss high
 };

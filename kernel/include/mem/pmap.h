@@ -68,3 +68,5 @@ void pmap_handle_page_fault(
         pmap_fault_type_t type,
         unsigned flags
 );
+
+unsigned vmm_to_pmap_flags(unsigned flags);

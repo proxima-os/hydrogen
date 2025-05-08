@@ -4,6 +4,7 @@
 
 .balign 16
 .globl memcmp
+.hidden memcmp
 .type memcmp, @function
 memcmp:
     .cfi_startproc
@@ -29,6 +30,7 @@ memcmp:
 
 .balign 16
 .globl memcpy
+.hidden memcpy
 .type memcpy, @function
 memcpy:
     .cfi_startproc
@@ -43,6 +45,7 @@ memcpy:
 
 .balign 16
 .globl memmove
+.hidden memmove
 .type memmove, @function
 memmove:
     .cfi_startproc
@@ -65,6 +68,7 @@ memmove:
 .section ".text.memset", "ax", @progbits
 
 .globl memset
+.hidden memset
 .type memset, @function
 memset:
     .cfi_startproc

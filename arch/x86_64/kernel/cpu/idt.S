@@ -47,6 +47,10 @@ x86_64_idt_entry:
     .cfi_rel_offset r9, 0x40
     .cfi_rel_offset r10, 0x48
     .cfi_rel_offset r11, 0x50
+    .cfi_rel_offset r12, 0x58
+    .cfi_rel_offset r13, 0x60
+    .cfi_rel_offset r14, 0x68
+    .cfi_rel_offset r15, 0x70
 
     cld
     xor %ebp, %ebp
@@ -82,6 +86,10 @@ x86_64_idt_entry:
     .cfi_restore r9
     .cfi_restore r10
     .cfi_restore r11
+    .cfi_restore r12
+    .cfi_restore r13
+    .cfi_restore r14
+    .cfi_restore r15
 
     testl $3, 8(%rsp)
     jz 1f

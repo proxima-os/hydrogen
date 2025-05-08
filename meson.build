@@ -9,6 +9,7 @@ project(
 )
 
 objcopy = find_program('objcopy')
+strip = find_program('strip')
 
 inc = [include_directories('private', 'public')]
 
@@ -26,6 +27,9 @@ kernel_c_flags = ['-fno-asynchronous-unwind-tables', '-fno-pie']
 kernel_l_flags = ['-static']
 kernel_sources = []
 kernel_include = []
+vdso_sources = []
+vdso_include = []
+
 wanted_components = []
 
 add_project_arguments('-DHYDROGEN_LOG_BUF_SHIFT=' + get_option('log_buf_shift').to_string(), language: 'c')
@@ -38,4 +42,5 @@ foreach component : wanted_components
 endforeach
 
 subdir('lib')
+subdir('vdso')
 subdir('kernel')

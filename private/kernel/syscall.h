@@ -1,0 +1,4 @@
+#pragma once
+
+#define SYSCALL_THREAD_EXIT 0l
+#define SYSCALL_GET_NANOSECONDS_SINCE_BOOT 1l

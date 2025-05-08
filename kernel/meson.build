@@ -18,6 +18,11 @@ kernel_sources += files(
     'proc/process.c',
     'proc/rcu.c',
     'proc/sched.c',
+    'sys/syscall.c',
+    'sys/thread.c',
+    'sys/time.c',
+    'sys/transition.c',
+    'sys/vdso.c',
     'util/object.c',
     'util/panic.c',
     'util/printk.c',
@@ -26,6 +31,30 @@ kernel_sources += files(
 )
 
 linker_script = files('kernel.lds')[0]
+
+strip_ver_out = run_command(strip, '--version', capture: true, check: false)
+strip_args = []
+
+if strip_ver_out.returncode() == 0
+    if strip_ver_out.stdout().contains('GNU Binutils')
+        strip_args += ['--strip-section-headers']
+    elif strip_ver_out.stdout().contains('LLVM')
+        strip_args += ['--strip-sections']
+    endif
+endif
+
+stripped_vdso = custom_target(
+    'stripped-vdso',
+    command: [strip, '@INPUT@', '-o@OUTPUT@', strip_args],
+    input: vdso,
+    output: 'stripped-vdso.so',
+)
+vdso_object = custom_target(
+    'vdso-object',
+    command: [objcopy, '@INPUT@', '@OUTPUT@', '-Ibinary', '-O' + bfd_elf_name, '--rename-section=.data=.vdso'],
+    input: stripped_vdso,
+    output: 'vdso.o',
+)
 
 executable(
     'hydrogen',
@@ -37,5 +66,6 @@ executable(
     install_mode: 'rw-r--r--',
     link_args: [kernel_l_flags, '-T' + linker_script.full_path()],
     link_depends: linker_script,
+    objects: vdso_object,
     sources: [lib_sources, kernel_sources],
 )

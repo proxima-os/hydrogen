@@ -755,6 +755,12 @@ hydrogen_ret_t vmm_map(
 
     if (object != NULL) {
         if (unlikely(!check_rights(rights, flags))) return ret_error(EACCES);
+
+        const mem_object_ops_t *ops = (const mem_object_ops_t *)object->base.ops;
+
+        if (ops->get_page == NULL) {
+            if (unlikely((flags & HYDROGEN_MEM_SHARED) == 0)) return ret_error(EINVAL);
+        }
     } else if (unlikely((flags & HYDROGEN_MEM_SHARED) != 0)) {
         return ret_error(EINVAL);
     }
@@ -925,7 +931,10 @@ static int split_to_exact(
 static int remap_check_cb(vmm_region_t *region, void *ctx) {
     unsigned new_flags = (region->flags & ~VMM_PERM_FLAGS) | (uintptr_t)ctx;
     if (new_flags == region->flags) return 1;
-    if (unlikely(!check_rights(region->rights, new_flags))) return -EACCES;
+
+    if (region->object != NULL) {
+        if (unlikely(!check_rights(region->rights, new_flags))) return -EACCES;
+    }
 
     return 0;
 }

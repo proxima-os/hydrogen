@@ -1268,10 +1268,7 @@ static void create_new_user_mapping(
     }
 
     uint64_t target;
-    int pte_flags = PMAP_USER;
-    if (region->flags & HYDROGEN_MEM_READ) pte_flags |= PMAP_READABLE;
-    if (region->flags & HYDROGEN_MEM_WRITE) pte_flags |= PMAP_WRITABLE;
-    if (region->flags & HYDROGEN_MEM_EXEC) pte_flags |= PMAP_EXECUTABLE;
+    int pte_flags = PMAP_USER | vmm_to_pmap_flags(region->flags);
 
     if (region->object == NULL) {
         page_t *page = alloc_page_for_user_mapping(vmm, region);
@@ -1370,7 +1367,7 @@ static void do_handle_user_fault(
         if (unlikely(result.level != 0)) return user_fault_fail(context, pc, address, type, flags, EFAULT);
 
 #if PT_PREPARE_DEBUG
-        if (unlikely(result.pte) != ARCH_PT_PREPARE_PTE) {
+        if (unlikely(result.pte != ARCH_PT_PREPARE_PTE)) {
             return user_fault_fail(context, pc, address, type, flags, EFAULT);
         }
 #endif
@@ -1562,4 +1559,12 @@ void pmap_handle_page_fault(
           address,
           pc,
           flags);
+}
+
+unsigned vmm_to_pmap_flags(unsigned flags) {
+    unsigned pmap_flags = 0;
+    if (flags & HYDROGEN_MEM_READ) pmap_flags |= PMAP_READABLE;
+    if (flags & HYDROGEN_MEM_WRITE) pmap_flags |= PMAP_WRITABLE;
+    if (flags & HYDROGEN_MEM_EXEC) pmap_flags |= PMAP_EXECUTABLE;
+    return pmap_flags;
 }
