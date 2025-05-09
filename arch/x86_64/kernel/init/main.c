@@ -15,6 +15,7 @@
 #include "x86_64/syscall.h"
 #include "x86_64/time.h"
 #include "x86_64/tss.h"
+#include "x86_64/usercopy.h"
 #include "x86_64/xsave.h"
 #include <stdint.h>
 
@@ -37,6 +38,7 @@ INIT_TEXT static void init_arch_vdso_info(void) {
 }
 
 INIT_TEXT void arch_init_early(void) {
+    x86_64_usercopy_init();
     init_arch_vdso_info();
     x86_64_xsave_init();
     acpi_init();

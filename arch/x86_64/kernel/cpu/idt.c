@@ -86,6 +86,8 @@ _Noreturn void x86_64_idt_handle_fatal(arch_context_t *context) {
 }
 
 USED void x86_64_idt_dispatch(arch_context_t *context) {
+    if (x86_64_cpu_features.smap) asm("clac");
+
     if (context->vector == X86_64_IDT_NMI || context->vector == X86_64_IDT_DF || context->vector == X86_64_IDT_MC) {
         x86_64_wrmsr(X86_64_MSR_GS_BASE, *(uintptr_t *)&context[1]);
         return x86_64_idt_handle_fatal(context);

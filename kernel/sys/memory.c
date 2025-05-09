@@ -1,4 +1,5 @@
 #include "hydrogen/memory.h"
+#include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "hydrogen/handle.h"
 #include "hydrogen/types.h"
@@ -7,7 +8,6 @@
 #include "kernel/return.h"
 #include "mem/memmap.h"
 #include "mem/pmap.h"
-#include "mem/usercopy.h"
 #include "mem/vmalloc.h"
 #include "mem/vmm.h"
 #include "proc/mutex.h"
