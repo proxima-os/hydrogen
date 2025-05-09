@@ -55,7 +55,7 @@ static void launch_init_process(void *ctx) {
     if (unlikely(ret.error)) panic("failed to map vdso (%e)", ret.error);
     uintptr_t vdso_base = ret.integer;
 
-    ret = vmm_map(current_thread->vmm, 0, USER_STACK_SIZE + PAGE_SIZE, 0, NULL, 0, 0);
+    ret = vmm_map(current_thread->vmm, 0, USER_STACK_SIZE + PAGE_SIZE, HYDROGEN_MEM_LAZY_RESERVE, NULL, 0, 0);
     if (unlikely(ret.error)) panic("failed to allocate stack area (%e)", ret.error);
     uintptr_t stack_base = ret.integer + PAGE_SIZE;
 
