@@ -90,7 +90,7 @@ void x86_64_handle_timer(void) {
 void arch_queue_timer_irq(uint64_t deadline) {
     if (deadline != 0) {
         if (x86_64_cpu_features.tsc_deadline) {
-            x86_64_wrmsr(X86_64_MSR_TSC_DEADLINE, x86_64_timer_get_tsc(deadline));
+            x86_64_wrmsr(X86_64_MSR_TSC_DEADLINE, x86_64_timer_get_tsc(deadline + x86_64_time_offset));
         } else {
             this_cpu_write(arch.deadline, deadline);
             start_lapic_for_deadline(arch_read_time(), deadline);
