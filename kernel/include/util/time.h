@@ -2,6 +2,7 @@
 
 #include "arch/time.h"
 #include "kernel/time.h"
+#include "kernel/types.h"
 #include "util/list.h"
 #include <stdint.h>
 
@@ -19,8 +20,6 @@ typedef struct timer_event {
     struct cpu *cpu;
     bool running;
 } timer_event_t;
-
-typedef int64_t timestamp_t; // posix time in nanoseconds
 
 void time_init(void);
 timestamp_t get_current_timestamp(void);

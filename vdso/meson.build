@@ -5,6 +5,7 @@ vdso_sources += files(
     'memory.c',
     'start.c',
     'thread.c',
+    'time.c',
 )
 
 linker_script = files('vdso.lds')[0]

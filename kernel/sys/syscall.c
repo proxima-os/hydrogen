@@ -59,6 +59,7 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_VMM_UNMAP: return ret_error(hydrogen_vmm_unmap(a0, a1, a2));
     case SYSCALL_VMM_READ: return ret_error(hydrogen_vmm_read(a0, (void *)a1, a2, a3));
     case SYSCALL_VMM_WRITE: return ret_error(hydrogen_vmm_write(a0, (const void *)a1, a2, a3));
+    case SYSCALL_SET_REAL_TIME: return ret_error(hydrogen_set_real_time(a0));
     default: return ret_error(ENOSYS);
     }
 }

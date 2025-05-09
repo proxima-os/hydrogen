@@ -4,6 +4,7 @@
 #include "arch/time.h"
 #include "cpu/cpudata.h"
 #include "kernel/compiler.h"
+#include "kernel/vdso.h"
 #include "limine.h"
 #include "sections.h"
 #include "util/list.h"
@@ -18,14 +19,12 @@ INIT_TEXT void time_init(void) {
     }
 }
 
-static int64_t boot_timestamp;
-
 timestamp_t get_current_timestamp(void) {
-    return __atomic_load_n(&boot_timestamp, __ATOMIC_ACQUIRE) + arch_read_time();
+    return real_time_from_boot_time(arch_read_time());
 }
 
 void set_current_timestamp(timestamp_t time) {
-    __atomic_store_n(&boot_timestamp, time - arch_read_time(), __ATOMIC_RELEASE);
+    __atomic_store_n(&vdso_info.boot_timestamp, time - arch_read_time(), __ATOMIC_RELEASE);
 }
 
 timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq) {
