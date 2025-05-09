@@ -394,7 +394,7 @@ int clone_region(vmm_region_t **out, vmm_t *dvmm, vmm_t *svmm, vmm_region_t *src
 
     obj_add(dst);
 
-    pmap_clone(dvmm, svmm, dst->head, dst->tail - dst->head + 1, (dst->flags & HYDROGEN_MEM_SHARED) == 0);
+    pmap_clone(svmm, dvmm, dst->head, dst->tail - dst->head + 1, (dst->flags & HYDROGEN_MEM_SHARED) == 0);
     *out = dst;
     return 0;
 }
