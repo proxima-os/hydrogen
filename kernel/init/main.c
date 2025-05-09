@@ -36,7 +36,7 @@ static void launch_init_process(void *ctx) {
     if (unlikely(error)) panic("failed to create init process vmm (%e)", error);
     pmap_switch(&current_thread->vmm->pmap);
 
-    error = setsid();
+    error = setsid(current_thread->process);
     if (unlikely(error < 0)) panic("failed to create init session (%e)", -error);
 
     hydrogen_ret_t ret = vmm_map(

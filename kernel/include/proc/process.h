@@ -91,31 +91,31 @@ void pgroup_deref(pgroup_t *group);
 void session_ref(session_t *session);
 void session_deref(session_t *session);
 
-int getpid(void);
-int getppid(void);
-int getpgid(int pid);
-int getsid(int pid);
+int getpid(process_t *process);
+int getppid(process_t *process);
+int getpgid(process_t *process);
+int getsid(process_t *process);
 
-int setpgid(int pid, int pgid);
-int setsid(void);
+int setpgid(process_t *process, int pgid);
+int setsid(process_t *process);
 
-uint32_t getgid(void);
-uint32_t getuid(void);
-uint32_t getegid(void);
-uint32_t geteuid(void);
-int getresgid(uint32_t gids[3]);
-int getresuid(uint32_t uids[3]);
-int getgroups(uint32_t *buffer, size_t *count);
+uint32_t getgid(process_t *process);
+uint32_t getuid(process_t *process);
+uint32_t getegid(process_t *process);
+uint32_t geteuid(process_t *process);
+int getresgid(process_t *process, uint32_t gids[3]);
+int getresuid(process_t *process, uint32_t uids[3]);
+int getgroups(process_t *process, uint32_t *buffer, size_t *count);
 
-int setgid(uint32_t gid);
-int setuid(uint32_t uid);
-int setegid(uint32_t egid);
-int seteuid(uint32_t euid);
-int setregid(uint32_t gid, uint32_t egid);
-int setreuid(uint32_t uid, uint32_t euid);
-int setresgid(uint32_t gid, uint32_t egid, uint32_t sgid);
-int setresuid(uint32_t uid, uint32_t euid, uint32_t suid);
-int setgroups(const uint32_t *groups, size_t count);
+int setgid(process_t *process, uint32_t gid);
+int setuid(process_t *process, uint32_t uid);
+int setegid(process_t *process, uint32_t egid);
+int seteuid(process_t *process, uint32_t euid);
+int setregid(process_t *process, uint32_t gid, uint32_t egid);
+int setreuid(process_t *process, uint32_t uid, uint32_t euid);
+int setresgid(process_t *process, uint32_t gid, uint32_t egid, uint32_t sgid);
+int setresuid(process_t *process, uint32_t uid, uint32_t euid, uint32_t suid);
+int setgroups(process_t *process, const uint32_t *groups, size_t count);
 
 typedef enum {
     RELATION_OWNER,
@@ -123,7 +123,7 @@ typedef enum {
     RELATION_OTHER,
 } relation_t;
 
-ident_t *ident_get(void);
+ident_t *ident_get(process_t *process);
 relation_t get_relation(ident_t *ident, uint32_t uid, uint32_t gid, bool use_real);
 void ident_ref(ident_t *ident);
 void ident_deref(ident_t *ident);

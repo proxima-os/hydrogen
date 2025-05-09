@@ -259,7 +259,7 @@ int proc_clone(process_t **out) {
     process->base.ops = &process_ops;
     obj_init(&process->base, OBJECT_PROCESS);
     process->parent = current_thread->process;
-    process->identity = ident_get();
+    process->identity = ident_get(current_thread->process);
 
     int error = allocate_pid(process);
     if (unlikely(error)) {
@@ -421,53 +421,28 @@ void session_deref(session_t *session) {
     }
 }
 
-int getpid(void) {
-    return current_thread->process->pid->id;
+int getpid(process_t *process) {
+    return process->pid->id;
 }
 
-int getppid(void) {
-    process_t *process = current_thread->process;
+int getppid(process_t *process) {
     rcu_state_t state = rcu_read_lock();
     int id = rcu_read(process->parent)->pid->id;
     rcu_read_unlock(state);
     return id;
 }
 
-static int do_getpgid(process_t *process) {
+int getpgid(process_t *process) {
     rcu_state_t state = rcu_read_lock();
     int id = rcu_read(process->group)->pid->id;
     rcu_read_unlock(state);
     return id;
 }
 
-int getpgid(int pid) {
-    if (pid == 0) return do_getpgid(current_thread->process);
-
-    process_t *process;
-    int error = resolve_process(&process, pid);
-    if (unlikely(error)) return -error;
-
-    int id = do_getpgid(process);
-    obj_deref(&process->base);
-    return id;
-}
-
-static int do_getsid(process_t *process) {
+int getsid(process_t *process) {
     rcu_state_t state = rcu_read_lock();
     int id = rcu_read(process->group)->session->pid->id;
     rcu_read_unlock(state);
-    return id;
-}
-
-int getsid(int pid) {
-    if (pid == 0) return do_getsid(current_thread->process);
-
-    process_t *process;
-    int error = resolve_process(&process, pid);
-    if (unlikely(error)) return -error;
-
-    int id = do_getsid(process);
-    obj_deref(&process->base);
     return id;
 }
 
@@ -491,7 +466,14 @@ static void do_unlock_two(pgroup_t *a, pgroup_t *b) {
     }
 }
 
-static int do_setpgid(process_t *process, int pgid) {
+int setpgid(process_t *process, int pgid) {
+    if (pgid < 0) return EINVAL;
+
+    /*if (process != current_thread->process) {
+        if (rcu_read(process->parent) != current_thread->process) return ESRCH;
+        if (__atomic_load_n(&process->did_exec, __ATOMIC_ACQUIRE)) return EACCES;
+    }*/
+
     rcu_state_t state = rcu_read_lock();
     session_t *own_session = rcu_read(current_thread->process->group)->session;
     session_ref(own_session);
@@ -565,30 +547,7 @@ err:
     return error;
 }
 
-int setpgid(int pid, int pgid) {
-    if (pgid < 0) return EINVAL;
-    if (pid == 0) return do_setpgid(current_thread->process, pgid);
-
-    process_t *proc;
-    int error = resolve_process(&proc, pid);
-    if (unlikely(error)) return ESRCH;
-
-    if (proc != current_thread->process) {
-        error = ESRCH;
-        if (rcu_read(proc->parent) != current_thread->process) goto ret;
-
-        error = EACCES;
-        if (__atomic_load_n(&proc->did_exec, __ATOMIC_ACQUIRE)) goto ret;
-    }
-
-    error = do_setpgid(proc, pgid);
-ret:
-    obj_deref(&proc->base);
-    return error;
-}
-
-int setsid(void) {
-    process_t *process = current_thread->process;
+int setsid(process_t *process) {
     mutex_acq(&process->group_update_lock, 0, false);
 
     if (unlikely(process->pid->group != NULL)) {
@@ -632,42 +591,37 @@ int setsid(void) {
     return process->pid->id;
 }
 
-uint32_t getgid(void) {
-    process_t *process = current_thread->process;
+uint32_t getgid(process_t *process) {
     rcu_state_t state = rcu_read_lock();
     uint32_t gid = rcu_read(process->identity)->gid;
     rcu_read_unlock(state);
     return gid;
 }
 
-uint32_t getuid(void) {
-    process_t *process = current_thread->process;
+uint32_t getuid(process_t *process) {
     rcu_state_t state = rcu_read_lock();
     uint32_t uid = rcu_read(process->identity)->uid;
     rcu_read_unlock(state);
     return uid;
 }
 
-uint32_t getegid(void) {
-    process_t *process = current_thread->process;
+uint32_t getegid(process_t *process) {
     rcu_state_t state = rcu_read_lock();
     uint32_t egid = rcu_read(process->identity)->egid;
     rcu_read_unlock(state);
     return egid;
 }
 
-uint32_t geteuid(void) {
-    process_t *process = current_thread->process;
+uint32_t geteuid(process_t *process) {
     rcu_state_t state = rcu_read_lock();
     uint32_t euid = rcu_read(process->identity)->euid;
     rcu_read_unlock(state);
     return euid;
 }
 
-int getresgid(uint32_t gids[3]) {
+int getresgid(process_t *process, uint32_t gids[3]) {
     uint32_t src[3];
 
-    process_t *process = current_thread->process;
     rcu_state_t state = rcu_read_lock();
     ident_t *ident = rcu_read(process->identity);
     src[0] = ident->gid;
@@ -678,10 +632,9 @@ int getresgid(uint32_t gids[3]) {
     return user_memcpy(gids, src, sizeof(src));
 }
 
-int getresuid(uint32_t uids[3]) {
+int getresuid(process_t *process, uint32_t uids[3]) {
     uint32_t src[3];
 
-    process_t *process = current_thread->process;
     rcu_state_t state = rcu_read_lock();
     ident_t *ident = rcu_read(process->identity);
     src[0] = ident->uid;
@@ -692,8 +645,8 @@ int getresuid(uint32_t uids[3]) {
     return user_memcpy(uids, src, sizeof(src));
 }
 
-int getgroups(uint32_t *buffer, size_t *count) {
-    ident_t *ident = ident_get();
+int getgroups(process_t *process, uint32_t *buffer, size_t *count) {
+    ident_t *ident = ident_get(process);
 
     size_t cur = *count;
     if (cur > ident->num_groups) cur = ident->num_groups;
@@ -725,7 +678,6 @@ static ident_t *clone_ident(ident_t *src) {
 
 #define update_identity(check, update)                    \
     ({                                                    \
-        process_t *process = current_thread->process;     \
         mutex_acq(&process->ident_update_lock, 0, false); \
                                                           \
         ident_t *old_ident = process->identity;           \
@@ -755,7 +707,7 @@ static ident_t *clone_ident(ident_t *src) {
         return 0;                                         \
     })
 
-int setgid(uint32_t gid) {
+int setgid(process_t *process, uint32_t gid) {
     if (gid == (uint32_t)-1) return EINVAL;
 
     update_identity(gid == old_ident->gid || gid == old_ident->sgid, ({
@@ -770,7 +722,7 @@ int setgid(uint32_t gid) {
                     }));
 }
 
-int setuid(uint32_t uid) {
+int setuid(process_t *process, uint32_t uid) {
     if (uid == (uint32_t)-1) return EINVAL;
 
     update_identity(uid == old_ident->uid || uid == old_ident->suid, ({
@@ -785,7 +737,7 @@ int setuid(uint32_t uid) {
                     }));
 }
 
-int setegid(uint32_t egid) {
+int setegid(process_t *process, uint32_t egid) {
     if (egid == (uint32_t)-1) return EINVAL;
 
     update_identity(egid == old_ident->gid || egid == old_ident->egid || egid == old_ident->sgid, ({
@@ -794,7 +746,7 @@ int setegid(uint32_t egid) {
                     }));
 }
 
-int seteuid(uint32_t euid) {
+int seteuid(process_t *process, uint32_t euid) {
     if (euid == (uint32_t)-1) return EINVAL;
 
     update_identity(euid == old_ident->uid || euid == old_ident->euid || euid == old_ident->suid, ({
@@ -803,7 +755,7 @@ int seteuid(uint32_t euid) {
                     }));
 }
 
-int setregid(uint32_t gid, uint32_t egid) {
+int setregid(process_t *process, uint32_t gid, uint32_t egid) {
     update_identity(
             (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->sgid
             ) && (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid || egid == old_ident->sgid),
@@ -823,7 +775,7 @@ int setregid(uint32_t gid, uint32_t egid) {
     );
 }
 
-int setreuid(uint32_t uid, uint32_t euid) {
+int setreuid(process_t *process, uint32_t uid, uint32_t euid) {
     update_identity(
             (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->suid
             ) && (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid || euid == old_ident->suid),
@@ -843,7 +795,7 @@ int setreuid(uint32_t uid, uint32_t euid) {
     );
 }
 
-int setresgid(uint32_t gid, uint32_t egid, uint32_t sgid) {
+int setresgid(process_t *process, uint32_t gid, uint32_t egid, uint32_t sgid) {
     update_identity(
             (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->egid || gid == old_ident->sgid) &&
                     (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid ||
@@ -860,7 +812,7 @@ int setresgid(uint32_t gid, uint32_t egid, uint32_t sgid) {
     );
 }
 
-int setresuid(uint32_t uid, uint32_t euid, uint32_t suid) {
+int setresuid(process_t *process, uint32_t uid, uint32_t euid, uint32_t suid) {
     update_identity(
             (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->euid || uid == old_ident->suid) &&
                     (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid ||
@@ -877,7 +829,7 @@ int setresuid(uint32_t uid, uint32_t euid, uint32_t suid) {
     );
 }
 
-int setgroups(const uint32_t *groups, size_t count) {
+int setgroups(process_t *process, const uint32_t *groups, size_t count) {
     update_identity(false, ({
                         uint32_t *buffer = vmalloc(sizeof(*groups) * count);
                         int error = ENOMEM;
@@ -898,8 +850,7 @@ int setgroups(const uint32_t *groups, size_t count) {
                     }));
 }
 
-ident_t *ident_get(void) {
-    process_t *process = current_thread->process;
+ident_t *ident_get(process_t *process) {
     rcu_state_t state = rcu_read_lock();
     ident_t *ident = rcu_read(process->identity);
     ident_ref(ident);
