@@ -8,25 +8,25 @@
 #include "kernel/x86_64/tsc.h"
 #include "vdso.h"
 
-static uint64_t get_ns_since_boot_syscall(void) {
+static uint64_t boot_time_syscall(void) {
     return SYSCALL0(SYSCALL_GET_NANOSECONDS_SINCE_BOOT).integer;
 }
 
-static uint64_t get_ns_since_boot_kvmclock(void) {
+static uint64_t boot_time_kvmclock(void) {
     return x86_64_read_kvmclock(&vdso_info.arch.kvmclock);
 }
 
-static uint64_t get_ns_since_boot_tsc(void) {
+static uint64_t boot_time_tsc(void) {
     return timeconv_apply(vdso_info.arch.tsc2ns_conv, x86_64_read_tsc());
 }
 
-static uint64_t (*resolve_ns_since_boot(void))(void) {
+static uint64_t (*resolve_boot_time(void))(void) {
     switch (vdso_info.arch.time_source) {
-    case X86_64_TIME_SYSCALL: return get_ns_since_boot_syscall;
-    case X86_64_TIME_KVMCLOCK: return get_ns_since_boot_kvmclock;
-    case X86_64_TIME_TSC: return get_ns_since_boot_tsc;
+    case X86_64_TIME_SYSCALL: return boot_time_syscall;
+    case X86_64_TIME_KVMCLOCK: return boot_time_kvmclock;
+    case X86_64_TIME_TSC: return boot_time_tsc;
     default: UNREACHABLE();
     }
 }
 
-__attribute__((ifunc("resolve_ns_since_boot"))) EXPORT uint64_t hydrogen_get_nanoseconds_since_boot(void);
+__attribute__((ifunc("resolve_boot_time"))) EXPORT uint64_t hydrogen_boot_time(void);

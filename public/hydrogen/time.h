@@ -7,7 +7,12 @@
 extern "C" {
 #endif
 
-uint64_t hydrogen_get_nanoseconds_since_boot(void) __asm__("__hydrogen_get_nanoseconds_since_boot");
+/**
+ * Get the system's boot time.
+ *
+ * \return The number of nanoseconds that have elapsed since the system was booted.
+ */
+uint64_t hydrogen_boot_time(void) __asm__("__hydrogen_boot_time");
 
 #ifdef __cplusplus
 };
