@@ -45,7 +45,7 @@ static void reap_thread(thread_t *thread) {
     }
 
     proc_thread_exit(thread->process, thread);
-    proc_deref(thread->process);
+    obj_deref(&thread->process->base);
 
     thread->state = THREAD_EXITED;
 }
@@ -100,7 +100,7 @@ INIT_TEXT void sched_init_late(void) {
     cpu_t *cpu = get_current_cpu();
 
     cpu->sched.idle_thread.process = &kernel_process;
-    proc_ref(&kernel_process);
+    obj_ref(&kernel_process.base);
     proc_thread_create(&kernel_process, &cpu->sched.idle_thread);
 
     int error = sched_create_thread(&cpu->sched.reaper, reaper_func, NULL, cpu, &kernel_process, 0);
@@ -154,7 +154,7 @@ int sched_create_thread(
     }
 
     thread->process = process;
-    proc_ref(process);
+    obj_ref(&process->base);
     proc_thread_create(process, thread);
 
     __atomic_fetch_add(&thread->cpu->sched.num_threads, 1, __ATOMIC_RELAXED);

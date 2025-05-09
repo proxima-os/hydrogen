@@ -2,6 +2,7 @@
 
 #include "proc/mutex.h"
 #include "util/list.h"
+#include "util/object.h"
 #include "util/refcount.h"
 #include <stddef.h>
 #include <stdint.h>
@@ -32,8 +33,8 @@ typedef struct {
 } ident_t;
 
 struct process {
+    object_t base;
     pid_t *pid;
-    refcnt_t references;
 
     process_t *parent;
     list_t children;
@@ -83,9 +84,6 @@ int proc_clone(process_t **out);
 
 void proc_thread_create(process_t *process, struct thread *thread);
 void proc_thread_exit(process_t *process, struct thread *thread);
-
-void proc_ref(process_t *process);
-void proc_deref(process_t *process);
 
 void pgroup_ref(pgroup_t *group);
 void pgroup_deref(pgroup_t *group);

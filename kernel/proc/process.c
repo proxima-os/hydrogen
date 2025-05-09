@@ -17,7 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-process_t kernel_process = {.references = REF_INIT(1)};
+process_t kernel_process;
 process_t *init_process;
 
 static pid_t **pids;
@@ -126,7 +126,25 @@ static int allocate_pid(process_t *process) {
     return 0;
 }
 
+static void process_free(object_t *ptr) {
+    process_t *process = (process_t *)ptr;
+    ASSERT(process != &kernel_process);
+
+    pid_t *pid = process->pid;
+    mutex_acq(&pid->remove_lock, 0, false);
+    rcu_write(pid->process, NULL);
+    pid_handle_removal_and_unlock(pid);
+
+    pgroup_deref(process->group);
+    ident_deref(process->identity);
+    vfree(process, sizeof(*process));
+}
+
+static const object_ops_t process_ops = {.free = process_free};
+
 INIT_TEXT void proc_init(void) {
+    kernel_process.base.ops = &process_ops;
+    obj_init(&kernel_process.base, OBJECT_PROCESS);
     init_pids();
 
     int error = allocate_pid(&kernel_process);
@@ -201,7 +219,7 @@ int resolve_process(process_t **out, int pid) {
         return ESRCH;
     }
 
-    proc_ref(process);
+    obj_ref(&process->base);
     rcu_read_unlock(state);
     *out = process;
     return 0;
@@ -238,7 +256,8 @@ int proc_clone(process_t **out) {
     if (unlikely(!process)) return ENOMEM;
     memset(process, 0, sizeof(*process));
 
-    process->references = REF_INIT(1);
+    process->base.ops = &process_ops;
+    obj_init(&process->base, OBJECT_PROCESS);
     process->parent = current_thread->process;
     process->identity = ident_get();
 
@@ -249,7 +268,7 @@ int proc_clone(process_t **out) {
         return error;
     }
 
-    proc_ref(process->parent);
+    obj_ref(&process->parent->base);
     mutex_acq(&process->parent->children_lock, 0, false);
     list_insert_tail(&process->parent->children, &process->parent_node);
     mutex_rel(&process->parent->children_lock);
@@ -287,7 +306,7 @@ static process_t *get_parent_with_locked_children(process_t *process) {
     for (;;) {
         rcu_state_t state = rcu_read_lock();
         process_t *parent = rcu_read(process->parent);
-        proc_ref(parent);
+        obj_ref(&parent->base);
         rcu_read_unlock(state);
 
         mutex_acq(&parent->children_lock, 0, false);
@@ -299,17 +318,16 @@ static process_t *get_parent_with_locked_children(process_t *process) {
         if (ok) return parent;
 
         mutex_rel(&parent->children_lock);
-        proc_deref(parent);
+        obj_deref(&parent->base);
     }
 }
 
 static void reap_process(process_t *process) {
     process_t *parent = get_parent_with_locked_children(process);
     list_remove(&parent->children, &process->parent_node);
-    proc_deref(parent); // process->parent
     mutex_rel(&parent->children_lock);
 
-    proc_deref(parent); // the one we got from get_parent_with_locked_children
+    obj_deref_n(&parent->base, 2); // ref from get_parent_with_locked_children + process->parent
 }
 
 static void reparent_children(process_t *process) {
@@ -322,8 +340,8 @@ static void reparent_children(process_t *process) {
         if (!child) break;
 
         mutex_acq(&init_process->children_lock, 0, false);
-        proc_deref(process);
-        proc_ref(init_process);
+        obj_deref(&process->base);
+        obj_ref(&init_process->base);
         list_insert_tail(&init_process->children, &child->parent_node);
         rcu_write(child->parent, init_process);
         mutex_rel(&init_process->children_lock);
@@ -366,25 +384,6 @@ void proc_thread_exit(process_t *process, struct thread *thread) {
     bool proc_exit = list_empty(&process->threads);
     mutex_rel(&process->threads_lock);
     if (proc_exit) handle_process_exit(process);
-}
-
-void proc_ref(process_t *process) {
-    ref_inc(&process->references);
-}
-
-void proc_deref(process_t *process) {
-    if (ref_dec(&process->references) == 1) {
-        ASSERT(process != &kernel_process);
-
-        pid_t *pid = process->pid;
-        mutex_acq(&pid->remove_lock, 0, false);
-        rcu_write(pid->process, NULL);
-        pid_handle_removal_and_unlock(pid);
-
-        pgroup_deref(process->group);
-        ident_deref(process->identity);
-        vfree(process, sizeof(*process));
-    }
 }
 
 void pgroup_ref(pgroup_t *group) {
@@ -449,7 +448,7 @@ int getpgid(int pid) {
     if (unlikely(error)) return -error;
 
     int id = do_getpgid(process);
-    proc_deref(process);
+    obj_deref(&process->base);
     return id;
 }
 
@@ -468,7 +467,7 @@ int getsid(int pid) {
     if (unlikely(error)) return -error;
 
     int id = do_getsid(process);
-    proc_deref(process);
+    obj_deref(&process->base);
     return id;
 }
 
@@ -584,7 +583,7 @@ int setpgid(int pid, int pgid) {
 
     error = do_setpgid(proc, pgid);
 ret:
-    proc_deref(proc);
+    obj_deref(&proc->base);
     return error;
 }
 
