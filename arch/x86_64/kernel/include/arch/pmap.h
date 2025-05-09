@@ -166,6 +166,7 @@ static inline int arch_pt_get_leaf_flags(unsigned level, pte_t pte) {
 
     if (pte & X86_64_PTE_PRESENT) flags |= PMAP_READABLE;
     if (pte & X86_64_PTE_WRITABLE) flags |= PMAP_WRITABLE;
+    if (pte & X86_64_PTE_USER) flags |= PMAP_USER;
     if (pte & X86_64_PTE_ANON) flags |= PMAP_ANONYMOUS;
     if (pte & X86_64_PTE_COW) flags |= PMAP_COPY_ON_WRITE;
     if (!x86_64_cpu_features.nx || (pte & X86_64_PTE_NX) == 0) flags |= PMAP_EXECUTABLE;
