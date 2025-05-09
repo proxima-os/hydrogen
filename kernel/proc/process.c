@@ -469,11 +469,6 @@ static void do_unlock_two(pgroup_t *a, pgroup_t *b) {
 int setpgid(process_t *process, int pgid) {
     if (pgid < 0) return EINVAL;
 
-    /*if (process != current_thread->process) {
-        if (rcu_read(process->parent) != current_thread->process) return ESRCH;
-        if (__atomic_load_n(&process->did_exec, __ATOMIC_ACQUIRE)) return EACCES;
-    }*/
-
     rcu_state_t state = rcu_read_lock();
     session_t *own_session = rcu_read(current_thread->process->group)->session;
     session_ref(own_session);

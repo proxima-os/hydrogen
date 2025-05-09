@@ -20,6 +20,7 @@ kernel_sources += files(
     'proc/sched.c',
     'sys/handle.c',
     'sys/memory.c',
+    'sys/process.c',
     'sys/syscall.c',
     'sys/thread.c',
     'sys/time.c',

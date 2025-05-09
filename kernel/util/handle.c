@@ -276,6 +276,7 @@ int namespace_add(
     }
 
     rcu_write(ns->data[handle], new_data);
+    obj_ref(object);
     mutex_rel(&ns->update_lock);
     rcu_sync();
 

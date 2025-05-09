@@ -3,6 +3,7 @@ vdso_sources += files(
     'assert.c',
     'handle.c',
     'memory.c',
+    'process.c',
     'start.c',
     'thread.c',
     'time.c',
