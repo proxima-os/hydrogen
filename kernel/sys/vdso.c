@@ -6,7 +6,6 @@
 #include "mem/pmap.h"
 #include "mem/vmm.h"
 #include "sections.h"
-#include "util/object.h"
 #include <stdint.h>
 
 extern const void __vdso_start, __vdso_end;
@@ -44,5 +43,5 @@ INIT_TEXT void vdso_init(void) {
     vdso_size = &__vdso_end - &__vdso_start;
     ASSERT((vdso_size & PAGE_MASK) == 0);
 
-    obj_init(&vdso_object.base, OBJECT_MEMORY);
+    mem_object_init(&vdso_object);
 }

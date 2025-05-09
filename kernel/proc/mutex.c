@@ -97,3 +97,24 @@ done:
     spin_rel_noirq(&mutex->lock);
     preempt_unlock(state);
 }
+
+int rmutex_acq(rmutex_t *mutex, uint64_t deadline, bool interruptible) {
+    if (__atomic_load_n(&mutex->owner, __ATOMIC_ACQUIRE) == current_thread) {
+        mutex->levels += 1;
+        return 0;
+    }
+
+    int error = mutex_acq(&mutex->base, deadline, interruptible);
+    if (unlikely(error)) return error;
+
+    __atomic_store_n(&mutex->owner, current_thread, __ATOMIC_RELEASE);
+    mutex->levels = 1;
+    return 0;
+}
+
+void rmutex_rel(rmutex_t *mutex) {
+    if (--mutex->levels != 0) return;
+
+    __atomic_store_n(&mutex->owner, NULL, __ATOMIC_RELEASE);
+    mutex_rel(&mutex->base);
+}

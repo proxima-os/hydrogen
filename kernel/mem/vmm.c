@@ -414,10 +414,10 @@ int vmm_clone(vmm_t **out, vmm_t *src) {
     int error = vmm_create(&vmm);
     if (unlikely(error)) return error;
 
-    mutex_acq(&src->lock, 0, false);
+    rmutex_acq(&src->lock, 0, false);
 
     if (src->num_reserved != 0 && unlikely(!pmem_reserve(src->num_reserved))) {
-        mutex_rel(&src->lock);
+        rmutex_rel(&src->lock);
         obj_deref(&vmm->base);
         return ENOMEM;
     }
@@ -426,7 +426,7 @@ int vmm_clone(vmm_t **out, vmm_t *src) {
     vmm->num_reserved = src->num_reserved;
 
     error = clone_regions(vmm, src);
-    mutex_rel(&src->lock);
+    rmutex_rel(&src->lock);
     if (unlikely(error)) {
         obj_deref(&vmm->base);
         return error;
@@ -797,7 +797,7 @@ hydrogen_ret_t vmm_map(
         return ret_error(EINVAL);
     }
 
-    mutex_acq(&vmm->lock, 0, false);
+    rmutex_acq(&vmm->lock, 0, false);
 
     int error = try_map_exact(vmm, hint, size, flags, object, rights, offset);
     if (error == 0 || (flags & HYDROGEN_MEM_EXACT) != 0) goto ret;
@@ -809,15 +809,15 @@ hydrogen_ret_t vmm_map(
 
     error = do_map(vmm, head, tail, flags, object, rights, offset, prev, next);
 ret:
-    mutex_rel(&vmm->lock);
+    rmutex_rel(&vmm->lock);
     return RET_MAYBE(integer, error, head);
 }
 
 hydrogen_ret_t vmm_map_vdso(vmm_t *vmm) {
-    mutex_acq(&vmm->lock, 0, false);
+    rmutex_acq(&vmm->lock, 0, false);
 
     if (vmm->vdso_addr != 0) {
-        mutex_rel(&vmm->lock);
+        rmutex_rel(&vmm->lock);
         return ret_error(EINVAL);
     }
 
@@ -839,7 +839,7 @@ hydrogen_ret_t vmm_map_vdso(vmm_t *vmm) {
     );
     if (likely(error == 0)) __atomic_store_n(&vmm->vdso_addr, head + vdso_image_offset, __ATOMIC_RELAXED);
 ret:
-    mutex_rel(&vmm->lock);
+    rmutex_rel(&vmm->lock);
     return RET_MAYBE(integer, error, head + vdso_image_offset);
 }
 
@@ -1045,13 +1045,13 @@ int vmm_remap(vmm_t *vmm, uintptr_t address, size_t size, unsigned flags) {
     uintptr_t tail = address + (size - 1);
     if (unlikely(address > tail)) tail = UINTPTR_MAX;
 
-    mutex_acq(&vmm->lock, 0, false);
+    rmutex_acq(&vmm->lock, 0, false);
 
     vmm_region_t *prev, *next;
     get_nonoverlap_bounds(vmm, address, tail, &prev, &next);
 
     int error = do_remap(vmm, prev, next, address, tail, flags);
-    mutex_rel(&vmm->lock);
+    rmutex_rel(&vmm->lock);
     return error;
 }
 
@@ -1105,13 +1105,13 @@ hydrogen_ret_t vmm_move(
     }
 
     if (vmm == dest_vmm) {
-        mutex_acq(&vmm->lock, 0, false);
+        rmutex_acq(&vmm->lock, 0, false);
     } else if ((uintptr_t)vmm < (uintptr_t)dest_vmm) {
-        mutex_acq(&vmm->lock, 0, false);
-        mutex_acq(&dest_vmm->lock, 0, false);
+        rmutex_acq(&vmm->lock, 0, false);
+        rmutex_acq(&dest_vmm->lock, 0, false);
     } else {
-        mutex_acq(&dest_vmm->lock, 0, false);
-        mutex_acq(&vmm->lock, 0, false);
+        rmutex_acq(&dest_vmm->lock, 0, false);
+        rmutex_acq(&vmm->lock, 0, false);
     }
 
     vmm_region_t *dst_prev, *dst_next;
@@ -1194,13 +1194,13 @@ hydrogen_ret_t vmm_move(
 
 ret:
     if (vmm == dest_vmm) {
-        mutex_rel(&vmm->lock);
+        rmutex_rel(&vmm->lock);
     } else if ((uintptr_t)vmm < (uintptr_t)dest_vmm) {
-        mutex_rel(&dest_vmm->lock);
-        mutex_rel(&vmm->lock);
+        rmutex_rel(&dest_vmm->lock);
+        rmutex_rel(&vmm->lock);
     } else {
-        mutex_rel(&vmm->lock);
-        mutex_rel(&dest_vmm->lock);
+        rmutex_rel(&vmm->lock);
+        rmutex_rel(&dest_vmm->lock);
     }
 
     return RET_MAYBE(integer, error, dest_addr);
@@ -1213,13 +1213,13 @@ int vmm_unmap(vmm_t *vmm, uintptr_t address, size_t size) {
     uintptr_t tail = address + (size - 1);
     if (unlikely(address > tail)) tail = UINTPTR_MAX;
 
-    mutex_acq(&vmm->lock, 0, false);
+    rmutex_acq(&vmm->lock, 0, false);
 
     vmm_region_t *prev, *next;
     get_nonoverlap_bounds(vmm, address, tail, &prev, &next);
 
     int error = remove_overlapping_regions(vmm, &prev, &next, address, tail);
-    mutex_rel(&vmm->lock);
+    rmutex_rel(&vmm->lock);
     return error;
 }
 
@@ -1231,4 +1231,11 @@ vmm_region_t *vmm_get_region(vmm_t *vmm, uintptr_t address) {
         if (cur->head <= address && address <= cur->tail) return cur;
         cur = address < cur->head ? cur->left : cur->right;
     }
+}
+
+void mem_object_init(mem_object_t *object) {
+    static uint64_t next_id = 1;
+
+    obj_init(&object->base, OBJECT_MEMORY);
+    object->id = __atomic_fetch_add(&next_id, 1, __ATOMIC_RELAXED);
 }

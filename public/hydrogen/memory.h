@@ -198,6 +198,29 @@ int hydrogen_vmm_read(int vmm, void *buffer, uintptr_t address, size_t size) __a
  */
 int hydrogen_vmm_write(int vmm, const void *buffer, uintptr_t address, size_t size) __asm__("__hydrogen_vmm_write");
 
+/**
+ * Wait on a memory location.
+ *
+ * This function atomically verifies that `location` still holds `expected` and, if so, goes to sleep. If the value
+ * does not match, the function immediately returns #EAGAIN.
+ *
+ * \param[in] location The location to wait on. Must be aligned to a 4-byte boundary.
+ * \param[in] expected The value expected to be at `location`.
+ * \param[in] deadline The boot time value after which this operation will return #ETIMEDOUT. If zero, wait forever.
+ * \result 0, if woken up by #hydrogen_memory_wake; if not, an error code.
+ */
+int hydrogen_memory_wait(uint32_t *location, uint32_t expected, uint64_t deadline) __asm__("__hydrogen_memory_wait");
+
+/**
+ * Wake threads sleeping in #hydrogen_memory_wait.
+ *
+ * \param[in] location The location whose waiters should be woken up. Must be aligned to a 4-byte boundary.
+ * \param[in] count The maximum number of threads to wake up. If zero, all threads are awoken.
+ * \return The number of threads that have been awoken (in `integer`), if successful; if not,
+ *         an error code (in `error`).
+ */
+hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) __asm__("__hydrogen_memory_wake");
+
 #ifdef __cplusplus
 };
 #endif

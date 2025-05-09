@@ -9,7 +9,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-typedef struct {
+typedef struct page {
     bool is_free : 1;
     union {
         struct {
@@ -23,6 +23,7 @@ typedef struct {
         } slab;
         struct {
             size_t references; // used as a leaf counter in page table pages
+            uint64_t id;
             shlist_node_t free_node;
             mutex_t deref_lock; // see copy_mapping in pmap.c for an explanation of why this is necessary
             bool autounreserve : 1;
@@ -30,6 +31,8 @@ typedef struct {
         } anon;
     };
 } __attribute__((aligned(64))) page_t;
+
+_Static_assert(sizeof(page_t) == 64, "page_t too large");
 
 extern uintptr_t hhdm_base;
 extern uintptr_t page_array_base;

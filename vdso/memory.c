@@ -41,3 +41,11 @@ EXPORT int hydrogen_vmm_read(int vmm, void *buffer, uintptr_t address, size_t si
 EXPORT int hydrogen_vmm_write(int vmm, const void *buffer, uintptr_t address, size_t size) {
     return SYSCALL4(SYSCALL_VMM_WRITE, vmm, buffer, address, size).error;
 }
+
+EXPORT int hydrogen_memory_wait(uint32_t *location, uint32_t expected, uint64_t deadline) {
+    return SYSCALL3(SYSCALL_MEMORY_WAIT, location, expected, deadline).error;
+}
+
+EXPORT hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) {
+    return SYSCALL2(SYSCALL_MEMORY_WAKE, location, count);
+}

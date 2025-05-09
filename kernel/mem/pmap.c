@@ -977,6 +977,52 @@ void pmap_unmap(vmm_t *vmm, uintptr_t virt, size_t size) {
     if (!vmm) mutex_rel(&kernel_pt_lock);
 }
 
+typedef struct {
+    size_t root_index;
+    pte_t root_pte;
+    void *table;
+    unsigned level;
+    size_t index;
+    pte_t pte;
+} get_pte_result_t;
+
+static bool get_pte(get_pte_result_t *out, void *root, uintptr_t address) {
+    out->table = root;
+    out->level = arch_pt_levels() - 1;
+    out->index = arch_pt_get_index(address, out->level);
+    out->pte = arch_pt_read(root, out->level, out->index);
+
+    out->root_index = out->index;
+    out->root_pte = out->pte;
+
+    for (;;) {
+        if (unlikely(out->pte == 0)) return false;
+#if PT_PREPARE_DEBUG
+        if (unlikely(out->pte == ARCH_PT_PREPARE_PTE)) return false;
+#endif
+        if (out->level == 0 || !arch_pt_is_edge(out->level, out->pte)) return true;
+
+        out->table = arch_pt_edge_target(out->level, out->pte);
+        out->level -= 1;
+        out->index = arch_pt_get_index(address, out->level);
+        out->pte = arch_pt_read(out->table, out->level, out->index);
+    }
+}
+
+struct page *pmap_get_mapping(struct vmm *vmm, uintptr_t virt) {
+    ASSERT(vmm != NULL);
+    ASSERT(arch_pt_is_canonical(virt));
+    ASSERT(!is_kernel_address(virt));
+
+    get_pte_result_t result = {};
+    if (unlikely(!get_pte(&result, vmm->pmap.table, virt))) return NULL;
+
+    int flags = arch_pt_get_leaf_flags(result.level, result.pte);
+    if (unlikely((flags & PMAP_ANONYMOUS) == 0)) return NULL;
+
+    return phys_to_page(arch_pt_leaf_target(result.level, result.pte));
+}
+
 INIT_TEXT static void do_early_map(
         void *table,
         unsigned level,
@@ -1163,38 +1209,6 @@ static const char *type_to_string(pmap_fault_type_t type) {
     }
 }
 
-typedef struct {
-    size_t root_index;
-    pte_t root_pte;
-    void *table;
-    unsigned level;
-    size_t index;
-    pte_t pte;
-} get_pte_result_t;
-
-static bool get_pte(get_pte_result_t *out, void *root, uintptr_t address) {
-    out->table = root;
-    out->level = arch_pt_levels() - 1;
-    out->index = arch_pt_get_index(address, out->level);
-    out->pte = arch_pt_read(root, out->level, out->index);
-
-    out->root_index = out->index;
-    out->root_pte = out->pte;
-
-    for (;;) {
-        if (unlikely(out->pte == 0)) return false;
-#if PT_PREPARE_DEBUG
-        if (unlikely(out->pte == ARCH_PT_PREPARE_PTE)) return false;
-#endif
-        if (out->level == 0 || !arch_pt_is_edge(out->level, out->pte)) return true;
-
-        out->table = arch_pt_edge_target(out->level, out->pte);
-        out->level -= 1;
-        out->index = arch_pt_get_index(address, out->level);
-        out->pte = arch_pt_read(out->table, out->level, out->index);
-    }
-}
-
 static bool is_access_allowed(unsigned level, pte_t pte, pmap_fault_type_t type) {
     unsigned flags = arch_pt_get_leaf_flags(level, pte);
 
@@ -1234,6 +1248,8 @@ static bool region_allows_access(vmm_region_t *region, pmap_fault_type_t type) {
 }
 
 static page_t *alloc_page_for_user_mapping(vmm_t *vmm, vmm_region_t *region) {
+    static uint64_t next_id;
+
     page_t *page;
 
     if ((region->flags & HYDROGEN_MEM_LAZY_RESERVE) == 0) {
@@ -1248,6 +1264,7 @@ static page_t *alloc_page_for_user_mapping(vmm_t *vmm, vmm_region_t *region) {
 
     memset(&page->anon.deref_lock, 0, sizeof(page->anon.deref_lock));
     page->anon.references = 1;
+    page->anon.id = __atomic_fetch_add(&next_id, 1, __ATOMIC_RELAXED);
     page->anon.is_page_table = false;
     return page;
 }
@@ -1459,9 +1476,9 @@ static void handle_user_fault(
     ASSERT(vmm != NULL);
     ASSERT(&vmm->pmap == this_cpu_read_tl(pmap.current));
 
-    mutex_acq(&vmm->lock, 0, false);
+    rmutex_acq(&vmm->lock, 0, false);
     do_handle_user_fault(context, vmm, pc, address, type, flags);
-    mutex_rel(&vmm->lock);
+    rmutex_rel(&vmm->lock);
 }
 
 void pmap_handle_page_fault(

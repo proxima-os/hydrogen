@@ -11,5 +11,14 @@ typedef struct {
     spinlock_t lock;
 } mutex_t;
 
+typedef struct {
+    mutex_t base;
+    struct thread *owner;
+    size_t levels;
+} rmutex_t;
+
 int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible);
 void mutex_rel(mutex_t *mutex);
+
+int rmutex_acq(rmutex_t *mutex, uint64_t deadline, bool interruptible);
+void rmutex_rel(rmutex_t *mutex);

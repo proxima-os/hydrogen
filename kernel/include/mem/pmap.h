@@ -8,6 +8,7 @@
 #include <stdint.h>
 
 struct cpu;
+struct page;
 struct vmm;
 
 typedef struct {
@@ -47,6 +48,7 @@ void pmap_remap(struct vmm *vmm, uintptr_t virt, size_t size, int flags);
 void pmap_clone(struct vmm *vmm, struct vmm *dest, uintptr_t virt, size_t size, bool cow);
 void pmap_move(struct vmm *svmm, uintptr_t src, struct vmm *dvmm, uintptr_t dest, size_t size); // undoes pmap_prepare
 void pmap_unmap(struct vmm *vmm, uintptr_t virt, size_t size);                                  // undoes pmap_prepare
+struct page *pmap_get_mapping(struct vmm *vmm, uintptr_t virt);
 
 void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags);
 void pmap_early_alloc(uintptr_t virt, size_t size, int flags);

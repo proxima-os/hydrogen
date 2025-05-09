@@ -5,11 +5,21 @@
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/return.h"
+#include "mem/memmap.h"
+#include "mem/pmap.h"
 #include "mem/usercopy.h"
+#include "mem/vmalloc.h"
 #include "mem/vmm.h"
+#include "proc/mutex.h"
+#include "proc/sched.h"
+#include "string.h"
 #include "sys/syscall.h"
 #include "util/handle.h"
+#include "util/hash.h"
+#include "util/hlist.h"
+#include "util/list.h"
 #include "util/object.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -232,4 +242,222 @@ int hydrogen_vmm_write(int vmm_hnd, const void *buffer, uintptr_t address, size_
 
     obj_deref(&vmm->base);
     return error;
+}
+
+typedef struct {
+    uint64_t obj_id;
+    uint64_t offset;
+} futex_address_t;
+
+// on success, the current vmm is locked
+static int get_futex_address(futex_address_t *out, uint32_t *location) {
+    uintptr_t address = (uintptr_t)location;
+
+    if (unlikely((address & 3) != 0)) return EINVAL;
+
+    int error = verify_user_buffer(address, sizeof(*location));
+    if (unlikely(error)) return error;
+
+    vmm_t *vmm = current_thread->vmm;
+    rmutex_acq(&vmm->lock, 0, false);
+
+    vmm_region_t *region = vmm_get_region(vmm, address);
+
+    if (unlikely(!region)) {
+        rmutex_rel(&vmm->lock);
+        return EFAULT;
+    }
+
+    if (unlikely((region->flags & HYDROGEN_MEM_READ) == 0)) {
+        rmutex_rel(&vmm->lock);
+        return EFAULT;
+    }
+
+    if (region->object != NULL) {
+        out->obj_id = region->object->id;
+        out->offset = region->offset + (address - region->head);
+        return 0;
+    }
+
+    // this ensures the page is faulted in
+    uint32_t value;
+    error = user_memcpy(&value, location, sizeof(value));
+    if (unlikely(error)) {
+        rmutex_rel(&vmm->lock);
+        return error;
+    }
+
+    page_t *page = pmap_get_mapping(vmm, address);
+    ASSERT(page != NULL);
+
+    out->obj_id = ANON_OBJ_ID;
+    out->offset = (page->anon.id << PAGE_SHIFT) | (address & PAGE_MASK);
+
+    return 0;
+}
+
+typedef struct {
+    hlist_node_t node;
+    futex_address_t address;
+    uint64_t hash;
+    mutex_t lock;
+    list_t waiters;
+} futex_location_t;
+
+static hlist_t *futex_table;
+static size_t futex_table_cap;
+static size_t futex_table_cnt;
+static mutex_t futex_table_lock;
+
+static bool maybe_expand(void) {
+    if (futex_table_cnt < futex_table_cap - (futex_table_cap / 4)) return true;
+
+    size_t new_cap = futex_table_cap ? futex_table_cap * 2 : 8;
+    size_t new_siz = new_cap * sizeof(*futex_table);
+    hlist_t *new_table = vmalloc(new_siz);
+    if (unlikely(!new_table)) return false;
+    memset(new_table, 0, new_siz);
+
+    for (size_t i = 0; i < futex_table_cap; i++) {
+        for (;;) {
+            futex_location_t *location = HLIST_REMOVE_HEAD(futex_table[i], futex_location_t, node);
+            if (!location) break;
+            hlist_insert_head(&new_table[location->hash & (new_cap - 1)], &location->node);
+        }
+    }
+
+    vfree(futex_table, futex_table_cap * sizeof(*futex_table));
+    futex_table = new_table;
+    futex_table_cap = new_cap;
+    return true;
+}
+
+static futex_location_t *get_futex_location(futex_address_t *address, bool create) {
+    uint64_t hash = make_hash_blob(address, sizeof(*address));
+    futex_location_t *current;
+
+    if (futex_table_cap != 0) {
+        current = HLIST_HEAD(futex_table[hash & (futex_table_cap - 1)], futex_location_t, node);
+
+        while (current != NULL && (current->hash != hash && memcmp(&current->address, address, sizeof(*address)))) {
+            current = HLIST_NEXT(*current, futex_location_t, node);
+        }
+    } else {
+        current = NULL;
+    }
+
+    if (create && current == NULL) {
+        current = vmalloc(sizeof(*current));
+        if (unlikely(!current)) return current;
+
+        if (unlikely(!maybe_expand())) {
+            vfree(current, sizeof(*current));
+            return NULL;
+        }
+
+        memset(current, 0, sizeof(*current));
+        current->address = *address;
+        current->hash = hash;
+
+        hlist_insert_head(&futex_table[hash & (futex_table_cap - 1)], &current->node);
+    }
+
+    return current;
+}
+
+static void free_location_or_unlock(futex_location_t *location) {
+    if (list_empty(&location->waiters)) {
+        size_t bucket = location->hash & (futex_table_cap - 1);
+        hlist_remove(&futex_table[bucket], &location->node);
+        futex_table_cnt -= 1;
+        vfree(location, sizeof(*location));
+    } else {
+        mutex_rel(&location->lock);
+    }
+}
+
+int hydrogen_memory_wait(uint32_t *location, uint32_t expected, uint64_t deadline) {
+    futex_address_t addr;
+    int error = get_futex_address(&addr, location);
+    if (unlikely(error)) return error;
+
+    vmm_t *vmm = current_thread->vmm;
+    mutex_acq(&futex_table_lock, 0, false);
+
+    futex_location_t *loc = get_futex_location(&addr, true);
+
+    if (unlikely(!loc)) {
+        mutex_rel(&futex_table_lock);
+        rmutex_rel(&vmm->lock);
+        return ENOMEM;
+    }
+
+    mutex_acq(&loc->lock, 0, false);
+
+    uint32_t value;
+    error = user_memcpy(&value, location, sizeof(value));
+    if (unlikely(error)) {
+        free_location_or_unlock(loc);
+        mutex_rel(&futex_table_lock);
+        rmutex_rel(&vmm->lock);
+        return error;
+    }
+
+    if (unlikely(value != expected)) {
+        free_location_or_unlock(loc);
+        mutex_rel(&futex_table_lock);
+        rmutex_rel(&vmm->lock);
+        return EAGAIN;
+    }
+
+    list_insert_tail(&loc->waiters, &current_thread->wait_node);
+    sched_prepare_wait(true);
+    mutex_rel(&loc->lock);
+    mutex_rel(&futex_table_lock);
+    rmutex_rel(&vmm->lock);
+
+    error = sched_perform_wait(deadline);
+
+    // note: while it may seem like these locks can be avoided on success by making hydrogen_memory_wake
+    // remove the node, that's not the case; doing so would result in a race condition where this thread
+    // uses wait_node for something else before hydrogen_memory_wake has removed the node from the wait list
+    mutex_acq(&futex_table_lock, 0, false);
+    mutex_acq(&loc->lock, 0, false);
+    list_remove(&loc->waiters, &current_thread->wait_node);
+    free_location_or_unlock(loc);
+    mutex_rel(&futex_table_lock);
+
+    return error;
+}
+
+hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) {
+    futex_address_t addr;
+    int error = get_futex_address(&addr, location);
+    if (unlikely(error)) return ret_error(error);
+
+    vmm_t *vmm = current_thread->vmm;
+    mutex_acq(&futex_table_lock, 0, false);
+
+    futex_location_t *loc = get_futex_location(&addr, false);
+
+    if (unlikely(!loc)) {
+        mutex_rel(&futex_table_lock);
+        rmutex_rel(&vmm->lock);
+        return ret_integer(0);
+    }
+
+    mutex_acq(&loc->lock, 0, false);
+
+    size_t awoken = 0;
+    thread_t *waiter = LIST_HEAD(loc->waiters, thread_t, wait_node);
+
+    while ((count == 0 || awoken < count) && waiter != NULL) {
+        if (sched_wake(waiter)) awoken += 1;
+        waiter = LIST_NEXT(*waiter, thread_t, wait_node);
+    }
+
+    mutex_rel(&loc->lock);
+    mutex_rel(&futex_table_lock);
+    rmutex_rel(&vmm->lock);
+    return ret_integer(awoken);
 }

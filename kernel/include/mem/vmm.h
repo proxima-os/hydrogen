@@ -23,8 +23,11 @@ typedef struct {
     hydrogen_ret_t (*get_page)(mem_object_t *self, vmm_region_t *region, uint64_t offset);
 } mem_object_ops_t;
 
+#define ANON_OBJ_ID 0
+
 struct mem_object {
     object_t base;
+    uint64_t id;
     list_t regions;
     mutex_t regions_lock;
 };
@@ -47,7 +50,7 @@ struct vmm_region {
 
 struct vmm {
     object_t base;
-    mutex_t lock;
+    rmutex_t lock; // rmutex is used here for futexes: they need to be able to fault stuff in while holding the vmm lock
     pmap_t pmap;
     vmm_region_t *regtree;
     list_t regions;
@@ -86,3 +89,6 @@ int vmm_unmap(vmm_t *vmm, uintptr_t address, size_t size);
 
 // vmm must be locked!
 vmm_region_t *vmm_get_region(vmm_t *vmm, uintptr_t address);
+
+// expects object->base.ops to be set
+void mem_object_init(mem_object_t *object);
