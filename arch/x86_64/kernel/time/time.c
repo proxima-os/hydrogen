@@ -2,6 +2,7 @@
 #include "cpu/cpudata.h"
 #include "kernel/compiler.h"
 #include "kernel/time.h"
+#include "kernel/vdso.h"
 #include "proc/sched.h"
 #include "sections.h"
 #include "util/panic.h"
@@ -28,7 +29,6 @@ uint64_t (*x86_64_timer_get_tsc)(uint64_t);
 INIT_DATA void (*x86_64_timer_cleanup)(void);
 INIT_DATA void (*x86_64_timer_confirm)(bool) = no_time_confirm;
 timeconv_t x86_64_ns2lapic_conv;
-uint64_t x86_64_time_offset;
 
 INIT_TEXT void x86_64_time_init(void) {
     x86_64_hpet_init();
@@ -36,7 +36,7 @@ INIT_TEXT void x86_64_time_init(void) {
     x86_64_tsc_init();
     if (x86_64_timer_confirm) x86_64_timer_confirm(true);
 
-    x86_64_time_offset = x86_64_read_time();
+    vdso_info.arch.time_offset = x86_64_read_time();
     x86_64_time_init_local();
 }
 
@@ -90,7 +90,7 @@ void x86_64_handle_timer(void) {
 void arch_queue_timer_irq(uint64_t deadline) {
     if (deadline != 0) {
         if (x86_64_cpu_features.tsc_deadline) {
-            x86_64_wrmsr(X86_64_MSR_TSC_DEADLINE, x86_64_timer_get_tsc(deadline + x86_64_time_offset));
+            x86_64_wrmsr(X86_64_MSR_TSC_DEADLINE, x86_64_timer_get_tsc(deadline + vdso_info.arch.time_offset));
         } else {
             this_cpu_write(arch.deadline, deadline);
             start_lapic_for_deadline(arch_read_time(), deadline);

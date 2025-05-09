@@ -3,6 +3,7 @@
 #include "kernel/time.h"
 #include "kernel/x86_64/kvmclock.h"
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef enum {
     X86_64_TIME_SYSCALL,
@@ -13,6 +14,7 @@ typedef enum {
 typedef struct {
     kvmclock_info_t kvmclock;
     timeconv_t tsc2ns_conv;
+    uint64_t time_offset;
     x86_64_time_source_t time_source;
     bool fsgsbase : 1;
 } arch_vdso_info_t;

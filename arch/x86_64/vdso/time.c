@@ -18,7 +18,7 @@ static int64_t real_time_syscall(void) {
 }
 
 static uint64_t boot_time_kvmclock(void) {
-    return x86_64_read_kvmclock(&vdso_info.arch.kvmclock);
+    return x86_64_read_kvmclock(&vdso_info.arch.kvmclock) - vdso_info.arch.time_offset;
 }
 
 static int64_t real_time_kvmclock(void) {
@@ -26,7 +26,7 @@ static int64_t real_time_kvmclock(void) {
 }
 
 static uint64_t boot_time_tsc(void) {
-    return timeconv_apply(vdso_info.arch.tsc2ns_conv, x86_64_read_tsc());
+    return timeconv_apply(vdso_info.arch.tsc2ns_conv, x86_64_read_tsc()) - vdso_info.arch.time_offset;
 }
 
 static int64_t real_time_tsc(void) {
