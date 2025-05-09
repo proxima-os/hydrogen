@@ -11,6 +11,7 @@
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
 #include "string.h"
+#include "sys/vdso.h"
 #include "util/list.h"
 #include "util/object.h"
 #include <stdint.h>
@@ -484,6 +485,20 @@ static int remove_overlapping_regions(
 
     vmm_region_t *cur = get_next(vmm, prev);
 
+    // check for errors before actually doing anything
+    while (cur != next) {
+        ASSERT(cur);
+        ASSERT(cur->head <= tail && cur->tail >= head);
+
+        if (cur->object == &vdso_object) {
+            return EACCES;
+        }
+
+        cur = LIST_NEXT(*cur, vmm_region_t, node);
+    }
+
+    cur = get_next(vmm, prev);
+
     while (cur != next) {
         ASSERT(cur);
         ASSERT(cur->head <= tail && cur->tail >= head);
@@ -798,6 +813,10 @@ static int split_to_exact(
     while (cur != next) {
         ASSERT(cur);
         ASSERT(cur->head <= tail && cur->tail >= head);
+
+        if (cur->object == &vdso_object) {
+            return EACCES;
+        }
 
         int ret = check_cb(cur, ctx);
         if (unlikely(ret < 0)) return -ret;
