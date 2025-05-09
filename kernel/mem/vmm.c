@@ -1,5 +1,6 @@
 #include "mem/vmm.h"
 #include "arch/pmap.h"
+#include "cpu/cpudata.h"
 #include "errno.h"
 #include "hydrogen/memory.h"
 #include "hydrogen/types.h"
@@ -10,6 +11,7 @@
 #include "mem/pmem.h"
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
+#include "proc/sched.h"
 #include "string.h"
 #include "sys/vdso.h"
 #include "util/list.h"
@@ -432,6 +434,19 @@ int vmm_clone(vmm_t **out, vmm_t *src) {
 
     *out = vmm;
     return 0;
+}
+
+vmm_t *vmm_switch(vmm_t *vmm) {
+    vmm_t *orig = current_thread->vmm;
+    current_thread->vmm = vmm;
+
+    if (vmm != NULL) {
+        preempt_state_t state = preempt_lock();
+        pmap_switch(&vmm->pmap);
+        preempt_unlock(state);
+    }
+
+    return orig;
 }
 
 static void get_nonoverlap_bounds(
@@ -1114,6 +1129,7 @@ hydrogen_ret_t vmm_move(
     }
 
     vmm_region_t *extra_region;
+    size_t extra;
 
     if (size < dest_size) {
         extra_region = vmalloc(sizeof(*extra_region));
@@ -1121,6 +1137,15 @@ hydrogen_ret_t vmm_move(
             error = ENOMEM;
             goto ret;
         }
+
+        extra = (dest_size - size) >> PAGE_SHIFT;
+        if (unlikely(!pmem_reserve(extra))) {
+            vfree(extra_region, sizeof(*extra_region));
+            error = ENOMEM;
+            goto ret;
+        }
+    } else {
+        extra = 0;
     }
 
     vmm_region_t *prev, *next;
@@ -1128,7 +1153,15 @@ hydrogen_ret_t vmm_move(
 
     struct move_ctx ctx = {};
     error = split_to_exact(vmm, prev, next, addr, tail, move_check_cb, move_skip_cb, move_final_cb, &ctx);
-    if (unlikely(error)) goto ret;
+
+    if (unlikely(error)) {
+        if (extra != 0) {
+            pmem_unreserve(extra);
+            vfree(extra_region, sizeof(*extra_region));
+        }
+
+        goto ret;
+    }
 
     // get bounds again since the pointers may have changed in split_to_exact
     get_nonoverlap_bounds(dest_vmm, dest_addr, dest_tail, &dst_prev, &dst_next);
@@ -1150,7 +1183,8 @@ hydrogen_ret_t vmm_move(
         ctx.first = next;
     }
 
-    if (size < dest_size) {
+    if (extra != 0) {
+        memset(extra_region, 0, sizeof(*extra_region));
         extra_region->vmm = dest_vmm;
         extra_region->head = dest_addr + size;
         extra_region->tail = dest_tail;

@@ -33,9 +33,9 @@ extern "C" {
  * - #HYDROGEN_NAMESPACE_REMOVE
  * - #HYDROGEN_NAMESPACE_RESOLVE
  */
-#define HYDROGEN_THIS_NAMESPACE (-1)
+#define HYDROGEN_THIS_NAMESPACE (-2)
 
-#define HYDROGEN_FREE_HANDLE (-1) /**< See #hydrogen_namespace_add. */
+#define HYDROGEN_INVALID_HANDLE (-1) /**< The handle equivalent of `NULL`. */
 
 /**
  * Create an empty namespace.
@@ -67,7 +67,7 @@ int hydrogen_namespace_clone(int ns, uint32_t flags) __asm__("__hydrogen_namespa
  *                   Requires #HYDROGEN_NAMESPACE_ADD and, if `dst_obj` already points to an object,
  *                   #HYDROGEN_NAMESPACE_REMOVE.
  * \param[in] dst_hnd The new handle. If this handle already points to an object, the handle is removed first.
- *                    If this is #HYDROGEN_FREE_HANDLE, a handle is allocated like normal.
+ *                    If this is #HYDROGEN_INVALID_HANDLE, a handle is allocated like normal.
  * \param[in] rights The rights that the new handle should have. This is masked with the rights of `src_obj`, so this
  *                   function can only remove rights, not add them.
  * \param[in] flags The flags that should be set on the returned handle.

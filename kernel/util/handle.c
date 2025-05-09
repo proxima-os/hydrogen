@@ -230,7 +230,7 @@ int namespace_add(
         object_rights_t rights,
         uint32_t flags
 ) {
-    ASSERT(handle >= 0 || handle == HYDROGEN_FREE_HANDLE);
+    ASSERT(handle >= 0 || handle == HYDROGEN_INVALID_HANDLE);
     ASSERT((flags & ~HANDLE_FLAGS) == 0);
     ASSERT(object->type != OBJECT_NAMESPACE || (flags & NS_ILL_FLAGS) == 0);
 
@@ -245,7 +245,7 @@ int namespace_add(
 
     handle_data_t *old_data;
 
-    if (handle == HYDROGEN_FREE_HANDLE) {
+    if (handle == HYDROGEN_INVALID_HANDLE) {
         handle = get_next_handle(ns);
 
         if (unlikely(handle < 0)) {

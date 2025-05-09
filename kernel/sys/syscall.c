@@ -1,8 +1,10 @@
 #include "sys/syscall.h"
 #include "arch/context.h"
+#include "arch/pmap.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "hydrogen/handle.h"
+#include "hydrogen/memory.h"
 #include "hydrogen/thread.h"
 #include "hydrogen/time.h"
 #include "hydrogen/types.h"
@@ -50,10 +52,27 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
         int error = hydrogen_namespace_resolve(a0, a1, &rights, &flags);
         return RET_MAYBE(integer, error, (flags << 16) | rights);
     }
+    case SYSCALL_VMM_CREATE: return ret_error(hydrogen_vmm_create(a0));
+    case SYSCALL_VMM_CLONE: return ret_error(hydrogen_vmm_clone(a0, a1));
+    case SYSCALL_VMM_MAP: return hydrogen_vmm_map(a0, a1, a2, a3, a4, a5);
+    case SYSCALL_VMM_REMAP: return ret_error(hydrogen_vmm_remap(a0, a1, a2, a3));
+    case SYSCALL_VMM_UNMAP: return ret_error(hydrogen_vmm_unmap(a0, a1, a2));
+    case SYSCALL_VMM_READ: return ret_error(hydrogen_vmm_read(a0, (void *)a1, a2, a3));
+    case SYSCALL_VMM_WRITE: return ret_error(hydrogen_vmm_write(a0, (const void *)a1, a2, a3));
     default: return ret_error(ENOSYS);
     }
 }
 
 void do_syscall(ssize_t id, size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5) {
     arch_context_set_syscall_return(current_thread->user_ctx, dispatch(id, a0, a1, a2, a3, a4, a5));
+}
+
+int verify_user_buffer(uintptr_t start, size_t size) {
+    if (unlikely(size == 0)) return 0;
+
+    uintptr_t tail = start + (size - 1);
+    if (unlikely(tail < start)) return EFAULT;
+    if (unlikely(tail > arch_pt_max_user_addr())) return EFAULT;
+
+    return 0;
 }

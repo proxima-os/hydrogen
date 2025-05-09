@@ -19,8 +19,8 @@ typedef struct vmm vmm_t;
 
 typedef struct {
     object_ops_t base;
-    void (*post_map)(mem_object_t *self, vmm_t *vmm, uintptr_t head, uintptr_t tail, unsigned flags, size_t offset);
-    hydrogen_ret_t (*get_page)(mem_object_t *self, vmm_region_t *region, size_t offset);
+    void (*post_map)(mem_object_t *self, vmm_t *vmm, uintptr_t head, uintptr_t tail, unsigned flags, uint64_t offset);
+    hydrogen_ret_t (*get_page)(mem_object_t *self, vmm_region_t *region, uint64_t offset);
 } mem_object_ops_t;
 
 struct mem_object {
@@ -41,7 +41,7 @@ struct vmm_region {
     unsigned flags;
     mem_object_t *object;
     object_rights_t rights;
-    size_t offset;
+    uint64_t offset;
     list_node_t object_node;
 };
 
@@ -60,6 +60,9 @@ struct vmm {
 int vmm_create(vmm_t **out);
 int vmm_clone(vmm_t **out, vmm_t *src);
 
+// WARNING: This does not increase vmm's ref count! You must do that yourself.
+vmm_t *vmm_switch(vmm_t *vmm);
+
 hydrogen_ret_t vmm_map(
         vmm_t *vmm,
         uintptr_t hint,
@@ -67,7 +70,7 @@ hydrogen_ret_t vmm_map(
         unsigned flags,
         mem_object_t *object,
         object_rights_t rights,
-        size_t offset
+        uint64_t offset
 );
 hydrogen_ret_t vmm_map_vdso(vmm_t *vmm);
 int vmm_remap(vmm_t *vmm, uintptr_t address, size_t size, unsigned flags);

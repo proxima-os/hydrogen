@@ -44,7 +44,7 @@ static inline int hnd_alloc(object_t *object, object_rights_t rights, uint32_t f
     return namespace_add(
             current_thread->namespace,
             HYDROGEN_NAMESPACE_ADD,
-            HYDROGEN_FREE_HANDLE,
+            HYDROGEN_INVALID_HANDLE,
             object,
             rights,
             flags

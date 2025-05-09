@@ -38,7 +38,7 @@ static void launch_init_process(void *ctx) {
 
     error = vmm_create(&current_thread->vmm);
     if (unlikely(error)) panic("failed to create init process vmm (%e)", error);
-    pmap_switch(&current_thread->vmm->pmap);
+    vmm_switch(current_thread->vmm);
 
     error = setsid(current_thread->process);
     if (unlikely(error < 0)) panic("failed to create init session (%e)", -error);

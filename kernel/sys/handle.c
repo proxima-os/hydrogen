@@ -63,7 +63,7 @@ int hydrogen_namespace_add(
 ) {
     if (unlikely(src_obj_hnd < 0)) return -EBADF;
     if (dst_ns_hnd < 0 && unlikely(dst_hnd != HYDROGEN_THIS_NAMESPACE)) return -EINVAL;
-    if (dst_hnd < 0 && unlikely(dst_hnd != HYDROGEN_FREE_HANDLE)) return -EINVAL;
+    if (dst_hnd < 0 && unlikely(dst_hnd != HYDROGEN_INVALID_HANDLE)) return -EINVAL;
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return -EINVAL;
 
     namespace_t *src_ns;
