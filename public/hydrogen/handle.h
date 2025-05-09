@@ -1,6 +1,9 @@
 /** \file
  * Definitions for handle management.
  *
+ * Handles are, effectively, pointers to kernel objects. Each handle also has flags that affect some aspects of system
+ * behavior, as well as a rights bitmask that specifies what operations are allowed using the handle.
+ *
  * # Handle allocation
  * All functions that create handles, with the exception of #hydrogen_namespace_add, return the lowest
  * free handle.
