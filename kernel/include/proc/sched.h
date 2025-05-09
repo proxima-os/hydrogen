@@ -15,6 +15,8 @@
 typedef bool preempt_state_t;
 typedef bool migrate_state_t;
 
+struct namespace;
+
 typedef enum {
     THREAD_CREATED,
     THREAD_RUNNING,
@@ -34,6 +36,7 @@ typedef struct thread {
     void *stack;
     vmm_t *vmm;
     process_t *process;
+    struct namespace *namespace;
     arch_context_t *user_ctx;
     list_node_t process_node;
     thread_state_t state;

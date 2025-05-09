@@ -8,6 +8,7 @@ typedef enum {
     OBJECT_MEMORY,
     OBJECT_THREAD,
     OBJECT_PROCESS,
+    OBJECT_NAMESPACE,
 } object_type_t;
 
 typedef struct object object_t;
@@ -22,7 +23,7 @@ struct object {
     object_type_t type;
 };
 
-typedef uint32_t object_rights_t;
+typedef uint16_t object_rights_t;
 
 // expects object->ops to be set
 void obj_init(object_t *object, object_type_t type);

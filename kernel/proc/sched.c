@@ -16,6 +16,7 @@
 #include "proc/rcu.h"
 #include "sections.h"
 #include "string.h"
+#include "util/handle.h"
 #include "util/list.h"
 #include "util/object.h"
 #include "util/panic.h"
@@ -46,6 +47,8 @@ static void reap_thread(thread_t *thread) {
 
     proc_thread_exit(thread->process, thread);
     obj_deref(&thread->process->base);
+
+    if (thread->namespace) obj_deref(&thread->namespace->base);
 
     thread->state = THREAD_EXITED;
 }

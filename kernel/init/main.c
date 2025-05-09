@@ -18,6 +18,7 @@
 #include "sections.h"
 #include "sys/transition.h"
 #include "sys/vdso.h"
+#include "util/handle.h"
 #include "util/object.h"
 #include "util/panic.h"
 #include "util/printk.h"
@@ -32,7 +33,10 @@ LIMINE_REQ LIMINE_BASE_REVISION(3);
 #define USER_STACK_SIZE 0x800000
 
 static void launch_init_process(void *ctx) {
-    int error = vmm_create(&current_thread->vmm);
+    int error = namespace_create(&current_thread->namespace);
+    if (unlikely(error)) panic("failed to create init process namespace (%e)", error);
+
+    error = vmm_create(&current_thread->vmm);
     if (unlikely(error)) panic("failed to create init process vmm (%e)", error);
     pmap_switch(&current_thread->vmm->pmap);
 
