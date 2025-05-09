@@ -25,7 +25,7 @@ extern "C" {
 
 /**
  * Pseudo-handle that refers to the current namespace.
- * Only valid in select functions, and may have a different meaning in others.
+ * Only valid as select function parameters, and may have a different meaning in others.
  *
  * This handle has the following rights (note that this list may expand in the future):
  * - #HYDROGEN_NAMESPACE_CLONE
@@ -84,7 +84,7 @@ int hydrogen_namespace_add(int src_ns, int src_obj, int dst_ns, int dst_hnd, uin
  * \param[in] handle The handle that should be removed.
  * \return 0, if successful; if not, an error code.
  */
-int hydrogen_namespace_remove(int ns, int handle);
+int hydrogen_namespace_remove(int ns, int handle) __asm__("__hydrogen_namespace_remove");
 
 /**
  * Resolve a handle.
