@@ -427,6 +427,7 @@ int vmm_clone(vmm_t **out, vmm_t *src) {
 
     vmm->num_mapped = src->num_mapped;
     vmm->num_reserved = src->num_reserved;
+    vmm->vdso_addr = src->vdso_addr;
 
     error = clone_regions(vmm, src);
     rmutex_rel(&src->lock);

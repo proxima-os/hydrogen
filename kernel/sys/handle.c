@@ -2,12 +2,12 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "kernel/compiler.h"
+#include "sys/handle.h"
 #include "util/handle.h"
 #include "util/object.h"
 #include <stdint.h>
 
-#define NAMESPACE_RIGHTS \
-    (HYDROGEN_NAMESPACE_RESOLVE | HYDROGEN_NAMESPACE_REMOVE | HYDROGEN_NAMESPACE_ADD | HYDROGEN_NAMESPACE_CLONE)
+#define NAMESPACE_RIGHTS THIS_NAMESPACE_RIGHTS
 
 int hydrogen_namespace_create(uint32_t flags) {
     if (unlikely((flags & ~(HANDLE_FLAGS & ~NS_ILL_FLAGS)) != 0)) return -EINVAL;
@@ -21,25 +21,11 @@ int hydrogen_namespace_create(uint32_t flags) {
     return ret;
 }
 
-static int resolve_or_this(namespace_t **out, int handle, object_rights_t rights) {
-    if (handle == HYDROGEN_THIS_NAMESPACE) {
-        *out = current_thread->namespace;
-        return 0;
-    }
-
-    handle_data_t data;
-    int error = hnd_resolve(&data, handle, OBJECT_NAMESPACE, rights);
-    if (unlikely(error)) return error;
-
-    *out = (namespace_t *)data.object;
-    return 0;
-}
-
 int hydrogen_namespace_clone(int ns_hnd, uint32_t flags) {
     if (unlikely((flags & ~(HANDLE_FLAGS & ~NS_ILL_FLAGS)) != 0)) return -EINVAL;
 
     namespace_t *src;
-    int ret = -resolve_or_this(&src, ns_hnd, HYDROGEN_NAMESPACE_CLONE);
+    int ret = -namespace_or_this(&src, ns_hnd, HYDROGEN_NAMESPACE_CLONE);
     if (unlikely(ret)) return ret;
 
     namespace_t *ns;
@@ -67,7 +53,7 @@ int hydrogen_namespace_add(
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return -EINVAL;
 
     namespace_t *src_ns;
-    int ret = -resolve_or_this(&src_ns, src_ns_hnd, HYDROGEN_NAMESPACE_RESOLVE);
+    int ret = -namespace_or_this(&src_ns, src_ns_hnd, HYDROGEN_NAMESPACE_RESOLVE);
     if (unlikely(ret)) return ret;
 
     namespace_t *dst_ns;
@@ -114,7 +100,7 @@ int hydrogen_namespace_remove(int ns_hnd, int handle) {
     if (unlikely(handle < 0)) return EBADF;
 
     namespace_t *ns;
-    int ret = resolve_or_this(&ns, ns_hnd, HYDROGEN_NAMESPACE_REMOVE);
+    int ret = namespace_or_this(&ns, ns_hnd, HYDROGEN_NAMESPACE_REMOVE);
     if (unlikely(ret)) return ret;
 
     ret = namespace_remove(ns, handle);
@@ -126,7 +112,7 @@ int hydrogen_namespace_resolve(int ns_hnd, int handle, uint32_t *rights, uint32_
     if (unlikely(handle < 0)) return EBADF;
 
     namespace_t *ns;
-    int ret = resolve_or_this(&ns, ns_hnd, HYDROGEN_NAMESPACE_RESOLVE);
+    int ret = namespace_or_this(&ns, ns_hnd, HYDROGEN_NAMESPACE_RESOLVE);
     if (unlikely(ret)) return ret;
 
     handle_data_t data;

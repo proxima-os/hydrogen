@@ -97,12 +97,22 @@ static bool expand_pids(void) {
     return true;
 }
 
-static int allocate_pid(process_t *process) {
+static int allocate_pid(process_t *process, thread_t *thread) {
+    ASSERT(process != NULL || thread != NULL);
+
     pid_t *pid = vmalloc(sizeof(*pid));
     if (unlikely(!pid)) return 0;
     memset(pid, 0, sizeof(*pid));
-    pid->process = process;
-    process->pid = pid;
+
+    if (process != NULL) {
+        pid->process = process;
+        process->pid = pid;
+    }
+
+    if (thread != NULL) {
+        pid->thread = thread;
+        thread->pid = pid;
+    }
 
     mutex_acq(&pids_update_lock, 0, false);
 
@@ -147,7 +157,7 @@ INIT_TEXT void proc_init(void) {
     obj_init(&kernel_process.base, OBJECT_PROCESS);
     init_pids();
 
-    int error = allocate_pid(&kernel_process);
+    int error = allocate_pid(&kernel_process, NULL);
     if (unlikely(error)) panic("proc: failed to allocate pid for kernel process (%e)", error);
 
     pid_t *pid = kernel_process.pid;
@@ -261,7 +271,7 @@ int proc_clone(process_t **out) {
     process->parent = current_thread->process;
     process->identity = ident_get(current_thread->process);
 
-    int error = allocate_pid(process);
+    int error = allocate_pid(process, NULL);
     if (unlikely(error)) {
         ident_deref(process->identity);
         vfree(process, sizeof(*process));
@@ -287,17 +297,25 @@ int proc_clone(process_t **out) {
     return 0;
 }
 
-void proc_thread_create(process_t *process, struct thread *thread) {
+int proc_thread_create(process_t *process, struct thread *thread) {
     mutex_acq(&process->threads_lock, 0, false);
 
     if (list_empty(&process->threads)) {
         thread->pid = process->pid;
         rcu_write(thread->pid->thread, thread);
+    } else if (process != &kernel_process) {
+        int error = allocate_pid(NULL, thread);
+
+        if (unlikely(error)) {
+            mutex_rel(&process->threads_lock);
+            return error;
+        }
     }
 
     list_insert_tail(&process->threads, &thread->process_node);
 
     mutex_rel(&process->threads_lock);
+    return 0;
 }
 
 // returns the parent process with its children_lock held

@@ -13,6 +13,7 @@
 #include "proc/mutex.h"
 #include "proc/sched.h"
 #include "string.h"
+#include "sys/memory.h"
 #include "sys/syscall.h"
 #include "util/handle.h"
 #include "util/hash.h"
@@ -23,9 +24,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define VMM_RIGHTS                                                                                         \
-    (HYDROGEN_VMM_CLONE | HYDROGEN_VMM_MAP | HYDROGEN_VMM_REMAP | HYDROGEN_VMM_UNMAP | HYDROGEN_VMM_READ | \
-     HYDROGEN_VMM_WRITE)
+#define VMM_RIGHTS THIS_VMM_RIGHTS
 
 const size_t hydrogen_page_size = PAGE_SIZE;
 
@@ -41,24 +40,11 @@ int hydrogen_vmm_create(uint32_t flags) {
     return ret;
 }
 
-static int resolve_or_this(vmm_t **out, int handle, object_rights_t rights) {
-    if (handle == HYDROGEN_THIS_VMM) {
-        *out = current_thread->vmm;
-        return 0;
-    } else {
-        handle_data_t data;
-        int error = hnd_resolve(&data, handle, OBJECT_VMM, rights);
-        if (unlikely(error)) return error;
-        *out = (vmm_t *)data.object;
-        return 0;
-    }
-}
-
 int hydrogen_vmm_clone(int vmm_hnd, uint32_t flags) {
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return -EINVAL;
 
     vmm_t *src;
-    int ret = -resolve_or_this(&src, vmm_hnd, HYDROGEN_VMM_CLONE);
+    int ret = -vmm_or_this(&src, vmm_hnd, HYDROGEN_VMM_CLONE);
     if (unlikely(ret)) return ret;
 
     vmm_t *vmm;
@@ -85,7 +71,7 @@ hydrogen_ret_t hydrogen_vmm_map(
     if (object_hnd < 0 && unlikely(object_hnd != HYDROGEN_INVALID_HANDLE)) return ret_error(EBADF);
 
     vmm_t *vmm;
-    int error = resolve_or_this(&vmm, vmm_hnd, HYDROGEN_VMM_MAP);
+    int error = vmm_or_this(&vmm, vmm_hnd, HYDROGEN_VMM_MAP);
     if (unlikely(error)) return ret_error(error);
 
     mem_object_t *object;
@@ -118,7 +104,7 @@ int hydrogen_vmm_remap(int vmm_hnd, uintptr_t address, size_t size, uint32_t fla
     if (unlikely((flags & ~VMM_PERM_FLAGS) != 0)) return EINVAL;
 
     vmm_t *vmm;
-    int error = resolve_or_this(&vmm, vmm_hnd, HYDROGEN_VMM_REMAP);
+    int error = vmm_or_this(&vmm, vmm_hnd, HYDROGEN_VMM_REMAP);
     if (unlikely(error)) return error;
 
     error = vmm_remap(vmm, address, size, flags);
@@ -139,11 +125,11 @@ hydrogen_ret_t hydrogen_vmm_move(
     if (dst_vmm_hnd < 0 && unlikely(dst_vmm_hnd != HYDROGEN_THIS_VMM)) return ret_error(EBADF);
 
     vmm_t *src_vmm;
-    int error = resolve_or_this(&src_vmm, src_vmm_hnd, HYDROGEN_VMM_UNMAP | HYDROGEN_VMM_READ);
+    int error = vmm_or_this(&src_vmm, src_vmm_hnd, HYDROGEN_VMM_UNMAP | HYDROGEN_VMM_READ);
     if (unlikely(error)) return ret_error(error);
 
     vmm_t *dst_vmm;
-    error = resolve_or_this(&dst_vmm, dst_vmm_hnd, HYDROGEN_VMM_MAP);
+    error = vmm_or_this(&dst_vmm, dst_vmm_hnd, HYDROGEN_VMM_MAP);
 
     if (unlikely(error)) {
         if (src_vmm_hnd != HYDROGEN_THIS_VMM) obj_deref(&src_vmm->base);
@@ -160,7 +146,7 @@ int hydrogen_vmm_unmap(int vmm_hnd, uintptr_t address, size_t size) {
     if (unlikely(((address | size) & PAGE_MASK) != 0)) return EINVAL;
 
     vmm_t *vmm;
-    int error = resolve_or_this(&vmm, vmm_hnd, HYDROGEN_VMM_UNMAP);
+    int error = vmm_or_this(&vmm, vmm_hnd, HYDROGEN_VMM_UNMAP);
     if (unlikely(error)) return error;
 
     error = vmm_unmap(vmm, address, size);

@@ -40,6 +40,16 @@ int namespace_add(
 int namespace_remove(namespace_t *ns, int handle);
 int namespace_resolve(handle_data_t *out, namespace_t *ns, int handle);
 
+// hnd_reserve must be called with ns->update_lock held, and it must not be released until you have called
+// hnd_assoc (or the operation has failed)
+
+int hnd_reserve(namespace_t *ns);
+void hnd_assoc(
+        namespace_t *ns,
+        int handle,
+        handle_data_t *data
+); // `data` must have been allocated with `vmalloc(sizeof(*data))`
+
 static inline int hnd_alloc(object_t *object, object_rights_t rights, uint32_t flags) {
     return namespace_add(
             current_thread->namespace,

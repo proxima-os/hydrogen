@@ -5,14 +5,13 @@
 #include "kernel/return.h"
 #include "proc/process.h"
 #include "proc/rcu.h"
+#include "sys/process.h"
 #include "sys/syscall.h"
 #include "util/handle.h"
 #include "util/object.h"
 #include <stdint.h>
 
-#define PROCESS_RIGHTS                                                                               \
-    (HYDROGEN_PROCESS_GET_IDENTITY | HYDROGEN_PROCESS_SET_IDENTITY | HYDROGEN_PROCESS_CHANGE_GROUP | \
-     HYDROGEN_PROCESS_CHANGE_SESSION)
+#define PROCESS_RIGHTS THIS_PROCESS_RIGHTS
 
 int hydrogen_process_find(int id, uint32_t flags) {
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return -EINVAL;
@@ -49,22 +48,9 @@ int hydrogen_process_create(uint32_t flags) {
     return ret;
 }
 
-static int resolve_or_this(process_t **out, int process, object_rights_t rights) {
-    if (process == HYDROGEN_THIS_PROCESS) {
-        *out = current_thread->process;
-        return 0;
-    } else {
-        handle_data_t data;
-        int error = hnd_resolve(&data, process, OBJECT_PROCESS, rights);
-        if (unlikely(error)) return error;
-        *out = (process_t *)data.object;
-        return 0;
-    }
-}
-
 int hydrogen_process_getpid(int process) {
     process_t *proc;
-    int ret = -resolve_or_this(&proc, process, 0);
+    int ret = -process_or_this(&proc, process, 0);
     if (unlikely(ret)) return ret;
 
     ret = getpid(proc);
@@ -74,7 +60,7 @@ int hydrogen_process_getpid(int process) {
 
 int hydrogen_process_getppid(int process) {
     process_t *proc;
-    int ret = -resolve_or_this(&proc, process, 0);
+    int ret = -process_or_this(&proc, process, 0);
     if (unlikely(ret)) return ret;
 
     ret = getppid(proc);
@@ -84,7 +70,7 @@ int hydrogen_process_getppid(int process) {
 
 int hydrogen_process_getpgid(int process) {
     process_t *proc;
-    int ret = -resolve_or_this(&proc, process, 0);
+    int ret = -process_or_this(&proc, process, 0);
     if (unlikely(ret)) return ret;
 
     ret = getpgid(proc);
@@ -94,7 +80,7 @@ int hydrogen_process_getpgid(int process) {
 
 int hydrogen_process_getsid(int process) {
     process_t *proc;
-    int ret = -resolve_or_this(&proc, process, 0);
+    int ret = -process_or_this(&proc, process, 0);
     if (unlikely(ret)) return ret;
 
     ret = getsid(proc);
@@ -104,7 +90,7 @@ int hydrogen_process_getsid(int process) {
 
 int hydrogen_process_setpgid(int process, int group_id) {
     process_t *proc;
-    int ret = resolve_or_this(&proc, process, HYDROGEN_PROCESS_CHANGE_GROUP);
+    int ret = process_or_this(&proc, process, HYDROGEN_PROCESS_CHANGE_GROUP);
     if (unlikely(ret)) return ret;
 
     ret = setpgid(proc, group_id);
@@ -114,7 +100,7 @@ int hydrogen_process_setpgid(int process, int group_id) {
 
 int hydrogen_process_setsid(int process) {
     process_t *proc;
-    int ret = -resolve_or_this(&proc, process, HYDROGEN_PROCESS_CHANGE_SESSION);
+    int ret = -process_or_this(&proc, process, HYDROGEN_PROCESS_CHANGE_SESSION);
     if (unlikely(ret)) return ret;
 
     ret = setsid(proc);
@@ -124,7 +110,7 @@ int hydrogen_process_setsid(int process) {
 
 hydrogen_ret_t hydrogen_process_getgid(int process) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
     if (unlikely(error)) return ret_error(error);
 
     uint32_t id = getgid(proc);
@@ -134,7 +120,7 @@ hydrogen_ret_t hydrogen_process_getgid(int process) {
 
 hydrogen_ret_t hydrogen_process_getuid(int process) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
     if (unlikely(error)) return ret_error(error);
 
     uint32_t id = getuid(proc);
@@ -144,7 +130,7 @@ hydrogen_ret_t hydrogen_process_getuid(int process) {
 
 hydrogen_ret_t hydrogen_process_getegid(int process) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
     if (unlikely(error)) return ret_error(error);
 
     uint32_t id = getegid(proc);
@@ -154,7 +140,7 @@ hydrogen_ret_t hydrogen_process_getegid(int process) {
 
 hydrogen_ret_t hydrogen_process_geteuid(int process) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
     if (unlikely(error)) return ret_error(error);
 
     uint32_t id = geteuid(proc);
@@ -167,7 +153,7 @@ int hydrogen_process_getresgid(int process, uint32_t ids[3]) {
     if (unlikely(error)) return error;
 
     process_t *proc;
-    error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
+    error = process_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = getresgid(proc, ids);
@@ -180,7 +166,7 @@ int hydrogen_process_getresuid(int process, uint32_t ids[3]) {
     if (unlikely(error)) return error;
 
     process_t *proc;
-    error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
+    error = process_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = getresuid(proc, ids);
@@ -193,7 +179,7 @@ hydrogen_ret_t hydrogen_process_getgroups(int process, uint32_t *buffer, size_t 
     if (unlikely(error)) return ret_error(error);
 
     process_t *proc;
-    error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
+    error = process_or_this(&proc, process, HYDROGEN_PROCESS_GET_IDENTITY);
     if (unlikely(error)) return ret_error(error);
 
     error = getgroups(proc, buffer, &count);
@@ -203,7 +189,7 @@ hydrogen_ret_t hydrogen_process_getgroups(int process, uint32_t *buffer, size_t 
 
 int hydrogen_process_setgid(int process, uint32_t gid) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = setgid(proc, gid);
@@ -213,7 +199,7 @@ int hydrogen_process_setgid(int process, uint32_t gid) {
 
 int hydrogen_process_setuid(int process, uint32_t uid) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = setuid(proc, uid);
@@ -223,7 +209,7 @@ int hydrogen_process_setuid(int process, uint32_t uid) {
 
 int hydrogen_process_setegid(int process, uint32_t egid) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = setegid(proc, egid);
@@ -233,7 +219,7 @@ int hydrogen_process_setegid(int process, uint32_t egid) {
 
 int hydrogen_process_seteuid(int process, uint32_t euid) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = seteuid(proc, euid);
@@ -243,7 +229,7 @@ int hydrogen_process_seteuid(int process, uint32_t euid) {
 
 int hydrogen_process_setregid(int process, uint32_t rgid, uint32_t egid) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = setregid(proc, rgid, egid);
@@ -253,7 +239,7 @@ int hydrogen_process_setregid(int process, uint32_t rgid, uint32_t egid) {
 
 int hydrogen_process_setreuid(int process, uint32_t ruid, uint32_t euid) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = setreuid(proc, ruid, euid);
@@ -263,7 +249,7 @@ int hydrogen_process_setreuid(int process, uint32_t ruid, uint32_t euid) {
 
 int hydrogen_process_setresgid(int process, uint32_t rgid, uint32_t egid, uint32_t sgid) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = setresgid(proc, rgid, egid, sgid);
@@ -273,7 +259,7 @@ int hydrogen_process_setresgid(int process, uint32_t rgid, uint32_t egid, uint32
 
 int hydrogen_process_setresuid(int process, uint32_t ruid, uint32_t euid, uint32_t suid) {
     process_t *proc;
-    int error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = setresuid(proc, ruid, euid, suid);
@@ -286,7 +272,7 @@ int hydrogen_process_setgroups(int process, const uint32_t *groups, size_t count
     if (unlikely(error)) return error;
 
     process_t *proc;
-    error = resolve_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
+    error = process_or_this(&proc, process, HYDROGEN_PROCESS_SET_IDENTITY);
     if (unlikely(error)) return error;
 
     error = setgroups(proc, groups, count);

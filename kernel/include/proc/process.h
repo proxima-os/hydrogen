@@ -82,7 +82,7 @@ int resolve_pgroup(pgroup_t **out, int pgid);
 
 int proc_clone(process_t **out);
 
-void proc_thread_create(process_t *process, struct thread *thread);
+int proc_thread_create(process_t *process, struct thread *thread);
 void proc_thread_exit(process_t *process, struct thread *thread);
 
 void pgroup_ref(pgroup_t *group);

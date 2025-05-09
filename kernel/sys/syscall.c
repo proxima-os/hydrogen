@@ -87,6 +87,9 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_PROCESS_SETRESGID: return ret_error(hydrogen_process_setresgid(a0, a1, a2, a3));
     case SYSCALL_PROCESS_SETRESUID: return ret_error(hydrogen_process_setresuid(a0, a1, a2, a3));
     case SYSCALL_PROCESS_SETGROUPS: return ret_error(hydrogen_process_setgroups(a0, (const uint32_t *)a1, a2));
+    case SYSCALL_THREAD_CREATE: return ret_error(hydrogen_thread_create(a0, a1, a2, a3, a4, a5));
+    case SYSCALL_THREAD_CLONE: return hydrogen_thread_clone(a0, a1, a2, a3);
+    case SYSCALL_THREAD_REINIT: return ret_error(hydrogen_thread_reinit(a0, a1, a2, a3));
     default: return ret_error(ENOSYS);
     }
 }

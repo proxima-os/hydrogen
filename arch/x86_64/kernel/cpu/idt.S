@@ -57,6 +57,7 @@ x86_64_idt_entry:
     mov %rsp, %rdi
     call x86_64_idt_dispatch
 
+.Lidt_return:
     cli
     mov 0x00(%rsp), %rax
     mov 0x08(%rsp), %rbx
@@ -97,6 +98,20 @@ x86_64_idt_entry:
 1:  iretq
     .cfi_endproc
 .size x86_64_idt_entry, . - x86_64_idt_entry
+
+.section ".text.x86_64_jump_to_context", "ax", @progbits
+
+.balign 16
+.globl x86_64_jump_to_context
+.type x86_64_jump_to_context, @function
+x86_64_jump_to_context:
+    .cfi_startproc
+    mov %rdi, %rsp
+    .cfi_undefined rip
+    .cfi_undefined rsp
+    jmp .Lidt_return
+    .cfi_endproc
+.size x86_64_jump_to_context, . - x86_64_jump_to_context
 
 .section ".init.data", "aw", @progbits
 

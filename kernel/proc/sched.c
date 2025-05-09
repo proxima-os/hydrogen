@@ -45,8 +45,10 @@ static void reap_thread(thread_t *thread) {
         pid_handle_removal_and_unlock(pid);
     }
 
-    proc_thread_exit(thread->process, thread);
-    obj_deref(&thread->process->base);
+    if (thread->process) {
+        proc_thread_exit(thread->process, thread);
+        obj_deref(&thread->process->base);
+    }
 
     if (thread->namespace) obj_deref(&thread->namespace->base);
 
@@ -141,6 +143,20 @@ int sched_create_thread(
     thread->state = THREAD_CREATED;
     thread->timeout_event.func = handle_timeout_event;
 
+    if (process != NULL) {
+        thread->process = process;
+        int error = proc_thread_create(process, thread);
+
+        if (unlikely(error)) {
+            arch_reap_thread(&thread->arch);
+            free_kernel_stack(thread->stack);
+            vfree(thread, sizeof(*thread));
+            return error;
+        }
+
+        obj_ref(&process->base);
+    }
+
     if (thread->cpu == NULL) {
         size_t cur_count = SIZE_MAX;
 
@@ -155,10 +171,6 @@ int sched_create_thread(
 
         ASSERT(thread->cpu != NULL);
     }
-
-    thread->process = process;
-    obj_ref(&process->base);
-    proc_thread_create(process, thread);
 
     __atomic_fetch_add(&thread->cpu->sched.num_threads, 1, __ATOMIC_RELAXED);
 

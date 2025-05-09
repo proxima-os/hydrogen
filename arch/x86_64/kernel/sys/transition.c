@@ -4,6 +4,7 @@
 #include "kernel/compiler.h"
 #include "proc/sched.h"
 #include "x86_64/cpu.h"
+#include "x86_64/idt.h"
 #include "x86_64/msr.h"
 #include "x86_64/segreg.h"
 #include "x86_64/xsave.h"
@@ -12,7 +13,7 @@
 
 _Noreturn void x86_64_enter_user_mode(size_t rip, size_t cs, size_t rflags, size_t rsp, size_t ss);
 
-_Noreturn void arch_enter_user_mode(uintptr_t pc, uintptr_t stack_base, size_t stack_size) {
+_Noreturn void arch_enter_user_mode(uintptr_t pc, uintptr_t sp) {
     ASSERT(current_thread->arch.xsave != NULL);
     x86_64_xsave_reset(current_thread->arch.xsave);
 
@@ -27,5 +28,13 @@ _Noreturn void arch_enter_user_mode(uintptr_t pc, uintptr_t stack_base, size_t s
     x86_64_wrmsr(X86_64_MSR_GS_BASE, (uintptr_t)cpu);
     x86_64_wrmsr(X86_64_MSR_KERNEL_GS_BASE, 0);
 
-    x86_64_enter_user_mode(pc, X86_64_USER_CS, 0x200, stack_base + stack_size, X86_64_USER_DS);
+    x86_64_enter_user_mode(pc, X86_64_USER_CS, 0x200, sp, X86_64_USER_DS);
+}
+
+_Noreturn void arch_enter_user_mode_init(uintptr_t pc, uintptr_t stack_base, size_t stack_size) {
+    arch_enter_user_mode(pc, stack_base + stack_size);
+}
+
+_Noreturn void arch_enter_user_mode_clone(arch_context_t *context) {
+    x86_64_jump_to_context(context);
 }

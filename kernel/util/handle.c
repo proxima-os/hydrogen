@@ -275,8 +275,8 @@ int namespace_add(
         old_data = NULL;
     }
 
-    rcu_write(ns->data[handle], new_data);
     obj_ref(object);
+    rcu_write(ns->data[handle], new_data);
     mutex_rel(&ns->update_lock);
     rcu_sync();
 
@@ -286,6 +286,20 @@ int namespace_add(
     }
 
     return handle;
+}
+
+int hnd_reserve(namespace_t *ns) {
+    return get_next_handle(ns);
+}
+
+void hnd_assoc(
+        namespace_t *ns,
+        int handle,
+        handle_data_t *data
+) {
+    obj_ref(data->object);
+    rcu_write(ns->data[handle], data);
+    // don't need rcu_sync() here since there is no old data to free
 }
 
 int namespace_remove(namespace_t *ns, int handle) {
