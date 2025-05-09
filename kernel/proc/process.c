@@ -10,6 +10,7 @@
 #include "sections.h"
 #include "string.h"
 #include "util/list.h"
+#include "util/object.h"
 #include "util/panic.h"
 #include "util/refcount.h"
 #include <limits.h>
@@ -174,7 +175,7 @@ int resolve_thread(struct thread **out, int tid) {
         return ESRCH;
     }
 
-    thread_ref(thread);
+    obj_ref(&thread->base);
     rcu_read_unlock(state);
     *out = thread;
     return 0;

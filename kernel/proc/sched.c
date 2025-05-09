@@ -19,7 +19,6 @@
 #include "util/list.h"
 #include "util/object.h"
 #include "util/panic.h"
-#include "util/refcount.h"
 #include "util/slist.h"
 #include "util/spinlock.h"
 #include "util/time.h"
@@ -30,16 +29,6 @@
 #define PREEMPT_DISABLED 1
 
 static void handle_timeout_event(timer_event_t *self);
-
-INIT_TEXT void sched_init(void) {
-    cpu_t *cpu = get_current_cpu();
-    sched_t *sched = &cpu->sched;
-    sched->current = &sched->idle_thread;
-    sched->current->references = REF_INIT(2); // one for sched->idle_thread, one for sched->current
-    sched->current->cpu = cpu;
-    sched->current->state = THREAD_RUNNING;
-    sched->current->process = &kernel_process;
-}
 
 static void reap_thread(thread_t *thread) {
     __atomic_fetch_sub(&thread->cpu->sched.num_threads, 1, __ATOMIC_RELAXED);
@@ -61,6 +50,31 @@ static void reap_thread(thread_t *thread) {
     thread->state = THREAD_EXITED;
 }
 
+static void thread_free(object_t *ptr) {
+    thread_t *thread = (thread_t *)ptr;
+
+    if (thread->state == THREAD_CREATED) {
+        reap_thread(thread);
+    }
+
+    ASSERT(thread->state == THREAD_EXITED);
+    vfree(thread, sizeof(*thread));
+}
+
+static const object_ops_t thread_ops = {.free = thread_free};
+
+INIT_TEXT void sched_init(void) {
+    cpu_t *cpu = get_current_cpu();
+    sched_t *sched = &cpu->sched;
+    sched->current = &sched->idle_thread;
+    sched->current->base.ops = &thread_ops;
+    obj_init(&sched->current->base, OBJECT_THREAD);
+    obj_ref(&sched->current->base); // for sched->current
+    sched->current->cpu = cpu;
+    sched->current->state = THREAD_RUNNING;
+    sched->current->process = &kernel_process;
+}
+
 static void reaper_func(void *ctx) {
     cpu_t *cpu = get_current_cpu();
 
@@ -78,7 +92,7 @@ static void reaper_func(void *ctx) {
         restore_irq(state);
 
         reap_thread(thread);
-        thread_deref(thread);
+        obj_deref(&thread->base);
     }
 }
 
@@ -118,7 +132,8 @@ int sched_create_thread(
         return error;
     }
 
-    thread->references = REF_INIT(1);
+    thread->base.ops = &thread_ops;
+    obj_init(&thread->base, OBJECT_THREAD);
     thread->cpu = cpu;
     thread->state = THREAD_CREATED;
     thread->timeout_event.func = handle_timeout_event;
@@ -292,7 +307,7 @@ static void do_wake(cpu_t *cpu, thread_t *thread, int status) {
     ASSERT(thread->state == THREAD_CREATED || thread->state == THREAD_BLOCKED ||
            thread->state == THREAD_BLOCKED_INTERRUPTIBLE);
 
-    if (thread->state == THREAD_CREATED) thread_ref(thread);
+    if (thread->state == THREAD_CREATED) obj_ref(&thread->base);
 
     if (thread->timeout_event.deadline != 0) {
         timer_cancel_event(&thread->timeout_event);
@@ -485,21 +500,6 @@ _Noreturn void sched_init_thread(thread_t *prev, void (*func)(void *), void *ctx
     preempt_unlock(PREEMPT_ENABLED);
     func(ctx);
     sched_exit();
-}
-
-void thread_ref(thread_t *thread) {
-    ref_inc(&thread->references);
-}
-
-void thread_deref(thread_t *thread) {
-    if (ref_dec(&thread->references)) {
-        if (thread->state == THREAD_CREATED) {
-            reap_thread(thread);
-        }
-
-        ASSERT(thread->state == THREAD_EXITED);
-        vfree(thread, sizeof(*thread));
-    }
 }
 
 void sched_queue_task(task_t *task) {

@@ -5,7 +5,7 @@
 #include "mem/vmm.h"
 #include "proc/process.h"
 #include "util/list.h"
-#include "util/refcount.h"
+#include "util/object.h"
 #include "util/slist.h"
 #include "util/spinlock.h"
 #include "util/time.h"
@@ -25,8 +25,8 @@ typedef enum {
 } thread_state_t;
 
 typedef struct thread {
+    object_t base;
     pid_t *pid;
-    refcnt_t references;
     struct cpu *cpu;
     list_node_t queue_node;
     list_node_t wait_node;
@@ -91,9 +91,6 @@ int sched_perform_wait(uint64_t deadline);
 void sched_cancel_wait(void);
 _Noreturn void sched_exit(void);
 void sched_migrate(struct cpu *dest);
-
-void thread_ref(thread_t *thread);
-void thread_deref(thread_t *thread);
 
 void sched_queue_task(task_t *task);
 _Noreturn void sched_idle(void);

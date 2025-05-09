@@ -6,6 +6,7 @@
 typedef enum {
     OBJECT_VMM,
     OBJECT_MEMORY,
+    OBJECT_THREAD,
 } object_type_t;
 
 typedef struct object object_t;

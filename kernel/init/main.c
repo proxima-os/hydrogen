@@ -18,6 +18,7 @@
 #include "sections.h"
 #include "sys/transition.h"
 #include "sys/vdso.h"
+#include "util/object.h"
 #include "util/panic.h"
 #include "util/printk.h"
 #include <stddef.h>
@@ -77,7 +78,7 @@ __attribute__((noinline)) static _Noreturn void finalize_init(void) {
     error = sched_create_thread(&thread, launch_init_process, NULL, NULL, init_process, THREAD_USER);
     if (unlikely(error)) panic("failed to create init process main thread (%d)", error);
     sched_wake(thread);
-    thread_deref(thread);
+    obj_deref(&thread->base);
 
     sched_exit();
 }
@@ -93,7 +94,7 @@ INIT_TEXT static void kernel_init(void *ctx) {
 // this is in a separate function so that kernel_main can be INIT_TEXT
 __attribute__((noinline)) static _Noreturn void wake_init_thread_and_idle(thread_t *thread) {
     sched_wake(thread);
-    thread_deref(thread);
+    obj_deref(&thread->base);
     sched_idle();
 }
 
