@@ -33,7 +33,6 @@ x86_64_enter_user_mode:
     xor %r13d, %r13d
     xor %r14d, %r14d
     xor %r15d, %r15d
-    cli
     swapgs
     iretq
     .cfi_endproc
