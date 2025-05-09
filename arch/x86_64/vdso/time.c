@@ -53,4 +53,4 @@ static int64_t (*resolve_real_time(void))(void) {
     }
 }
 
-__attribute__((ifunc("resolve_real_time"))) EXPORT int64_t hydrogen_real_time(void);
+__attribute__((ifunc("resolve_real_time"))) EXPORT int64_t hydrogen_get_real_time(void);
