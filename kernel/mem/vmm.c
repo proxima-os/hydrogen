@@ -966,7 +966,7 @@ static bool remap_skip_cb(vmm_region_t *region, void *ctx) {
 static void remap_final_cb(vmm_t *vmm, vmm_region_t *region, void *ctx) {
     unsigned new_flags = (region->flags & ~VMM_PERM_FLAGS) | (uintptr_t)ctx;
     region->flags = new_flags;
-    pmap_remap(vmm, region->head, region->tail - region->head + 1, region->flags);
+    pmap_remap(vmm, region->head, region->tail - region->head + 1, vmm_to_pmap_flags(region->flags));
 }
 
 static int do_remap(
