@@ -761,6 +761,8 @@ hydrogen_ret_t vmm_map(
         object_rights_t rights,
         size_t offset
 ) {
+    ASSERT(object != &vdso_object);
+
     if (unlikely(((hint | size | offset) & PAGE_MASK) != 0)) return ret_error(EINVAL);
     if (unlikely((flags & ~VMM_MAP_FLAGS) != 0)) return ret_error(EINVAL);
     if (unlikely(size == 0)) return ret_error(EINVAL);
@@ -794,6 +796,36 @@ hydrogen_ret_t vmm_map(
 ret:
     mutex_rel(&vmm->lock);
     return RET_MAYBE(integer, error, head);
+}
+
+hydrogen_ret_t vmm_map_vdso(vmm_t *vmm) {
+    mutex_acq(&vmm->lock, 0, false);
+
+    if (vmm->vdso_addr != 0) {
+        mutex_rel(&vmm->lock);
+        return ret_error(EINVAL);
+    }
+
+    vmm_region_t *prev, *next;
+    uintptr_t head, tail;
+    int error = find_map_location(vmm, vdso_size, &prev, &next, &head, &tail);
+    if (unlikely(error)) goto ret;
+
+    error = do_map(
+            vmm,
+            head,
+            tail,
+            HYDROGEN_MEM_READ | HYDROGEN_MEM_EXEC | HYDROGEN_MEM_SHARED,
+            &vdso_object,
+            HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_EXEC,
+            0,
+            prev,
+            next
+    );
+    if (likely(error == 0)) __atomic_store_n(&vmm->vdso_addr, head + vdso_image_offset, __ATOMIC_RELAXED);
+ret:
+    mutex_rel(&vmm->lock);
+    return RET_MAYBE(integer, error, head + vdso_image_offset);
 }
 
 static int split_to_exact(

@@ -43,15 +43,7 @@ static void launch_init_process(void *ctx) {
     error = setsid(current_thread->process);
     if (unlikely(error < 0)) panic("failed to create init session (%e)", -error);
 
-    hydrogen_ret_t ret = vmm_map(
-            current_thread->vmm,
-            0,
-            vdso_size,
-            HYDROGEN_MEM_READ | HYDROGEN_MEM_EXEC | HYDROGEN_MEM_SHARED,
-            &vdso_object,
-            HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_EXEC,
-            0
-    );
+    hydrogen_ret_t ret = vmm_map_vdso(current_thread->vmm);
     if (unlikely(ret.error)) panic("failed to map vdso (%e)", ret.error);
     uintptr_t vdso_base = ret.integer;
 
@@ -62,7 +54,7 @@ static void launch_init_process(void *ctx) {
     error = vmm_remap(current_thread->vmm, stack_base, USER_STACK_SIZE, HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE);
     if (unlikely(error)) panic("failed to make stack writable (%e)", error);
 
-    arch_enter_user_mode(vdso_base + vdso_image_offset + vdso_image.entry, stack_base, USER_STACK_SIZE);
+    arch_enter_user_mode(vdso_base + vdso_image.entry, stack_base, USER_STACK_SIZE);
 }
 
 // this is in a separate function so that kernel_init can be INIT_TEXT

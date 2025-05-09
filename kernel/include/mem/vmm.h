@@ -54,6 +54,7 @@ struct vmm {
     size_t num_mapped;
     size_t num_reserved;
     size_t num_tables;
+    uintptr_t vdso_addr;
 };
 
 int vmm_create(vmm_t **out);
@@ -68,6 +69,7 @@ hydrogen_ret_t vmm_map(
         object_rights_t rights,
         size_t offset
 );
+hydrogen_ret_t vmm_map_vdso(vmm_t *vmm);
 int vmm_remap(vmm_t *vmm, uintptr_t address, size_t size, unsigned flags);
 hydrogen_ret_t vmm_move(
         vmm_t *vmm,

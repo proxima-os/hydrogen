@@ -6,11 +6,35 @@
 #include "hydrogen/thread.h"
 #include "hydrogen/time.h"
 #include "hydrogen/types.h"
+#include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "kernel/syscall.h"
 #include "kernel/types.h"
+#include "sys/vdso.h"
+#include "util/panic.h"
 #include <stddef.h>
 #include <stdint.h>
+
+static bool is_in_vdso(uintptr_t pc) {
+    // note: this doesn't protect against the scenario where a thread performs a syscall
+    // from outside the vdso and another thread unmaps the code that did the syscall and
+    // maps the vdso in its place before this check happens. that's fine; this check isn't
+    // meant to provide security, it's just a way to discourage devs from doing syscalls
+    // manually
+    uintptr_t vdso_base = __atomic_load_n(&current_thread->vmm->vdso_addr, __ATOMIC_RELAXED);
+    if (unlikely(vdso_base == 0)) return false;
+
+    return vdso_base <= pc && pc < vdso_base + (vdso_size - vdso_image_offset);
+}
+
+bool prepare_syscall(uintptr_t pc) {
+    if (unlikely(!is_in_vdso(pc))) {
+        panic("Syscall from outside vDSO. TODO: Send a signal here instead of panicking");
+        return false;
+    }
+
+    return true;
+}
 
 static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size_t a3, size_t a4, size_t a5) {
     switch (id) {

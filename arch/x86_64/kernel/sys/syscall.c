@@ -34,6 +34,10 @@ USED void x86_64_syscall_dispatch(arch_context_t *context) {
     context->ss = X86_64_USER_DS;
     enter_from_user_mode(context);
     enable_irq();
-    do_arch_syscall(context->rax, context->rdi, context->rsi, context->rdx, context->r10, context->r8, context->r9);
+
+    if (prepare_syscall(context->rip)) {
+        do_arch_syscall(context->rax, context->rdi, context->rsi, context->rdx, context->r10, context->r8, context->r9);
+    }
+
     exit_to_user_mode();
 }
