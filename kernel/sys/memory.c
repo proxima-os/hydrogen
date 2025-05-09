@@ -245,6 +245,7 @@ int hydrogen_vmm_write(int vmm_hnd, const void *buffer, uintptr_t address, size_
 }
 
 typedef struct {
+    uint64_t vmm_id;
     uint64_t obj_id;
     uint64_t offset;
 } futex_address_t;
@@ -274,6 +275,7 @@ static int get_futex_address(futex_address_t *out, uint32_t *location) {
     }
 
     if (region->object != NULL) {
+        out->vmm_id = (region->flags & HYDROGEN_MEM_SHARED) == 0 ? vmm->id : SHARED_VM_ID;
         out->obj_id = region->object->id;
         out->offset = region->offset + (address - region->head);
         return 0;
@@ -290,6 +292,7 @@ static int get_futex_address(futex_address_t *out, uint32_t *location) {
     page_t *page = pmap_get_mapping(vmm, address);
     ASSERT(page != NULL);
 
+    out->vmm_id = vmm->id;
     out->obj_id = ANON_OBJ_ID;
     out->offset = (page->anon.id << PAGE_SHIFT) | (address & PAGE_MASK);
 

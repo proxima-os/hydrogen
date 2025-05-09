@@ -314,6 +314,8 @@ static void vmm_free(object_t *ptr) {
 static const object_ops_t vmm_object_ops = {.free = vmm_free};
 
 int vmm_create(vmm_t **out) {
+    static uint64_t next_id = 1;
+
     vmm_t *vmm = vmalloc(sizeof(*vmm));
     if (unlikely(!vmm)) return ENOMEM;
     memset(vmm, 0, sizeof(*vmm));
@@ -326,6 +328,7 @@ int vmm_create(vmm_t **out) {
 
     vmm->base.ops = &vmm_object_ops;
     obj_init(&vmm->base, OBJECT_VMM);
+    vmm->id = __atomic_fetch_add(&next_id, 1, __ATOMIC_RELAXED);
 
     *out = vmm;
     return 0;
