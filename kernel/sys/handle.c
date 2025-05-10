@@ -50,7 +50,9 @@ int hydrogen_namespace_add(
     if (unlikely(src_obj_hnd < 0)) return -EBADF;
     if (dst_ns_hnd < 0 && unlikely(dst_hnd != HYDROGEN_THIS_NAMESPACE)) return -EINVAL;
     if (dst_hnd < 0 && unlikely(dst_hnd != HYDROGEN_INVALID_HANDLE)) return -EINVAL;
-    if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return -EINVAL;
+
+    int flags_mode = flags & (3u << 30);
+    flags &= ~flags_mode;
 
     namespace_t *src_ns;
     int ret = -namespace_or_this(&src_ns, src_ns_hnd, HYDROGEN_NAMESPACE_RESOLVE);
@@ -73,6 +75,13 @@ int hydrogen_namespace_add(
     handle_data_t src_obj;
     ret = -namespace_resolve(&src_obj, src_ns, src_obj_hnd);
     if (unlikely(ret)) goto ret2;
+
+    switch (flags_mode) {
+    case HYDROGEN_SET_HANDLE_FLAGS: break;
+    case HYDROGEN_ADD_HANDLE_FLAGS: flags |= src_obj.flags; break;
+    case HYDROGEN_REMOVE_HANDLE_FLAGS: flags = src_obj.flags & ~flags; break;
+    default: ret = -EINVAL; goto ret3;
+    }
 
     if (src_obj.object->type == OBJECT_NAMESPACE) {
         if (unlikely((flags & NS_ILL_FLAGS) != 0)) {

@@ -40,6 +40,11 @@ extern "C" {
 
 #define HYDROGEN_INVALID_HANDLE (-1) /**< The handle equivalent of `NULL`. */
 
+/** See #hydrogen_namespace_add. */
+#define HYDROGEN_SET_HANDLE_FLAGS (0u << 30)
+#define HYDROGEN_ADD_HANDLE_FLAGS (1u << 30)
+#define HYDROGEN_REMOVE_HANDLE_FLAGS (2u << 30)
+
 /**
  * Create an empty namespace.
  *
@@ -73,7 +78,13 @@ int hydrogen_namespace_clone(int ns, uint32_t flags) __asm__("__hydrogen_namespa
  *                    If this is #HYDROGEN_INVALID_HANDLE, a handle is allocated like normal.
  * \param[in] rights The rights that the new handle should have. This is masked with the rights of `src_obj`, so this
  *                   function can only remove rights, not add them.
- * \param[in] flags The flags that should be set on the returned handle.
+ * \param[in] flags The flags that should be set on the returned handle. This parameter also accepts one of
+ *                  #HYDROGEN_SET_HANDLE_FLAGS, #HYDROGEN_ADD_HANDLE_FLAGS, and #HYDROGEN_REMOVE_HANDLE_FLAGS:
+ *                  - If #HYDROGEN_SET_HANDLE_FLAGS is given, the flags of the handle are set to `flags`.
+ *                  - If #HYDROGEN_ADD_HANDLE_FLAGS is given, the flags of the handle are set to the flags of `src_obj`
+ *                    plus the flags given in `flags`.
+ *                  - If #HYDROGEN_REMOVE_HANDLE_FLAGS is given, the flags of the handle are set to the flags of
+ *                    `src_obj` without the flags given in `flags`.
  * \return The new handle, if successful; if not, a negative error code.
  */
 int hydrogen_namespace_add(int src_ns, int src_obj, int dst_ns, int dst_hnd, uint32_t rights, uint32_t flags) __asm__(
