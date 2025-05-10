@@ -4,6 +4,7 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "hydrogen/types.h"
+#include "hydrogen/x86_64/segments.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "kernel/types.h"
@@ -40,6 +41,10 @@ static hydrogen_ret_t dispatch_arch_syscall(
 ) {
     switch (id) {
     case X86_64_SYSCALL_SIGRETURN: return ret_error(x86_64_sigreturn(a0));
+    case X86_64_SYSCALL_GET_FS_BASE: return ret_integer(hydrogen_x86_64_get_fs_base());
+    case X86_64_SYSCALL_GET_GS_BASE: return ret_integer(hydrogen_x86_64_get_gs_base());
+    case X86_64_SYSCALL_SET_FS_BASE: return ret_error(hydrogen_x86_64_set_fs_base(a0));
+    case X86_64_SYSCALL_SET_GS_BASE: return ret_error(hydrogen_x86_64_set_gs_base(a0));
     default: return ret_error(ENOSYS);
     }
 }

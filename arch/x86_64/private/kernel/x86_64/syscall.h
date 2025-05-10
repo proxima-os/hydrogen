@@ -1,3 +1,7 @@
 #pragma once
 
 #define X86_64_SYSCALL_SIGRETURN (-1L)
+#define X86_64_SYSCALL_GET_FS_BASE (-2L)
+#define X86_64_SYSCALL_GET_GS_BASE (-3L)
+#define X86_64_SYSCALL_SET_FS_BASE (-4L)
+#define X86_64_SYSCALL_SET_GS_BASE (-5L)
