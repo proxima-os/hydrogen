@@ -43,6 +43,19 @@ static void reap_thread(thread_t *thread) {
     if (thread->vmm) obj_deref(&thread->vmm->base);
 
     if (thread->process) proc_thread_exit(thread->process, thread);
+
+    // Note: the namespace deference MUST be done during reaping, not during thread free!
+    // Otherwise, you have a potential for permanent reference cycles:
+    // - Thread A creates namespace A
+    // - Thread A creates thread B in namespace A
+    // - Thread A closes its handle to namespace A - its only reference is now thread B's implicit reference
+    // - Thread B creates thread C using HYDROGEN_THIS_NAMESPACE
+    // - Thread B exits without closing the handle to thread C
+    // - Thread C exits immediately
+    // If namespace dereferencing is moved to be done during thread freeing, this scenario results in a permanent
+    // reference cycle: namespace A holds a reference to thread C because it contains a handle to it, thread C holds a
+    // reference to namespace A because it exists, and there are no other references to namespace A or thread C in the
+    // system.
     if (thread->namespace) obj_deref(&thread->namespace->base);
 
     thread->state = THREAD_EXITED;
