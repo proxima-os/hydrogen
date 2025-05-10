@@ -300,7 +300,7 @@ void hnd_assoc(
         handle_data_t *data
 ) {
     ns->bitmap[handle / 64] |= 1ull << (handle % 64);
-    if ((size_t)handle == ns->alloc_start)
+    if ((size_t)handle == ns->alloc_start) ns->alloc_start = handle + 1;
 
     obj_ref(data->object);
     rcu_write(ns->data[handle], data);
