@@ -1,6 +1,7 @@
 #include "proc/sched.h"
 #include "arch/idle.h"
 #include "arch/irq.h"
+#include "arch/pmap.h" /* IWYU pragma: keep */
 #include "arch/stack.h"
 #include "arch/time.h"
 #include "cpu/cpudata.h"
@@ -8,7 +9,9 @@
 #include "errno.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
+#include "mem/kvmm.h" /* IWYU pragma: keep */
 #include "mem/pmap.h"
+#include "mem/pmem.h" /* IWYU pragma: keep */
 #include "mem/vmalloc.h"
 #include "mem/vmm.h"
 #include "proc/mutex.h"
@@ -570,13 +573,37 @@ migrate_state_t migrate_lock(void) {
 void migrate_unlock(migrate_state_t state) {
 }
 
+_Static_assert((KERNEL_STACK_SIZE & PAGE_MASK) == 0, "stack size must be a multiple of the page size");
 _Static_assert(KERNEL_STACK_SIZE >= KERNEL_STACK_ALIGN, "stack must be larger than its alignment");
 _Static_assert(KERNEL_STACK_ALIGN <= PAGE_SIZE, "stack must not be aligned to multi-page boundary");
 
 void *alloc_kernel_stack(void) {
+#if HYDROGEN_ASSERTIONS
+    uintptr_t addr = kvmm_alloc(KERNEL_STACK_SIZE + PAGE_SIZE);
+    if (unlikely(!addr)) return NULL;
+
+    if (unlikely(!pmem_reserve(KERNEL_STACK_SIZE >> PAGE_SHIFT))) {
+        kvmm_free(addr, KERNEL_STACK_SIZE + PAGE_SIZE);
+    }
+
+    if (unlikely(!pmap_prepare(NULL, addr + PAGE_SIZE, KERNEL_STACK_SIZE))) {
+        pmem_unreserve(KERNEL_STACK_SIZE >> PAGE_SHIFT);
+        kvmm_free(addr, KERNEL_STACK_SIZE + PAGE_SIZE);
+    }
+
+    pmap_alloc(NULL, addr + PAGE_SIZE, KERNEL_STACK_SIZE, PMAP_READABLE | PMAP_WRITABLE);
+    return (void *)(addr + PAGE_SIZE);
+#else
     return vmalloc(KERNEL_STACK_SIZE);
+#endif
 }
 
 void free_kernel_stack(void *stack) {
+#if HYDROGEN_ASSERTIONS
+    pmap_unmap(NULL, (uintptr_t)stack, KERNEL_STACK_SIZE);
+    pmem_unreserve(KERNEL_STACK_SIZE >> PAGE_SHIFT);
+    kvmm_free((uintptr_t)stack - PAGE_SIZE, KERNEL_STACK_SIZE + PAGE_SIZE);
+#else
     vfree(stack, KERNEL_STACK_SIZE);
+#endif
 }
