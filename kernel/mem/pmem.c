@@ -31,7 +31,7 @@ bool pmem_reserve(size_t count) {
     }
 
     mutex_rel(&pmem_lock);
-    return true;
+    return ok;
 }
 
 static void do_unreserve(size_t count) {
