@@ -84,13 +84,14 @@ INIT_TEXT static void kernel_init(void *ctx) {
     sched_init_late();
     arch_init_late();
     vdso_init();
+    // the idle thread still holds a reference to this thread, but it can't free it itself because that might sleep
+    obj_deref(&current_thread->base);
     finalize_init();
 }
 
 // this is in a separate function so that kernel_main can be INIT_TEXT
 __attribute__((noinline)) static _Noreturn void wake_init_thread_and_idle(thread_t *thread) {
     sched_wake(thread);
-    obj_deref(&thread->base);
     sched_idle();
 }
 
