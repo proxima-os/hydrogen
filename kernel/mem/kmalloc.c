@@ -64,15 +64,16 @@ void *kmalloc(size_t size) {
         return ZERO_PTR;
     }
 
-    if (unlikely(size == PAGE_SIZE)) {
+    if (size < MIN_ALLOC_SIZE) size = MIN_ALLOC_SIZE;
+
+    unsigned bucket = get_bucket(size);
+
+    if (unlikely(bucket == PAGE_SHIFT)) {
         page_t *page = pmem_alloc_now();
         if (unlikely(!page)) return NULL;
         return page_to_virt(page);
     }
 
-    if (size < MIN_ALLOC_SIZE) size = MIN_ALLOC_SIZE;
-
-    unsigned bucket = get_bucket(size);
     mutex_acq(&bucket_locks[bucket], 0, false);
 
     struct free_obj *obj = get_free_obj(bucket);
@@ -134,14 +135,14 @@ void kfree(void *ptr, size_t size) {
     if (unlikely(size == 0)) return;
 
     page_t *page = virt_to_page(ptr);
+    unsigned bucket = get_bucket(size);
 
-    if (unlikely(size == PAGE_SIZE)) {
+    if (unlikely(bucket == PAGE_SHIFT)) {
         pmem_free_now(page);
         return;
     }
 
     struct free_obj *obj = ptr;
-    unsigned bucket = get_bucket(size);
 
     mutex_acq(&bucket_locks[bucket], 0, false);
     put_free_obj(page, obj, bucket);
