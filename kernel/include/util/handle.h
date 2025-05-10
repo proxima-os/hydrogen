@@ -29,7 +29,7 @@ namespace_t;
 
 int namespace_create(namespace_t **out);
 int namespace_clone(namespace_t **out, namespace_t *ns);
-int namespace_add(
+hydrogen_ret_t namespace_add(
         namespace_t *ns,
         object_rights_t ns_rights,
         int handle,
@@ -43,14 +43,14 @@ int namespace_resolve(handle_data_t *out, namespace_t *ns, int handle);
 // hnd_reserve must be called with ns->update_lock held, and it must not be released until you have called
 // hnd_assoc (or the operation has failed)
 
-int hnd_reserve(namespace_t *ns);
+hydrogen_ret_t hnd_reserve(namespace_t *ns);
 void hnd_assoc(
         namespace_t *ns,
         int handle,
         handle_data_t *data
 ); // `data` must have been allocated with `vmalloc(sizeof(*data))`
 
-static inline int hnd_alloc(object_t *object, object_rights_t rights, uint32_t flags) {
+static inline hydrogen_ret_t hnd_alloc(object_t *object, object_rights_t rights, uint32_t flags) {
     return namespace_add(
             current_thread->namespace,
             HYDROGEN_NAMESPACE_ADD,

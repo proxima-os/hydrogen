@@ -40,10 +40,10 @@ static void launch_init_process(void *ctx) {
     if (unlikely(error)) panic("failed to create init process vmm (%e)", error);
     vmm_switch(current_thread->vmm);
 
-    error = setsid(current_thread->process);
-    if (unlikely(error < 0)) panic("failed to create init session (%e)", -error);
+    hydrogen_ret_t ret = setsid(current_thread->process);
+    if (unlikely(ret.error)) panic("failed to create init session (%e)", ret.error);
 
-    hydrogen_ret_t ret = vmm_map_vdso(current_thread->vmm);
+    ret = vmm_map_vdso(current_thread->vmm);
     if (unlikely(ret.error)) panic("failed to map vdso (%e)", ret.error);
     uintptr_t vdso_base = ret.integer;
 

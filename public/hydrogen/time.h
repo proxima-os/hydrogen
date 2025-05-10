@@ -1,3 +1,6 @@
+/** \file
+ * Definitions for timing.
+ */
 #ifndef HYDROGEN_TIME_H
 #define HYDROGEN_TIME_H
 

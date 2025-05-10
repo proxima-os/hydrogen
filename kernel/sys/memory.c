@@ -29,34 +29,36 @@
 
 const size_t hydrogen_page_size = PAGE_SIZE;
 
-int hydrogen_vmm_create(uint32_t flags) {
-    if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return -EINVAL;
+hydrogen_ret_t hydrogen_vmm_create(uint32_t flags) {
+    if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
 
     vmm_t *vmm;
-    int ret = -vmm_create(&vmm);
-    if (unlikely(ret)) return ret;
+    int error = vmm_create(&vmm);
+    if (unlikely(error)) return ret_error(error);
 
-    ret = hnd_alloc(&vmm->base, VMM_RIGHTS, flags);
+    hydrogen_ret_t ret = hnd_alloc(&vmm->base, VMM_RIGHTS, flags);
     obj_deref(&vmm->base);
     return ret;
 }
 
-int hydrogen_vmm_clone(int vmm_hnd, uint32_t flags) {
-    if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return -EINVAL;
+hydrogen_ret_t hydrogen_vmm_clone(int vmm_hnd, uint32_t flags) {
+    if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
 
     vmm_t *src;
-    int ret = -vmm_or_this(&src, vmm_hnd, HYDROGEN_VMM_CLONE);
-    if (unlikely(ret)) return ret;
+    int error = vmm_or_this(&src, vmm_hnd, HYDROGEN_VMM_CLONE);
+    if (unlikely(error)) return ret_error(error);
 
     vmm_t *vmm;
-    ret = -vmm_clone(&vmm, src);
-    if (unlikely(ret)) goto ret;
+    error = vmm_clone(&vmm, src);
+    if (unlikely(error)) goto err;
 
-    ret = hnd_alloc(&vmm->base, VMM_RIGHTS, flags);
+    hydrogen_ret_t ret = hnd_alloc(&vmm->base, VMM_RIGHTS, flags);
     obj_deref(&vmm->base);
-ret:
     if (vmm_hnd != HYDROGEN_THIS_VMM) obj_deref(&src->base);
     return ret;
+err:
+    if (vmm_hnd != HYDROGEN_THIS_VMM) obj_deref(&src->base);
+    return ret_error(error);
 }
 
 hydrogen_ret_t hydrogen_vmm_map(
@@ -454,15 +456,15 @@ hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) {
 
 #define MEM_OBJECT_RIGHTS (HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_WRITE | HYDROGEN_MEM_OBJECT_EXEC)
 
-int hydrogen_mem_object_create(size_t size, uint32_t flags) {
-    if (unlikely((size & PAGE_MASK) != 0)) return -EINVAL;
-    if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return -EINVAL;
+hydrogen_ret_t hydrogen_mem_object_create(size_t size, uint32_t flags) {
+    if (unlikely((size & PAGE_MASK) != 0)) return ret_error(EINVAL);
+    if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
 
     mem_object_t *object;
-    int ret = -anon_mem_object_create(&object, size >> PAGE_SHIFT);
-    if (unlikely(ret)) return ret;
+    int error = anon_mem_object_create(&object, size >> PAGE_SHIFT);
+    if (unlikely(error)) return ret_error(error);
 
-    ret = hnd_alloc(&object->base, MEM_OBJECT_RIGHTS, flags);
+    hydrogen_ret_t ret = hnd_alloc(&object->base, MEM_OBJECT_RIGHTS, flags);
     obj_deref(&object->base);
     return ret;
 }

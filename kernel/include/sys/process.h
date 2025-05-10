@@ -7,7 +7,7 @@
 
 #define THIS_PROCESS_RIGHTS                                                                          \
     (HYDROGEN_PROCESS_GET_IDENTITY | HYDROGEN_PROCESS_SET_IDENTITY | HYDROGEN_PROCESS_CHANGE_GROUP | \
-     HYDROGEN_PROCESS_CHANGE_SESSION)
+     HYDROGEN_PROCESS_CHANGE_SESSION | HYDROGEN_PROCESS_CREATE_THREAD | HYDROGEN_PROCESS_CHANGE_SIGHAND)
 
 static inline int process_or_this(process_t **out, int process, object_rights_t rights) {
     if (process == HYDROGEN_THIS_PROCESS) {

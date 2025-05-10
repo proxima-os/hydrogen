@@ -25,7 +25,7 @@ extern const void x86_64_thread_entry;
 thread_t *arch_switch_thread(thread_t *from, thread_t *to) {
     this_cpu_write_tl(arch.tss.rsp[0], (uintptr_t)to->stack + KERNEL_STACK_SIZE);
 
-    if (from->arch.xsave != NULL) {
+    if (from->user_thread) {
         x86_64_xsave_save(from->arch.xsave);
         from->arch.ds = x86_64_read_ds();
         from->arch.es = x86_64_read_es();
@@ -33,7 +33,7 @@ thread_t *arch_switch_thread(thread_t *from, thread_t *to) {
         from->arch.gs = x86_64_read_gs();
     }
 
-    if (to->arch.xsave != NULL) {
+    if (to->user_thread) {
         x86_64_xsave_restore(to->arch.xsave);
         x86_64_write_ds(to->arch.ds);
         x86_64_write_es(to->arch.es);

@@ -7,7 +7,7 @@ PHDRS {
 }
 
 NOCROSSREFS_TO(.init.text .rodata .text .data .vdso .bss)
-NOCROSSREFS_TO(.init.data .rodata .text. data .vdso .bss)
+NOCROSSREFS_TO(.init.data .rodata .text .data .vdso .bss)
 
 SECTIONS {
     . = 0xffffffff80000000;

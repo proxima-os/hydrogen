@@ -23,13 +23,13 @@ typedef enum {
 } ctx_style_t;
 
 static ctx_style_t ctx_style;
-static size_t ctx_size;
-INIT_DATA static uint64_t xcr0_value;
+size_t x86_64_xsave_size;
+static uint64_t xcr0_value;
 
 INIT_TEXT static void determine_mode(void) {
     if (!x86_64_cpu_features.xsave) {
         ctx_style = CTX_FXSAVE;
-        ctx_size = 512;
+        x86_64_xsave_size = 512;
         return;
     }
 
@@ -42,7 +42,7 @@ INIT_TEXT static void determine_mode(void) {
 
     // Figure out how big the context is
     cpuid2(0x0d, 0, &eax, &ebx, &ecx, &edx);
-    ctx_size = ebx;
+    x86_64_xsave_size = ebx;
 
     // Determine what style to use
     cpuid2(0x0d, 1, &eax, &ebx, &ecx, &edx);
@@ -56,7 +56,7 @@ INIT_TEXT static void determine_mode(void) {
 
 INIT_TEXT void x86_64_xsave_init(void) {
     determine_mode();
-    printk("xsave: context is %z bytes (style %d)\n", ctx_size, ctx_style);
+    printk("xsave: context is %z bytes (style %d)\n", x86_64_xsave_size, ctx_style);
 }
 
 INIT_TEXT void x86_64_xsave_init_local(void) {
@@ -65,42 +65,95 @@ INIT_TEXT void x86_64_xsave_init_local(void) {
 }
 
 void *x86_64_xsave_alloc(void) {
-    void *ptr = vmalloc_aligned(ctx_size);
+    void *ptr = vmalloc_aligned(x86_64_xsave_size);
     if (unlikely(!ptr)) return NULL;
 
-    if (ctx_style != CTX_FXSAVE) {
-        // clear header so xsave doesn't get confused
-        ASSERT(ctx_size >= 576);
-        memset(ptr + 512, 0, 64);
-    }
-
-    x86_64_xsave_save(ptr);
+    x86_64_xsave_reinit(ptr);
     return ptr;
 }
 
 void x86_64_xsave_free(void *area) {
-    vfree(area, ctx_size);
+    vfree(area, x86_64_xsave_size);
+}
+
+typedef struct {
+    uint16_t fcw;
+    uint16_t fsw;
+    uint8_t ftw;
+    uint8_t reserved1;
+    uint16_t fop;
+    uint64_t fip;
+    uint64_t fdp;
+    uint32_t mxcsr;
+    uint32_t mxcsr_mask;
+    struct {
+        uint64_t data[2];
+    } mm[8];
+    struct {
+        uint64_t data[2];
+    } xmm[16];
+    uint64_t reserved2[6];
+    uint64_t unused[6];
+} fxsave_area_t;
+
+typedef struct {
+    fxsave_area_t legacy;
+    uint64_t xstate_bv;
+    uint64_t xcomp_bv;
+    uint64_t reserved[6];
+    unsigned char ext[];
+} xsave_area_t;
+
+void x86_64_xsave_reinit(void *area) {
+    if (ctx_style != CTX_FXSAVE) {
+        // clear header so xsave doesn't get confused
+        xsave_area_t *ctx = area;
+        ctx->xstate_bv = 0;
+        ctx->xcomp_bv = 0;
+        memset(ctx->reserved, 0, sizeof(ctx->reserved));
+    }
+
+    x86_64_xsave_save(area);
+}
+
+void x86_64_xsave_sanitize(void *area) {
+    // We need to protect against the following scenarios:
+    // - (CTX_XSAVE*) Bit 63 of XCOMP_BV is 1
+    // - (CTX_XSAVE*) A bit is set in XSTATE_BV but not in xcr0
+    // - (CTX_XSAVE*) Bytes 8:23 of the XSAVE header are not zero
+    // - MXCSR value has reserved bits set
+
+    fxsave_area_t *ctx = area;
+    ctx->mxcsr &= 0xffff;
+
+    if (ctx_style == CTX_FXSAVE) return;
+
+    xsave_area_t *xctx = area;
+    xctx->xstate_bv &= xcr0_value;
+    xctx->xcomp_bv = 0;
+    memset(xctx->reserved, 0, sizeof(xctx->reserved));
 }
 
 void x86_64_xsave_save(void *area) {
     switch (ctx_style) {
-    case CTX_FXSAVE: asm("fxsaveq %0" ::"m"(*(char(*)[ctx_size])area) : "memory"); break;
-    case CTX_XSAVE: asm("xsaveq %0" ::"m"(*(char(*)[ctx_size])area), "d"(-1), "a"(-1) : "memory"); break;
-    case CTX_XSAVEOPT: asm("xsaveoptq %0" ::"m"(*(char(*)[ctx_size])area), "d"(-1), "a"(-1) : "memory"); break;
+    case CTX_FXSAVE: asm("fxsaveq %0" ::"m"(*(char(*)[x86_64_xsave_size])area) : "memory"); break;
+    case CTX_XSAVE: asm("xsaveq %0" ::"m"(*(char(*)[x86_64_xsave_size])area), "d"(-1), "a"(-1) : "memory"); break;
+    case CTX_XSAVEOPT: asm("xsaveoptq %0" ::"m"(*(char(*)[x86_64_xsave_size])area), "d"(-1), "a"(-1) : "memory"); break;
     }
 }
 
 void x86_64_xsave_restore(void *area) {
     switch (ctx_style) {
-    case CTX_FXSAVE: asm("fxrstorq %0" ::"m"(*(char(*)[ctx_size])area) : "memory"); break;
+    case CTX_FXSAVE: asm("fxrstorq %0" ::"m"(*(char(*)[x86_64_xsave_size])area) : "memory"); break;
     case CTX_XSAVE:
-    case CTX_XSAVEOPT: asm("xrstorq %0" ::"m"(*(char(*)[ctx_size])area), "d"(-1), "a"(-1) : "memory"); break;
+    case CTX_XSAVEOPT: asm("xrstorq %0" ::"m"(*(char(*)[x86_64_xsave_size])area), "d"(-1), "a"(-1) : "memory"); break;
     }
 }
 
 void x86_64_xsave_reset(void *area) {
-    memset(area, 0, ctx_size);
+    memset(area, 0, x86_64_xsave_size);
+    fxsave_area_t *ctx = area;
+    ctx->mxcsr = 0x1f80;
+
     x86_64_xsave_restore(area);
-    uint32_t mxcsr = 0x1f80;
-    asm("ldmxcsr %0" ::"m"(mxcsr));
 }

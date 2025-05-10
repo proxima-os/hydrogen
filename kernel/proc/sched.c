@@ -17,6 +17,7 @@
 #include "proc/mutex.h"
 #include "proc/process.h"
 #include "proc/rcu.h"
+#include "proc/signal.h"
 #include "sections.h"
 #include "string.h"
 #include "util/handle.h"
@@ -41,18 +42,7 @@ static void reap_thread(thread_t *thread) {
     free_kernel_stack(thread->stack);
     if (thread->vmm) obj_deref(&thread->vmm->base);
 
-    if (thread->pid) {
-        pid_t *pid = thread->pid;
-        mutex_acq(&pid->remove_lock, 0, false);
-        rcu_write(pid->thread, NULL);
-        pid_handle_removal_and_unlock(pid);
-    }
-
-    /*if (thread->process) {
-        proc_thread_exit(thread->process, thread);
-        obj_deref(&thread->process->base);
-    }*/
-
+    if (thread->process) proc_thread_exit(thread->process, thread);
     if (thread->namespace) obj_deref(&thread->namespace->base);
 
     thread->state = THREAD_EXITED;
@@ -66,6 +56,17 @@ static void thread_free(object_t *ptr) {
     }
 
     ASSERT(thread->state == THREAD_EXITED);
+
+    if (thread->pid) {
+        pid_t *pid = thread->pid;
+        mutex_acq(&pid->remove_lock, 0, false);
+        rcu_write(pid->thread, NULL);
+        pid_handle_removal_and_unlock(pid);
+    }
+
+    if (thread->process) obj_deref(&thread->process->base);
+
+    signal_cleanup(&thread->sig_target);
     vfree(thread, sizeof(*thread));
 }
 
@@ -145,6 +146,9 @@ int sched_create_thread(
     thread->cpu = cpu;
     thread->state = THREAD_CREATED;
     thread->timeout_event.func = handle_timeout_event;
+    thread->user_thread = (flags & THREAD_USER) != 0;
+    thread->sig_mask = current_thread->sig_mask;
+    thread->sig_stack.__flags = __SS_DISABLE;
 
     if (process != NULL) {
         thread->process = process;
@@ -373,7 +377,7 @@ bool sched_wake(thread_t *thread) {
     return wake;
 }
 
-bool sched_interrupt(thread_t *thread) {
+bool sched_interrupt(thread_t *thread, bool force_user_transition) {
     // see comment in sched_wake
     preempt_state_t pstate = preempt_lock();
     irq_state_t state = spin_acq(&thread->cpu_lock);
@@ -385,6 +389,8 @@ bool sched_interrupt(thread_t *thread) {
 
     if (wake) {
         do_wake(cpu, thread, EINTR);
+    } else if (force_user_transition && thread->user_thread && cpu != get_current_cpu()) {
+        smp_trigger_user_transition(cpu);
     }
 
     spin_rel_noirq(&cpu->sched.lock);

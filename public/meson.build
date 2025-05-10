@@ -3,6 +3,7 @@ install_headers(
     'hydrogen/handle.h',
     'hydrogen/memory.h',
     'hydrogen/process.h',
+    'hydrogen/signal.h',
     'hydrogen/thread.h',
     'hydrogen/time.h',
     'hydrogen/types.h',

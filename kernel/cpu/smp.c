@@ -3,6 +3,7 @@
 #include "arch/smp.h"
 #include "cpu/cpudata.h"
 #include "kernel/compiler.h"
+#include "proc/sched.h"
 #include "util/slist.h"
 
 static smp_call_id_t next = 1;
@@ -31,6 +32,7 @@ static void trigger_call(cpu_t *cpu, smp_call_id_t id, void (*func)(void *), voi
 }
 
 smp_call_id_t smp_call_remote_async(cpu_t *dest, void (*func)(void *), void *ctx) {
+    migrate_state_t state = migrate_lock();
     smp_call_id_t id = __atomic_fetch_add(&next, 1, __ATOMIC_ACQ_REL);
 
     if (dest) {
@@ -46,6 +48,7 @@ smp_call_id_t smp_call_remote_async(cpu_t *dest, void (*func)(void *), void *ctx
         }
     }
 
+    migrate_unlock(state);
     return id;
 }
 
@@ -55,6 +58,7 @@ again:
         smp_call_id_t current = __atomic_load_n(&dest->remote_call.current, __ATOMIC_ACQUIRE);
         if (current != 0 && current <= id) goto again;
     } else {
+        migrate_state_t state = migrate_lock();
         cpu_t *cur = get_current_cpu();
 
         SLIST_FOREACH(cpus, cpu_t, node, cpu) {
@@ -63,11 +67,18 @@ again:
                 if (current != 0 && current <= id) goto again;
             }
         }
+
+        migrate_unlock(state);
     }
+}
+
+void smp_trigger_user_transition(struct cpu *dest) {
+    arch_remote_call(dest);
 }
 
 void smp_handle_remote_call(void) {
     cpu_t *cpu = get_current_cpu();
+    if (!__atomic_load_n(&cpu->remote_call.current, __ATOMIC_ACQUIRE)) return;
     cpu->remote_call.func(cpu->remote_call.ctx);
     __atomic_store_n(&cpu->remote_call.current, 0, __ATOMIC_RELEASE);
 }

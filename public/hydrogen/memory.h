@@ -89,9 +89,9 @@ extern const size_t hydrogen_page_size __asm__("__hydrogen_page_size");
  * Create a new VMM.
  *
  * \param[in] flags The flags that should be set on the returned handle.
- * \return A handle to the newly created VMM, if successful; if not, a negative error code.
+ * \return A handle to the newly created VMM (in `integer`).
  */
-int hydrogen_vmm_create(uint32_t flags) __asm__("__hydrogen_vmm_create");
+hydrogen_ret_t hydrogen_vmm_create(uint32_t flags) __asm__("__hydrogen_vmm_create");
 
 /**
  * Create a new VMM by cloning an existing one.
@@ -99,9 +99,9 @@ int hydrogen_vmm_create(uint32_t flags) __asm__("__hydrogen_vmm_create");
  *
  * \param[in] vmm The VMM to clone. Can be #HYDROGEN_THIS_VMM. Requires #HYDROGEN_VMM_CLONE.
  * \param[in] flags The flags that should be set on the returned handle.
- * \return A handle to the newly created VMM, if successful; if not, a negative error code.
+ * \return A handle to the newly created VMM (in `integer`).
  */
-int hydrogen_vmm_clone(int vmm, uint32_t flags) __asm__("__hydrogen_vmm_clone");
+hydrogen_ret_t hydrogen_vmm_clone(int vmm, uint32_t flags) __asm__("__hydrogen_vmm_clone");
 
 /**
  * Create a new memory mapping.
@@ -116,7 +116,7 @@ int hydrogen_vmm_clone(int vmm, uint32_t flags) __asm__("__hydrogen_vmm_clone");
  * \param[in] flags The flags the mapping should have.
  * \param[in] object The object to map. If this is #HYDROGEN_INVALID_HANDLE, an anonymous mapping is created.
  * \param[in] offset The offset within the object the mapping should start at. Must be a multiple of the page size.
- * \return The address of the mapping (in `pointer`), if successful; if not, an error code (in `error`).
+ * \return The address of the mapping (in `pointer`).
  */
 hydrogen_ret_t hydrogen_vmm_map(
         int vmm,
@@ -155,7 +155,7 @@ int hydrogen_vmm_remap(int vmm, uintptr_t address, size_t size, uint32_t flags) 
  * \param[in] dst_size The new size of the range. Must be a multiple of the page size, and must be greater than or equal
  *                     to `src_size`. If greater than `src_size`, the extra space is filled with a private anonymous
  *                     mapping with no permissions set.
- * \return The address of the mapping (in `pointer`), if successful; if not, an error code (in `error`).
+ * \return The address of the mapping (in `pointer`).
  */
 hydrogen_ret_t hydrogen_vmm_move(
         int src_vmm,
@@ -216,8 +216,7 @@ int hydrogen_memory_wait(uint32_t *location, uint32_t expected, uint64_t deadlin
  *
  * \param[in] location The location whose waiters should be woken up. Must be aligned to a 4-byte boundary.
  * \param[in] count The maximum number of threads to wake up. If zero, all threads are awoken.
- * \return The number of threads that have been awoken (in `integer`), if successful; if not,
- *         an error code (in `error`).
+ * \return The number of threads that have been awoken (in `integer`).
  */
 hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) __asm__("__hydrogen_memory_wake");
 
@@ -226,9 +225,9 @@ hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) __asm__("_
  *
  * \param[in] size The size of the object. Must be a multiple of the page size.
  * \param[in] flags The flags that should be set on the returned handle.
- * \return A handle to the created memory object, if successful; if not, a negative error code.
+ * \return A handle to the created memory object (in `integer`).
  */
-int hydrogen_mem_object_create(size_t size, uint32_t flags) __asm__("__hydrogen_mem_object_create");
+hydrogen_ret_t hydrogen_mem_object_create(size_t size, uint32_t flags) __asm__("__hydrogen_mem_object_create");
 
 /**
  * Read data from a memory object.

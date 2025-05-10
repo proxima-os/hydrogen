@@ -1,6 +1,9 @@
 #pragma once
 
+#include "hydrogen/signal.h"
+#include "hydrogen/types.h"
 #include "proc/mutex.h"
+#include "proc/signal.h"
 #include "util/list.h"
 #include "util/object.h"
 #include "util/refcount.h"
@@ -51,8 +54,14 @@ struct process {
     list_t threads;
     mutex_t threads_lock;
 
+    struct __sigaction sig_handlers[__NSIG];
+    signal_target_t sig_target;
+    mutex_t sig_lock;
+    struct thread *singlethreaded_handler;
+
     bool did_exec;
-    bool did_exit;
+    bool exiting;
+    bool stopped;
 };
 
 struct pgroup {
@@ -85,6 +94,17 @@ int proc_clone(process_t **out);
 int proc_thread_create(process_t *process, struct thread *thread);
 void proc_thread_exit(process_t *process, struct thread *thread);
 
+// you must hold current_thread->process->threads_lock
+void proc_wait_until_single_threaded(void);
+
+int sigaction(process_t *process, int signal, const struct __sigaction *action, struct __sigaction *old);
+
+void create_user_siginfo(__siginfo_t *out, int signal);
+
+bool can_send_signal(process_t *process, __siginfo_t *info); // info must be created by create_user_siginfo
+int broadcast_signal(int signal);
+int group_signal(pgroup_t *group, int signal);
+
 void pgroup_ref(pgroup_t *group);
 void pgroup_deref(pgroup_t *group);
 
@@ -97,7 +117,7 @@ int getpgid(process_t *process);
 int getsid(process_t *process);
 
 int setpgid(process_t *process, int pgid);
-int setsid(process_t *process);
+hydrogen_ret_t setsid(process_t *process);
 
 uint32_t getgid(process_t *process);
 uint32_t getuid(process_t *process);

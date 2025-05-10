@@ -1,7 +1,9 @@
 #include "util/handle.h"
 #include "errno.h"
 #include "hydrogen/handle.h"
+#include "hydrogen/types.h"
 #include "kernel/compiler.h"
+#include "kernel/return.h"
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
 #include "proc/rcu.h"
@@ -198,7 +200,7 @@ int namespace_clone(namespace_t **out, namespace_t *ns) {
     return 0;
 }
 
-static int get_next_handle(namespace_t *ns) {
+static hydrogen_ret_t get_next_handle(namespace_t *ns) {
     size_t idx = ns->alloc_start & ~63;
     uint64_t *bitmap = &ns->bitmap[idx / 64];
 
@@ -214,15 +216,15 @@ static int get_next_handle(namespace_t *ns) {
         bitmap += 1;
     }
 
-    if (idx > INT_MAX) return -EMFILE;
+    if (idx > INT_MAX) return ret_error(EMFILE);
 
     int error = expand(ns, idx + 1);
-    if (unlikely(error)) return -error;
+    if (unlikely(error)) return ret_error(error);
 
-    return idx;
+    return ret_integer(idx);
 }
 
-int namespace_add(
+hydrogen_ret_t namespace_add(
         namespace_t *ns,
         object_rights_t ns_rights,
         int handle,
@@ -235,7 +237,7 @@ int namespace_add(
     ASSERT(object->type != OBJECT_NAMESPACE || (flags & NS_ILL_FLAGS) == 0);
 
     handle_data_t *new_data = vmalloc(sizeof(*new_data));
-    if (unlikely(!new_data)) return -ENOMEM;
+    if (unlikely(!new_data)) return ret_error(ENOMEM);
     memset(new_data, 0, sizeof(*new_data));
     new_data->object = object;
     new_data->rights = rights;
@@ -246,14 +248,15 @@ int namespace_add(
     handle_data_t *old_data;
 
     if (handle == HYDROGEN_INVALID_HANDLE) {
-        handle = get_next_handle(ns);
+        hydrogen_ret_t ret = get_next_handle(ns);
 
-        if (unlikely(handle < 0)) {
+        if (unlikely(ret.error)) {
             mutex_rel(&ns->update_lock);
             vfree(new_data, sizeof(*new_data));
-            return handle;
+            return ret;
         }
 
+        handle = ret.integer;
         old_data = NULL;
     } else if ((size_t)handle < ns->capacity) {
         old_data = ns->data[handle];
@@ -261,15 +264,15 @@ int namespace_add(
         if (old_data != NULL && (ns_rights & HYDROGEN_NAMESPACE_REMOVE) == 0) {
             mutex_rel(&ns->update_lock);
             vfree(new_data, sizeof(*new_data));
-            return -EBADF;
+            return ret_error(EBADF);
         }
     } else {
-        int error = -expand(ns, (size_t)handle + 1);
+        int error = expand(ns, (size_t)handle + 1);
 
         if (unlikely(error)) {
             mutex_rel(&ns->update_lock);
             vfree(new_data, sizeof(*new_data));
-            return error;
+            return ret_error(error);
         }
 
         old_data = NULL;
@@ -284,10 +287,10 @@ int namespace_add(
         vfree(old_data, sizeof(*old_data));
     }
 
-    return handle;
+    return ret_integer(handle);
 }
 
-int hnd_reserve(namespace_t *ns) {
+hydrogen_ret_t hnd_reserve(namespace_t *ns) {
     return get_next_handle(ns);
 }
 

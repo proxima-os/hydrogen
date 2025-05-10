@@ -9,6 +9,7 @@
 #define X86_64_IDT_UD 0x06
 #define X86_64_IDT_NM 0x07
 #define X86_64_IDT_DF 0x08
+#define X86_64_IDT_CS 0x09
 #define X86_64_IDT_TS 0x0a
 #define X86_64_IDT_NP 0x0b
 #define X86_64_IDT_SS 0x0c

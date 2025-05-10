@@ -11,5 +11,7 @@ void smp_call_remote(struct cpu *dest, void (*func)(void *), void *ctx);
 smp_call_id_t smp_call_remote_async(struct cpu *dest, void (*func)(void *), void *ctx);
 void smp_call_wait(struct cpu *dest, smp_call_id_t id);
 
+void smp_trigger_user_transition(struct cpu *dest);
+
 /* this function is internal */
 void smp_handle_remote_call(void);

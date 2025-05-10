@@ -1,12 +1,17 @@
 #include "proc/process.h"
+#include "arch/pmap.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
+#include "hydrogen/signal.h"
+#include "hydrogen/types.h"
 #include "kernel/compiler.h"
+#include "kernel/return.h"
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
 #include "proc/rcu.h"
 #include "proc/sched.h"
+#include "proc/signal.h"
 #include "sections.h"
 #include "string.h"
 #include "util/list.h"
@@ -147,6 +152,8 @@ static void process_free(object_t *ptr) {
 
     pgroup_deref(process->group);
     ident_deref(process->identity);
+
+    signal_cleanup(&process->sig_target);
     vfree(process, sizeof(*process));
 }
 
@@ -271,6 +278,10 @@ int proc_clone(process_t **out) {
     process->parent = current_thread->process;
     process->identity = ident_get(current_thread->process);
 
+    mutex_acq(&current_thread->process->sig_lock, 0, false);
+    memcpy(process->sig_handlers, current_thread->process->sig_handlers, sizeof(current_thread->process->sig_handlers));
+    mutex_rel(&current_thread->process->sig_lock);
+
     int error = allocate_pid(process, NULL);
     if (unlikely(error)) {
         ident_deref(process->identity);
@@ -300,9 +311,17 @@ int proc_clone(process_t **out) {
 int proc_thread_create(process_t *process, struct thread *thread) {
     mutex_acq(&process->threads_lock, 0, false);
 
+    if (process->exiting) {
+        mutex_rel(&process->threads_lock);
+        return EINVAL;
+    }
+
     if (list_empty(&process->threads)) {
         thread->pid = process->pid;
         rcu_write(thread->pid->thread, thread);
+    } else if (process != current_thread->process) {
+        mutex_rel(&process->threads_lock);
+        return EPERM;
     } else if (process != &kernel_process) {
         int error = allocate_pid(NULL, thread);
 
@@ -399,9 +418,196 @@ static void handle_process_exit(process_t *process) {
 void proc_thread_exit(process_t *process, struct thread *thread) {
     mutex_acq(&process->threads_lock, 0, false);
     list_remove(&process->threads, &thread->process_node);
+
     bool proc_exit = list_empty(&process->threads);
+
+    if (!proc_exit && process->threads.head == process->threads.tail && process->singlethreaded_handler != NULL) {
+        sched_wake(process->singlethreaded_handler);
+    }
+
     mutex_rel(&process->threads_lock);
     if (proc_exit) handle_process_exit(process);
+}
+
+void proc_wait_until_single_threaded(void) {
+    process_t *process = current_thread->process;
+    ASSERT(process->exiting);
+
+    while (process->threads.head != process->threads.tail) {
+        process->singlethreaded_handler = current_thread;
+        sched_prepare_wait(false);
+        mutex_rel(&process->threads_lock);
+        sched_perform_wait(0);
+        mutex_acq(&process->threads_lock, 0, false);
+        process->singlethreaded_handler = NULL;
+    }
+}
+
+int sigaction(process_t *process, int signal, const struct __sigaction *action, struct __sigaction *old) {
+    ASSERT(signal >= 1 && signal < __NSIG);
+
+    mutex_acq(&process->sig_lock, 0, false);
+
+    struct __sigaction old_act = process->sig_handlers[signal];
+
+    if (old) {
+        int error = user_memcpy(old, &old_act, sizeof(old_act));
+
+        if (unlikely(error)) {
+            mutex_rel(&process->sig_lock);
+            return error;
+        }
+    }
+
+    if (action) {
+        struct __sigaction new_act;
+        int error = user_memcpy(&new_act, action, sizeof(*action));
+
+        if (unlikely(error)) {
+            mutex_rel(&process->sig_lock);
+            return error;
+        }
+
+        if (new_act.__func.__handler != __SIG_DFL) {
+            if ((signal == __SIGKILL || signal == __SIGSTOP) ||
+                (new_act.__func.__handler != __SIG_IGN && (uintptr_t)new_act.__func.__handler > arch_pt_max_user_addr()
+                )) {
+                mutex_rel(&process->sig_lock);
+                return EINVAL;
+            }
+        }
+
+        if (get_sig_disp(signal, &old_act) != SIGNAL_IGNORE && get_sig_disp(signal, &new_act) == SIGNAL_IGNORE) {
+            mutex_acq(&process->threads_lock, 0, false);
+
+            handle_signal_ignored(&process->sig_target, signal);
+
+            LIST_FOREACH(process->threads, thread_t, process_node, thread) {
+                handle_signal_ignored(&thread->sig_target, signal);
+            }
+
+            mutex_rel(&process->threads_lock);
+        }
+
+        process->sig_handlers[signal] = new_act;
+    }
+
+    mutex_rel(&process->sig_lock);
+    return 0;
+}
+
+bool can_send_signal(process_t *process, __siginfo_t *info) {
+    rcu_state_t state = rcu_read_lock();
+
+    if (info->__signo == __SIGCONT &&
+        rcu_read(current_thread->process->group)->session == rcu_read(process->group->session)) {
+        rcu_read_unlock(state);
+        return true;
+    }
+
+    ident_t *rx_ident = rcu_read(process->identity);
+
+    if (info->__data.__user_or_sigchld.__uid == rx_ident->uid ||
+        info->__data.__user_or_sigchld.__uid == rx_ident->suid) {
+        rcu_read_unlock(state);
+        return true;
+    }
+
+    ident_t *tx_ident = rcu_read(current_thread->process->identity);
+
+    if (tx_ident->euid == 0) {
+        rcu_read_unlock(state);
+        return true;
+    }
+
+    bool ok = tx_ident->euid == rx_ident->uid || tx_ident->euid == rx_ident->suid;
+    rcu_read_unlock(state);
+    return ok;
+}
+
+void create_user_siginfo(__siginfo_t *out, int signal) {
+    *out = (__siginfo_t){
+            .__signo = signal,
+            .__code = __SI_USER,
+            .__data.__user_or_sigchld.__pid = getpid(current_thread->process),
+            .__data.__user_or_sigchld.__uid = getuid(current_thread->process),
+    };
+}
+
+int broadcast_signal(int signal) {
+    bool sent = false;
+    int error = ESRCH;
+
+    __siginfo_t info;
+    create_user_siginfo(&info, signal);
+
+    mutex_acq(&pids_update_lock, 0, false);
+
+    uint64_t *bitmap = pids_map;
+
+    for (size_t i = 0; i < pids_capacity; i += 64) {
+        uint64_t bmval = *bitmap++;
+        if (!bmval) continue;
+
+        pid_t **pid = &pids[i];
+
+        do {
+            size_t extra = __builtin_ctzll(bmval);
+            bmval >>= extra;
+            pid += extra;
+
+            process_t *proc = pid[0]->process;
+
+            if (proc && proc != current_thread->process) {
+                if (error == ESRCH) error = EPERM;
+
+                if (can_send_signal(proc, &info)) {
+                    if (signal != 0) {
+                        int ret = queue_signal(proc, &proc->sig_target, &info, false, NULL);
+                        if (likely(ret == 0)) sent = true;
+                        else if (error == EPERM) error = ret;
+                    } else {
+                        sent = true;
+                        goto done;
+                    }
+                }
+            }
+
+            bmval &= ~1;
+        } while (bmval);
+    }
+
+done:
+    mutex_rel(&pids_update_lock);
+    return sent ? 0 : error;
+}
+
+int group_signal(pgroup_t *group, int signal) {
+    bool sent = false;
+    int error = ESRCH;
+
+    __siginfo_t info;
+    create_user_siginfo(&info, signal);
+
+    mutex_acq(&group->members_lock, 0, false);
+
+    LIST_FOREACH(group->members, process_t, group_node, proc) {
+        if (error == ESRCH) error = EPERM;
+
+        if (can_send_signal(proc, &info)) {
+            if (signal != 0) {
+                int ret = queue_signal(proc, &proc->sig_target, &info, false, NULL);
+                if (likely(ret == 0)) sent = true;
+                else if (error == EPERM) error = ret;
+            } else {
+                sent = true;
+                break;
+            }
+        }
+    }
+
+    mutex_rel(&group->members_lock);
+    return sent ? 0 : error;
 }
 
 void pgroup_ref(pgroup_t *group) {
@@ -560,25 +766,25 @@ err:
     return error;
 }
 
-int setsid(process_t *process) {
+hydrogen_ret_t setsid(process_t *process) {
     mutex_acq(&process->group_update_lock, 0, false);
 
     if (unlikely(process->pid->group != NULL)) {
         mutex_rel(&process->group_update_lock);
-        return -EPERM;
+        return ret_error(EPERM);
     }
 
     session_t *session = vmalloc(sizeof(*session));
     if (unlikely(session == NULL)) {
         mutex_rel(&process->group_update_lock);
-        return -ENOMEM;
+        return ret_error(ENOMEM);
     }
 
     pgroup_t *group = vmalloc(sizeof(*group));
     if (unlikely(group == NULL)) {
         mutex_rel(&process->group_update_lock);
         vfree(session, sizeof(*session));
-        return -ENOMEM;
+        return ret_error(ENOMEM);
     }
 
     memset(session, 0, sizeof(*session));
@@ -601,7 +807,7 @@ int setsid(process_t *process) {
     mutex_rel(&process->group_update_lock);
     rcu_sync();
     pgroup_deref(old_group);
-    return process->pid->id;
+    return ret_integer(process->pid->id);
 }
 
 uint32_t getgid(process_t *process) {

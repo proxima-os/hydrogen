@@ -2,8 +2,10 @@
 
 #include "arch/context.h"
 #include "arch/sched.h"
+#include "hydrogen/signal.h"
 #include "mem/vmm.h"
 #include "proc/process.h"
+#include "proc/signal.h"
 #include "util/list.h"
 #include "util/object.h"
 #include "util/slist.h"
@@ -44,6 +46,11 @@ typedef struct thread {
     int wake_status;
     spinlock_t cpu_lock;
     bool active;
+    bool user_thread;
+    signal_target_t sig_target;
+    __sigset_t sig_mask;
+    __stack_t sig_stack;
+    queued_signal_t fault_sig;
 } thread_t;
 
 typedef struct task {
@@ -87,7 +94,7 @@ void preempt_unlock(preempt_state_t state);
 
 void sched_yield(void);
 bool sched_wake(thread_t *thread); // if thread is in THREAD_CREATED, increments its reference count
-bool sched_interrupt(thread_t *thread);
+bool sched_interrupt(thread_t *thread, bool force_user_transition);
 
 void sched_prepare_wait(bool interruptible);
 int sched_perform_wait(uint64_t deadline);

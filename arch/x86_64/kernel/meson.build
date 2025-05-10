@@ -20,7 +20,6 @@ kernel_sources += files(
     'sys/syscall.c',
     'sys/syscall.S',
     'sys/transition.c',
-    'sys/transition.S',
     'time/hpet.c',
     'time/kvmclock.c',
     'time/time.c',

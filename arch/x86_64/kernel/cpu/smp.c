@@ -408,7 +408,7 @@ INIT_TEXT static void mp_wakeup_cleanup(void *ptr) {
     vfree(ctx, sizeof(*ctx));
 }
 
-INIT_DATA static event_t smp_current_online;
+static event_t smp_current_online;
 
 INIT_TEXT static void launch_cpu(
         uint32_t acpi_id,

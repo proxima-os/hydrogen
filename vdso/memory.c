@@ -8,12 +8,12 @@
 
 EXPORT const size_t hydrogen_page_size = PAGE_SIZE;
 
-EXPORT int hydrogen_vmm_create(uint32_t flags) {
-    return SYSCALL1(SYSCALL_VMM_CREATE, flags).error;
+EXPORT hydrogen_ret_t hydrogen_vmm_create(uint32_t flags) {
+    return SYSCALL1(SYSCALL_VMM_CREATE, flags);
 }
 
-EXPORT int hydrogen_vmm_clone(int vmm, uint32_t flags) {
-    return SYSCALL2(SYSCALL_VMM_CLONE, vmm, flags).error;
+EXPORT hydrogen_ret_t hydrogen_vmm_clone(int vmm, uint32_t flags) {
+    return SYSCALL2(SYSCALL_VMM_CLONE, vmm, flags);
 }
 
 EXPORT hydrogen_ret_t
@@ -50,8 +50,8 @@ EXPORT hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) {
     return SYSCALL2(SYSCALL_MEMORY_WAKE, location, count);
 }
 
-EXPORT int hydrogen_mem_object_create(size_t size, uint32_t flags) {
-    return SYSCALL2(SYSCALL_MEM_OBJECT_CREATE, size, flags).error;
+EXPORT hydrogen_ret_t hydrogen_mem_object_create(size_t size, uint32_t flags) {
+    return SYSCALL2(SYSCALL_MEM_OBJECT_CREATE, size, flags);
 }
 
 EXPORT int hydrogen_mem_object_read(int object, void *buffer, size_t count, uint64_t position) {

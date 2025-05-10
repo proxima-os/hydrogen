@@ -8,6 +8,7 @@
 #include "cpu/smp.h"
 #include "errno.h"
 #include "hydrogen/memory.h"
+#include "hydrogen/signal.h"
 #include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -19,10 +20,12 @@
 #include "mem/vmm.h"
 #include "proc/mutex.h"
 #include "proc/sched.h"
+#include "proc/signal.h"
 #include "sections.h"
 #include "string.h"
 #include "util/hlist.h"
 #include "util/panic.h"
+#include "util/printk.h"
 #include "util/shlist.h"
 #include "util/spinlock.h"
 #include <stdbool.h>
@@ -1224,8 +1227,9 @@ static void user_fault_fail(
         arch_context_t *context,
         uintptr_t pc,
         uintptr_t address,
-        pmap_fault_type_t type,
         unsigned flags,
+        int signal,
+        int code,
         int error
 ) {
     if ((flags & PMAP_FAULT_USER) == 0) {
@@ -1234,8 +1238,21 @@ static void user_fault_fail(
         return;
     }
 
-    // TODO: Make user_memcpy/user_memset fail gracefully
-    panic("TODO: user_fault_fail(0x%X, 0x%X, %d, %u, %e)", pc, address, type, flags, error);
+    printk("pmap: sending signal %d to thread %d (process %d) due to fault on address 0x%Z (code: %d, error: %d)\n",
+           signal,
+           current_thread->pid->id,
+           current_thread->process->pid->id,
+           address,
+           code,
+           error);
+
+    __siginfo_t sig = {
+            .__signo = __SIGSEGV,
+            .__code = code,
+            .__errno = error,
+            .__data.__sigsegv.__address = (void *)address,
+    };
+    queue_signal(current_thread->process, &current_thread->sig_target, &sig, true, &current_thread->fault_sig);
 }
 
 static bool region_allows_access(vmm_region_t *region, pmap_fault_type_t type) {
@@ -1279,9 +1296,9 @@ static void create_new_user_mapping(
         get_pte_result_t *result
 ) {
     vmm_region_t *region = vmm_get_region(vmm, address);
-    if (unlikely(!region)) return user_fault_fail(context, pc, address, type, flags, EFAULT);
+    if (unlikely(!region)) return user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_MAPERR, EFAULT);
     if (unlikely(!region_allows_access(region, type))) {
-        return user_fault_fail(context, pc, address, type, flags, EFAULT);
+        return user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_ACCERR, EFAULT);
     }
 
     uint64_t target;
@@ -1289,17 +1306,29 @@ static void create_new_user_mapping(
 
     if (region->object == NULL) {
         page_t *page = alloc_page_for_user_mapping(vmm, region);
-        if (unlikely(!page)) return user_fault_fail(context, pc, address, type, flags, ENOMEM);
+        if (unlikely(!page)) return user_fault_fail(context, pc, address, flags, __SIGBUS, __BUS_OBJERR, ENOMEM);
         memset(page_to_virt(page), 0, PAGE_SIZE);
         target = page_to_phys(page);
 
         pte_flags |= PMAP_ANONYMOUS;
     } else {
         const mem_object_ops_t *ops = (const mem_object_ops_t *)region->object->base.ops;
-        if (unlikely(!ops->get_page)) return user_fault_fail(context, pc, address, type, flags, ENXIO);
+        if (unlikely(!ops->get_page)) {
+            return user_fault_fail(context, pc, address, flags, __SIGBUS, __BUS_ADRERR, ENXIO);
+        }
 
         hydrogen_ret_t ret = ops->get_page(region->object, (region->offset + (address - region->head)) >> PAGE_SHIFT);
-        if (unlikely(ret.error)) return user_fault_fail(context, pc, address, type, flags, ret.error);
+        if (unlikely(ret.error)) {
+            return user_fault_fail(
+                    context,
+                    pc,
+                    address,
+                    flags,
+                    __SIGBUS,
+                    ret.error == ENXIO ? __BUS_ADRERR : __BUS_OBJERR,
+                    ret.error
+            );
+        }
         target = page_to_phys(ret.pointer);
 
         if ((region->flags & HYDROGEN_MEM_SHARED) == 0) {
@@ -1381,11 +1410,13 @@ static void do_handle_user_fault(
     get_pte_result_t result = {};
 
     if (unlikely(!get_pte(&result, vmm->pmap.table, address))) {
-        if (unlikely(result.level != 0)) return user_fault_fail(context, pc, address, type, flags, EFAULT);
+        if (unlikely(result.level != 0)) {
+            return user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_MAPERR, EFAULT);
+        }
 
 #if PT_PREPARE_DEBUG
         if (unlikely(result.pte != ARCH_PT_PREPARE_PTE)) {
-            return user_fault_fail(context, pc, address, type, flags, EFAULT);
+            return user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_MAPERR, EFAULT);
         }
 #endif
 
@@ -1412,12 +1443,12 @@ static void do_handle_user_fault(
         ASSERT(region != NULL);
 
         if (unlikely((region->flags & HYDROGEN_MEM_WRITE) == 0)) {
-            return user_fault_fail(context, pc, address, type, flags, EFAULT);
+            return user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_ACCERR, EFAULT);
         }
 
         page_t *new_page;
         int error = copy_mapping(vmm, region, &new_page, arch_pt_leaf_target(result.level, result.pte), pte_flags);
-        if (unlikely(error)) return user_fault_fail(context, pc, address, type, flags, error);
+        if (unlikely(error)) return user_fault_fail(context, pc, address, flags, __SIGBUS, __BUS_OBJERR, error);
 
         pte_flags &= ~PMAP_COPY_ON_WRITE;
         pte_flags |= PMAP_ANONYMOUS | PMAP_WRITABLE;
@@ -1459,7 +1490,7 @@ static void do_handle_user_fault(
         return;
     }
 
-    user_fault_fail(context, pc, address, type, flags, EFAULT);
+    user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_ACCERR, EFAULT);
 }
 
 static void handle_user_fault(
@@ -1469,8 +1500,9 @@ static void handle_user_fault(
         pmap_fault_type_t type,
         unsigned flags
 ) {
-    if (!arch_pt_is_canonical(address)) return user_fault_fail(context, pc, address, type, flags, EFAULT);
-    if (is_kernel_address(address)) return user_fault_fail(context, pc, address, type, flags, EFAULT);
+    if (!arch_pt_is_canonical(address) || is_kernel_address(address)) {
+        return user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_MAPERR, EFAULT);
+    }
 
     vmm_t *vmm = current_thread->vmm;
     ASSERT(vmm != NULL);

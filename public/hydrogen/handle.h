@@ -12,6 +12,7 @@
 #ifndef HYDROGEN_HANDLE_H
 #define HYDROGEN_HANDLE_H
 
+#include "hydrogen/types.h"
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -49,18 +50,18 @@ extern "C" {
  * Create an empty namespace.
  *
  * \param[in] flags The flags that should be set on the returned handle.
- * \return A handle to the newly created namespace, if successful; if not, a negative error code.
+ * \return A handle to the newly created namespace (in `integer`).
  */
-int hydrogen_namespace_create(uint32_t flags) __asm__("__hydrogen_namespace_create");
+hydrogen_ret_t hydrogen_namespace_create(uint32_t flags) __asm__("__hydrogen_namespace_create");
 
 /**
  * Create a new namespace by cloning an existing one.
  *
  * \param[in] ns The namespace to clone. Can be #HYDROGEN_THIS_NAMESPACE. Requires #HYDROGEN_NAMESPACE_CLONE.
  * \param[in] flags The flags that should be set on the returned handle.
- * \return A handle to the newly created namespace, if successful; if not, a negative error code.
+ * \return A handle to the newly created namespace (in `integer`).
  */
-int hydrogen_namespace_clone(int ns, uint32_t flags) __asm__("__hydrogen_namespace_clone");
+hydrogen_ret_t hydrogen_namespace_clone(int ns, uint32_t flags) __asm__("__hydrogen_namespace_clone");
 
 /**
  * Add a handle to a namespace.
@@ -85,11 +86,16 @@ int hydrogen_namespace_clone(int ns, uint32_t flags) __asm__("__hydrogen_namespa
  *                    plus the flags given in `flags`.
  *                  - If #HYDROGEN_REMOVE_HANDLE_FLAGS is given, the flags of the handle are set to the flags of
  *                    `src_obj` without the flags given in `flags`.
- * \return The new handle, if successful; if not, a negative error code.
+ * \return The new handle (in `integer`).
  */
-int hydrogen_namespace_add(int src_ns, int src_obj, int dst_ns, int dst_hnd, uint32_t rights, uint32_t flags) __asm__(
-        "__hydrogen_namespace_add"
-);
+hydrogen_ret_t hydrogen_namespace_add(
+        int src_ns,
+        int src_obj,
+        int dst_ns,
+        int dst_hnd,
+        uint32_t rights,
+        uint32_t flags
+) __asm__("__hydrogen_namespace_add");
 
 /**
  * Remove a handle from a namespace.
@@ -110,7 +116,9 @@ int hydrogen_namespace_remove(int ns, int handle) __asm__("__hydrogen_namespace_
  * \param[out] flags The flags of the specified handle. Can be `NULL`.
  * \return 0, if successful; if not, an error code.
  */
-int hydrogen_namespace_resolve(int ns, int handle, uint32_t *rights, uint32_t *flags) __asm__("__hydrogen_namespace_resolve");
+int hydrogen_namespace_resolve(int ns, int handle, uint32_t *rights, uint32_t *flags) __asm__(
+        "__hydrogen_namespace_resolve"
+);
 
 #ifdef __cplusplus
 };

@@ -161,6 +161,7 @@ idt_thunk X86_64_IDT_BR
 idt_thunk X86_64_IDT_UD
 idt_thunk X86_64_IDT_NM
 idt_thunk X86_64_IDT_DF, errc=1
+idt_thunk X86_64_IDT_CS
 idt_thunk X86_64_IDT_TS, errc=1
 idt_thunk X86_64_IDT_NP, errc=1
 idt_thunk X86_64_IDT_SS, errc=1

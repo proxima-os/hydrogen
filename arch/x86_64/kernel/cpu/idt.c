@@ -1,13 +1,17 @@
 #include "x86_64/idt.h"
 #include "arch/context.h"
 #include "arch/irq.h"
+#include "cpu/cpudata.h"
 #include "cpu/smp.h"
+#include "hydrogen/signal.h"
 #include "kernel/compiler.h"
 #include "mem/pmap.h"
 #include "proc/sched.h"
+#include "proc/signal.h"
 #include "sections.h"
 #include "sys/transition.h"
 #include "util/panic.h"
+#include "util/printk.h"
 #include "x86_64/cpu.h"
 #include "x86_64/cr.h"
 #include "x86_64/idtvec.h"
@@ -85,6 +89,19 @@ _Noreturn void x86_64_idt_handle_fatal(arch_context_t *context) {
           context->ss);
 }
 
+static void signal_or_fatal(arch_context_t *context, int signal, int code) {
+    if ((context->cs & 3) == 0) x86_64_idt_handle_fatal(context);
+
+    __siginfo_t info = {.__signo = signal, .__code = code, .__data.__sigsegv.__address = (void *)context->rip};
+    printk("idt: sending signal %d to thread %d (process %d) due to exception at 0x%Z (code: %d)\n",
+           signal,
+           current_thread->pid->id,
+           current_thread->process->pid->id,
+           context->rip,
+           code);
+    queue_signal(current_thread->process, &current_thread->sig_target, &info, true, &current_thread->fault_sig);
+}
+
 USED void x86_64_idt_dispatch(arch_context_t *context) {
     if (x86_64_cpu_features.smap) asm("clac");
 
@@ -96,6 +113,18 @@ USED void x86_64_idt_dispatch(arch_context_t *context) {
     if (context->cs & 3) enter_from_user_mode(context);
 
     switch (context->vector) {
+    case X86_64_IDT_DE: signal_or_fatal(context, __SIGFPE, __FPE_INTDIV); break;
+    case X86_64_IDT_DB: signal_or_fatal(context, __SIGTRAP, __TRAP_TRACE); break;
+    case X86_64_IDT_BP: signal_or_fatal(context, __SIGTRAP, __TRAP_BRKPT); break;
+    case X86_64_IDT_OF: signal_or_fatal(context, __SIGSEGV, 0); break;
+    case X86_64_IDT_BR: signal_or_fatal(context, __SIGSEGV, 0); break;
+    case X86_64_IDT_UD: signal_or_fatal(context, __SIGILL, __ILL_ILLOPN); break;
+    case X86_64_IDT_NM: signal_or_fatal(context, __SIGFPE, 0); break;
+    case X86_64_IDT_CS: signal_or_fatal(context, __SIGSEGV, 0); break;
+    case X86_64_IDT_TS: signal_or_fatal(context, __SIGSEGV, 0); break;
+    case X86_64_IDT_NP: signal_or_fatal(context, __SIGSEGV, 0); break;
+    case X86_64_IDT_SS: signal_or_fatal(context, __SIGSEGV, 0); break;
+    case X86_64_IDT_GP: signal_or_fatal(context, __SIGSEGV, 0); break;
     case X86_64_IDT_PF: {
         uintptr_t address = x86_64_read_cr2();
         enable_irq();
@@ -109,20 +138,24 @@ USED void x86_64_idt_dispatch(arch_context_t *context) {
 
         if (context->error & (1u << 2)) flags |= PMAP_FAULT_USER;
 
-        return pmap_handle_page_fault(context, context->rip, address, type, flags);
+        pmap_handle_page_fault(context, context->rip, address, type, flags);
+        break;
     }
+    case X86_64_IDT_MF: signal_or_fatal(context, __SIGFPE, 0); break;
+    case X86_64_IDT_AC: signal_or_fatal(context, __SIGBUS, __BUS_ADRALN); break;
+    case X86_64_IDT_XM: signal_or_fatal(context, __SIGFPE, 0); break;
     case X86_64_IDT_IPI_REMOTE_CALL: {
         preempt_state_t state = preempt_lock();
         smp_handle_remote_call();
         x86_64_lapic_eoi();
         preempt_unlock(state);
-        return;
+        break;
     }
-    case X86_64_IDT_LAPIC_TIMER: return x86_64_handle_timer();
-    case X86_64_IDT_LAPIC_ERROR: return x86_64_lapic_irq_error();
-    case X86_64_IDT_LAPIC_SPURIOUS: return x86_64_lapic_irq_spurious();
-    default: return x86_64_idt_handle_fatal(context);
+    case X86_64_IDT_LAPIC_TIMER: x86_64_handle_timer(); break;
+    case X86_64_IDT_LAPIC_ERROR: x86_64_lapic_irq_error(); break;
+    case X86_64_IDT_LAPIC_SPURIOUS: x86_64_lapic_irq_spurious(); break;
+    default: x86_64_idt_handle_fatal(context); break;
     }
 
-    if (context->cs & 3) exit_to_user_mode();
+    if (context->cs & 3) exit_to_user_mode(-1);
 }

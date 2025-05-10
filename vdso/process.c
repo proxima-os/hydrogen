@@ -3,32 +3,32 @@
 #include "kernel/syscall.h"
 #include "vdso.h"
 
-EXPORT int hydrogen_process_find(int id, uint32_t flags) {
-    return SYSCALL2(SYSCALL_PROCESS_FIND, id, flags).error;
+EXPORT hydrogen_ret_t hydrogen_process_find(int id, uint32_t flags) {
+    return SYSCALL2(SYSCALL_PROCESS_FIND, id, flags);
 }
 
-EXPORT int hydrogen_process_create(uint32_t flags) {
-    return SYSCALL1(SYSCALL_PROCESS_CREATE, flags).error;
+EXPORT hydrogen_ret_t hydrogen_process_create(uint32_t flags) {
+    return SYSCALL1(SYSCALL_PROCESS_CREATE, flags);
 }
 
-EXPORT int hydrogen_process_getppid(int process) {
-    return SYSCALL1(SYSCALL_PROCESS_GETPPID, process).error;
+EXPORT hydrogen_ret_t hydrogen_process_getppid(int process) {
+    return SYSCALL1(SYSCALL_PROCESS_GETPPID, process);
 }
 
-EXPORT int hydrogen_process_getpgid(int process) {
-    return SYSCALL1(SYSCALL_PROCESS_GETPGID, process).error;
+EXPORT hydrogen_ret_t hydrogen_process_getpgid(int process) {
+    return SYSCALL1(SYSCALL_PROCESS_GETPGID, process);
 }
 
-EXPORT int hydrogen_process_getsid(int process) {
-    return SYSCALL1(SYSCALL_PROCESS_GETSID, process).error;
+EXPORT hydrogen_ret_t hydrogen_process_getsid(int process) {
+    return SYSCALL1(SYSCALL_PROCESS_GETSID, process);
 }
 
 EXPORT int hydrogen_process_setpgid(int process, int group_id) {
     return SYSCALL2(SYSCALL_PROCESS_SETPGID, process, group_id).error;
 }
 
-EXPORT int hydrogen_process_setsid(int process) {
-    return SYSCALL1(SYSCALL_PROCESS_SETSID, process).error;
+EXPORT hydrogen_ret_t hydrogen_process_setsid(int process) {
+    return SYSCALL1(SYSCALL_PROCESS_SETSID, process);
 }
 
 EXPORT hydrogen_ret_t hydrogen_process_getgid(int process) {
@@ -93,4 +93,21 @@ EXPORT int hydrogen_process_setresuid(int process, uint32_t ruid, uint32_t euid,
 
 EXPORT int hydrogen_process_setgroups(int process, const uint32_t *groups, size_t count) {
     return SYSCALL3(SYSCALL_PROCESS_SETGROUPS, process, groups, count).error;
+}
+
+EXPORT int hydrogen_process_sigaction(
+        int process,
+        int signal,
+        const struct __sigaction *action,
+        struct __sigaction *old
+) {
+    return SYSCALL4(SYSCALL_PROCESS_SIGACTION, process, signal, action, old).error;
+}
+
+EXPORT int hydrogen_process_send_signal(int process, int signal) {
+    return SYSCALL2(SYSCALL_PROCESS_SEND_SIGNAL, process, signal).error;
+}
+
+EXPORT int hydrogen_process_group_send_signal(int group_id, int signal) {
+    return SYSCALL2(SYSCALL_PROCESS_GROUP_SEND_SIGNAL, group_id, signal).error;
 }
