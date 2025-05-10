@@ -275,8 +275,7 @@ int namespace_add(
         old_data = NULL;
     }
 
-    obj_ref(object);
-    rcu_write(ns->data[handle], new_data);
+    hnd_assoc(ns, handle, new_data);
     mutex_rel(&ns->update_lock);
     rcu_sync();
 
@@ -297,6 +296,9 @@ void hnd_assoc(
         int handle,
         handle_data_t *data
 ) {
+    ns->bitmap[handle / 64] |= 1ull << (handle % 64);
+    if ((size_t)handle == ns->alloc_start)
+
     obj_ref(data->object);
     rcu_write(ns->data[handle], data);
     // don't need rcu_sync() here since there is no old data to free
@@ -319,6 +321,9 @@ int namespace_remove(namespace_t *ns, int handle) {
     }
 
     rcu_write(ns->data[handle], NULL);
+    ns->bitmap[handle / 64] &= ~(1ull << (handle % 64));
+    if ((size_t)handle < ns->alloc_start) ns->alloc_start = handle;
+
     mutex_rel(&ns->update_lock);
     rcu_sync();
     obj_deref(data->object);
