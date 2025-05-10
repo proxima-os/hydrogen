@@ -1298,7 +1298,7 @@ static void create_new_user_mapping(
         const mem_object_ops_t *ops = (const mem_object_ops_t *)region->object->base.ops;
         if (unlikely(!ops->get_page)) return user_fault_fail(context, pc, address, type, flags, ENXIO);
 
-        hydrogen_ret_t ret = ops->get_page(region->object, region, (address & ~PAGE_MASK) - region->head);
+        hydrogen_ret_t ret = ops->get_page(region->object, (region->offset + (address - region->head)) >> PAGE_SHIFT);
         if (unlikely(ret.error)) return user_fault_fail(context, pc, address, type, flags, ret.error);
         target = page_to_phys(ret.pointer);
 

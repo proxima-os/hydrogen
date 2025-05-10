@@ -7,6 +7,7 @@
 #include "kernel/pgsize.h"
 #include "kernel/return.h"
 #include "mem/memmap.h"
+#include "mem/object/anonymous.h"
 #include "mem/pmap.h"
 #include "mem/vmalloc.h"
 #include "mem/vmm.h"
@@ -449,4 +450,51 @@ hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) {
     mutex_rel(&futex_table_lock);
     rmutex_rel(&vmm->lock);
     return ret_integer(awoken);
+}
+
+#define MEM_OBJECT_RIGHTS (HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_WRITE | HYDROGEN_MEM_OBJECT_EXEC)
+
+int hydrogen_mem_object_create(size_t size, uint32_t flags) {
+    if (unlikely((size & PAGE_MASK) != 0)) return -EINVAL;
+    if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return -EINVAL;
+
+    mem_object_t *object;
+    int ret = -anon_mem_object_create(&object, size >> PAGE_SHIFT);
+    if (unlikely(ret)) return ret;
+
+    ret = hnd_alloc(&object->base, MEM_OBJECT_RIGHTS, flags);
+    obj_deref(&object->base);
+    return ret;
+}
+
+int hydrogen_mem_object_read(int object_hnd, void *buffer, size_t count, uint64_t position) {
+    if (unlikely(count == 0)) return 0;
+
+    int error = verify_user_buffer((uintptr_t)buffer, count);
+    if (unlikely(error)) return error;
+
+    handle_data_t data;
+    error = hnd_resolve(&data, object_hnd, OBJECT_MEMORY, HYDROGEN_MEM_OBJECT_READ);
+    if (unlikely(error)) return error;
+
+    error = mem_object_read((mem_object_t *)data.object, buffer, count, position);
+
+    obj_deref(data.object);
+    return error;
+}
+
+int hydrogen_mem_object_write(int object_hnd, const void *buffer, size_t count, uint64_t position) {
+    if (unlikely(count == 0)) return 0;
+
+    int error = verify_user_buffer((uintptr_t)buffer, count);
+    if (unlikely(error)) return error;
+
+    handle_data_t data;
+    error = hnd_resolve(&data, object_hnd, OBJECT_MEMORY, HYDROGEN_MEM_OBJECT_WRITE);
+    if (unlikely(error)) return error;
+
+    error = mem_object_write((mem_object_t *)data.object, buffer, count, position);
+
+    obj_deref(data.object);
+    return error;
 }

@@ -49,3 +49,15 @@ EXPORT int hydrogen_memory_wait(uint32_t *location, uint32_t expected, uint64_t 
 EXPORT hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) {
     return SYSCALL2(SYSCALL_MEMORY_WAKE, location, count);
 }
+
+EXPORT int hydrogen_mem_object_create(size_t size, uint32_t flags) {
+    return SYSCALL2(SYSCALL_MEM_OBJECT_CREATE, size, flags).error;
+}
+
+EXPORT int hydrogen_mem_object_read(int object, void *buffer, size_t count, uint64_t position) {
+    return SYSCALL4(SYSCALL_MEM_OBJECT_READ, object, buffer, count, position).error;
+}
+
+EXPORT int hydrogen_mem_object_write(int object, const void *buffer, size_t count, uint64_t position) {
+    return SYSCALL4(SYSCALL_MEM_OBJECT_WRITE, object, buffer, count, position).error;
+}

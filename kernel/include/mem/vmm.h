@@ -20,7 +20,7 @@ typedef struct vmm vmm_t;
 typedef struct {
     object_ops_t base;
     void (*post_map)(mem_object_t *self, vmm_t *vmm, uintptr_t head, uintptr_t tail, unsigned flags, uint64_t offset);
-    hydrogen_ret_t (*get_page)(mem_object_t *self, vmm_region_t *region, uint64_t offset);
+    hydrogen_ret_t (*get_page)(mem_object_t *self, uint64_t index);
 } mem_object_ops_t;
 
 #define SHARED_VM_ID 0
@@ -94,3 +94,6 @@ vmm_region_t *vmm_get_region(vmm_t *vmm, uintptr_t address);
 
 // expects object->base.ops to be set
 void mem_object_init(mem_object_t *object);
+
+int mem_object_read(mem_object_t *object, void *buffer, size_t count, uint64_t position);
+int mem_object_write(mem_object_t *object, const void *buffer, size_t count, uint64_t position);

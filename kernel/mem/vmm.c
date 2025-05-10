@@ -1,5 +1,6 @@
 #include "mem/vmm.h"
 #include "arch/pmap.h"
+#include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "hydrogen/memory.h"
@@ -7,6 +8,7 @@
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/return.h"
+#include "mem/memmap.h"
 #include "mem/pmap.h"
 #include "mem/pmem.h"
 #include "mem/vmalloc.h"
@@ -1242,4 +1244,62 @@ void mem_object_init(mem_object_t *object) {
 
     obj_init(&object->base, OBJECT_MEMORY);
     object->id = __atomic_fetch_add(&next_id, 1, __ATOMIC_RELAXED);
+}
+
+// TODO: mem_object_read and mem_object_write assume that pages returned by get_page are
+// valid until the object has been destroyed. This is fine for now, because the only
+// object that implements get_page is anon_mem_object_t, which satisfies this property.
+// However, this should be fixed before implementing any objects that are shrinkable
+// or that are capable of evicting pages.
+
+int mem_object_read(mem_object_t *object, void *buffer, size_t count, uint64_t position) {
+    if (unlikely(count == 0)) return 0;
+
+    const mem_object_ops_t *ops = (const mem_object_ops_t *)object;
+    if (unlikely(!ops->get_page)) return ENXIO;
+
+    do {
+        size_t offset = count & PAGE_MASK;
+        size_t current = PAGE_SIZE - offset;
+        if (current > count) current = count;
+
+        hydrogen_ret_t ret = ops->get_page(object, position >> PAGE_SHIFT);
+        if (unlikely(ret.error)) return ret.error;
+        page_t *page = ret.pointer;
+
+        int error = user_memcpy(buffer, page_to_virt(page) + offset, current);
+        if (unlikely(error)) return error;
+
+        buffer += current;
+        position += current;
+        count -= current;
+    } while (count != 0);
+
+    return 0;
+}
+
+int mem_object_write(mem_object_t *object, const void *buffer, size_t count, uint64_t position) {
+    if (unlikely(count == 0)) return 0;
+
+    const mem_object_ops_t *ops = (const mem_object_ops_t *)object->base.ops;
+    if (unlikely(!ops->get_page)) return ENXIO;
+
+    do {
+        size_t offset = count & PAGE_MASK;
+        size_t current = PAGE_SIZE - offset;
+        if (current > count) current = count;
+
+        hydrogen_ret_t ret = ops->get_page(object, position >> PAGE_SHIFT);
+        if (unlikely(ret.error)) return ret.error;
+        page_t *page = ret.pointer;
+
+        int error = user_memcpy(page_to_virt(page) + offset, buffer, current);
+        if (unlikely(error)) return error;
+
+        buffer += current;
+        position += current;
+        count -= current;
+    } while (count != 0);
+
+    return 0;
 }

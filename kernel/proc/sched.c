@@ -48,10 +48,10 @@ static void reap_thread(thread_t *thread) {
         pid_handle_removal_and_unlock(pid);
     }
 
-    if (thread->process) {
+    /*if (thread->process) {
         proc_thread_exit(thread->process, thread);
         obj_deref(&thread->process->base);
-    }
+    }*/
 
     if (thread->namespace) obj_deref(&thread->namespace->base);
 

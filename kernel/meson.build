@@ -6,6 +6,7 @@ kernel_sources += files(
     'drv/framebuffer.c',
     'init/cmdline.c',
     'init/main.c',
+    'mem/object/anonymous.c',
     'mem/kmalloc.c',
     'mem/kvmm.c',
     'mem/memmap.c',
