@@ -24,18 +24,14 @@ extern "C" {
 /**
  * Create a new thread.
  *
- * \param[in] process The process to create the thread in. Can be #HYDROGEN_THIS_PROCESS.
- *                    Requires #HYDROGEN_PROCESS_GET_IDENTITY, #HYDROGEN_PROCESS_SET_IDENTITY,
- *                    #HYDROGEN_PROCESS_CHANGE_GROUP, #HYDROGEN_PROCESS_CHANGE_SESSION,
- *                    #HYDROGEN_PROCESS_CHANGE_SIGHAND, and #HYDROGEN_PROCESS_CREATE_THREAD. If this is not the current
- *                    process, and the process already has a thread, thread creation will fail with #EPERM.
- * \param[in] vmm The VMM of the thread. Can be #HYDROGEN_THIS_VMM. Requires #HYDROGEN_VMM_CLONE, #HYDROGEN_VMM_MAP,
- *                #HYDROGEN_VMM_REMAP, #HYDROGEN_VMM_UNMAP, #HYDROGEN_VMM_READ, and #HYDROGEN_VMM_WRITE.
+ * \param[in] process The process to create the thread in. Can be #HYDROGEN_THIS_PROCESS. Requires the same rights as
+ *                    #HYDROGEN_THIS_PROCESS. If this is not the current process, and the process already has a thread,
+ *                    thread creation will fail with #EPERM.
+ * \param[in] vmm The VMM of the thread. Can be #HYDROGEN_THIS_VMM. Requires the same rights as #HYDROGEN_THIS_VMM.
  *                If #HYDROGEN_CLONED_VMM, the VMM of the new thread is a cloned version of the VMM of the current
  *                thread.
- * \param[in] namespace The namespace of the thread. Can be #HYDROGEN_THIS_NAMESPACE. Requires
- *                      #HYDROGEN_NAMESPACE_CLONE, #HYDROGEN_NAMESPACE_ADD, #HYDROGEN_NAMESPACE_REMOVE, and
- *                      #HYDROGEN_NAMESPACE_RESOLVE.
+ * \param[in] namespace The namespace of the thread. Can be #HYDROGEN_THIS_NAMESPACE. Requires the same rights as
+ *                      #HYDROGEN_THIS_NAMESPACE.
  * \param[in] pc The address to start executing at.
  * \param[in] sp The stack pointer of the new thread.
  * \param[in] flags The flags that should be set on the returned handle.

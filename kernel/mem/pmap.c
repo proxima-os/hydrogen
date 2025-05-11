@@ -1252,7 +1252,13 @@ static void user_fault_fail(
             .__errno = error,
             .__data.__sigsegv.__address = (void *)address,
     };
-    queue_signal(current_thread->process, &current_thread->sig_target, &sig, true, &current_thread->fault_sig);
+    queue_signal(
+            current_thread->process,
+            &current_thread->sig_target,
+            &sig,
+            QUEUE_SIGNAL_FORCE,
+            &current_thread->fault_sig
+    );
 }
 
 static bool region_allows_access(vmm_region_t *region, pmap_fault_type_t type) {

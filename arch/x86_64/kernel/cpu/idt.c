@@ -99,7 +99,13 @@ static void signal_or_fatal(arch_context_t *context, int signal, int code) {
            current_thread->process->pid->id,
            context->rip,
            code);
-    queue_signal(current_thread->process, &current_thread->sig_target, &info, true, &current_thread->fault_sig);
+    queue_signal(
+            current_thread->process,
+            &current_thread->sig_target,
+            &info,
+            QUEUE_SIGNAL_FORCE,
+            &current_thread->fault_sig
+    );
 }
 
 USED void x86_64_idt_dispatch(arch_context_t *context) {

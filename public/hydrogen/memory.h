@@ -233,7 +233,7 @@ hydrogen_ret_t hydrogen_mem_object_create(size_t size, uint32_t flags) __asm__("
  * Read data from a memory object.
  *
  * \param[in] object The object to read from. Requires #HYDROGEN_MEM_OBJECT_READ.
- * \param[in] buffer The buffer to read the data in to.
+ * \param[out] buffer The buffer to read the data in to.
  * \param[in] count The number of bytes to read.
  * \param[in] position The position to start reading at.
  * \return 0, if successful; if not, an error code.

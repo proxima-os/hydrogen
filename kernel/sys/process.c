@@ -326,7 +326,7 @@ int hydrogen_process_send_signal(int process, int signal) {
 
     if (signal == 0) goto ret;
 
-    error = queue_signal(proc, &proc->sig_target, &info, false, NULL);
+    error = queue_signal(proc, &proc->sig_target, &info, 0, NULL);
 ret:
     if (process != HYDROGEN_THIS_PROCESS) obj_deref(&proc->base);
     return error;
@@ -341,5 +341,18 @@ int hydrogen_process_group_send_signal(int group_id, int signal) {
 
     error = group_signal(group, signal);
     pgroup_deref(group);
+    return error;
+}
+
+int hydrogen_process_sigwait(int process, __sigset_t set, __siginfo_t *info, uint64_t deadline) {
+    int error = verify_user_buffer((uintptr_t)info, sizeof(*info));
+    if (unlikely(error)) return error;
+
+    process_t *proc;
+    error = process_or_this(&proc, process, HYDROGEN_PROCESS_WAIT_SIGNAL);
+    if (unlikely(error)) return error;
+
+    error = sigwait(proc, set, info, deadline);
+    if (process != HYDROGEN_THIS_PROCESS) obj_deref(&proc->base);
     return error;
 }

@@ -18,6 +18,7 @@ extern "C" {
 #define HYDROGEN_PROCESS_CHANGE_SESSION (1u << 3) /**< Allow the session of this process to be changed */
 #define HYDROGEN_PROCESS_CREATE_THREAD (1u << 4)  /**< Allow threads to be created in this process. */
 #define HYDROGEN_PROCESS_CHANGE_SIGHAND (1u << 5) /**< Alter the signal handling of the process. */
+#define HYDROGEN_PROCESS_WAIT_SIGNAL (1u << 6)    /**< Allow the usage of #hydrogen_process_sigwait. */
 
 /**
  * Pseudo-handle that refers to the current process.
@@ -30,6 +31,7 @@ extern "C" {
  * - #HYDROGEN_PROCESS_CHANGE_SESSION
  * - #HYDROGEN_PROCESS_CREATE_THREAD
  * - #HYDROGEN_PROCESS_CHANGE_SIGHAND
+ * - #HYDROGEN_PROCESS_WAIT_SIGNAL
  */
 #define HYDROGEN_THIS_PROCESS (-2)
 
@@ -211,6 +213,22 @@ int hydrogen_process_send_signal(int process, int signal) __asm__("__hydrogen_pr
 
 /** See the POSIX manual on killpg. */
 int hydrogen_process_group_send_signal(int group_id, int signal) __asm__("__hydrogen_process_group_send_signal");
+
+/**
+ * Wait for a pending signal.
+ *
+ * \param[in] process The process to wait for a signal on. Can be #HYDROGEN_THIS_PROCESS. Requires
+ *                    #HYDROGEN_PROCESS_WAIT_SIGNAL. If this is the current process, this call also waits for signals
+ *                    pending on the current thread.
+ * \param[in] set The signals that should be waited for.
+ * \param[out] info The buffer to store the signal information in.
+ * \param[in] deadline The boot time value at which the wait should stop. If zero, wait forever. If one, do not wait.
+ *                     If the deadline is reached, this call returns #EAGAIN.
+ * \return 0, if successful; if not, an error code.
+ */
+int hydrogen_process_sigwait(int process, __sigset_t set, __siginfo_t *info, uint64_t deadline) __asm__(
+        "__hydrogen_process_sigwait"
+);
 
 #ifdef __cplusplus
 };

@@ -6,6 +6,7 @@
 #include <stdbool.h>
 
 struct process;
+struct thread;
 
 typedef struct {
     list_node_t node;
@@ -15,7 +16,15 @@ typedef struct {
 } queued_signal_t;
 
 typedef struct {
+    list_node_t node;
+    __sigset_t set;
+    struct thread *thread;
+    queued_signal_t *sig;
+} signal_waiter_t;
+
+typedef struct {
     list_t queued_signals[__NSIG];
+    list_t signal_waiters;
     __sigset_t queue_map;
     mutex_t lock;
 } signal_target_t;
@@ -28,6 +37,9 @@ typedef enum {
     SIGNAL_FUNCTION,
 } signal_disposition_t;
 
+#define QUEUE_SIGNAL_FORCE (1u << 0) /**< force the signal to be handled */
+#define QUEUE_SIGNAL_HEAP (1u << 1)  /**< the provided buffer is on the heap */
+
 // note: if force is true and the default disposition of info->__signo is SIGNAL_IGNORE,
 // the signal might cause the process to terminate instead
 // if `buffer` is provided, the operation cannot fail
@@ -35,11 +47,16 @@ int queue_signal(
         struct process *process,
         signal_target_t *target,
         __siginfo_t *info,
-        bool force,
+        unsigned flags,
         queued_signal_t *buffer
 );
 bool check_signals(signal_target_t *target, bool was_sys_eintr);
 signal_disposition_t get_sig_disp(int signal, struct __sigaction *action);
 void handle_signal_ignored(signal_target_t *target, int signal);
+
+// these require target->lock to be held
+queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set);
+void remove_queued_signal(signal_target_t *target, queued_signal_t *signal);
+void add_queued_signal(struct process *process, signal_target_t *target, queued_signal_t *signal);
 
 void signal_cleanup(signal_target_t *target);

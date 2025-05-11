@@ -59,26 +59,49 @@ static void discard_all(process_t *process, signal_target_t *owned, int signal) 
     }
 }
 
-int queue_signal(process_t *process, signal_target_t *target, __siginfo_t *info, bool force, queued_signal_t *buffer) {
+static void do_add_signal(process_t *process, signal_target_t *target, queued_signal_t *sig) {
+    LIST_FOREACH(target->signal_waiters, signal_waiter_t, node, waiter) {
+        if ((waiter->set & (1ull << sig->info.__signo)) != 0 && sched_wake(waiter->thread)) {
+            list_remove(&target->signal_waiters, &waiter->node);
+            waiter->sig = sig;
+            return;
+        }
+    }
+
+    list_insert_tail(&target->queued_signals[sig->info.__signo], &sig->node);
+    __atomic_store_n(&target->queue_map, target->queue_map | (1ull << sig->info.__signo), __ATOMIC_RELEASE);
+
+    LIST_FOREACH(process->threads, thread_t, process_node, thread) {
+        sched_interrupt(thread, true);
+    }
+}
+
+int queue_signal(
+        process_t *process,
+        signal_target_t *target,
+        __siginfo_t *info,
+        unsigned flags,
+        queued_signal_t *buffer
+) {
     ASSERT(info->__signo >= 1 && info->__signo < __NSIG);
 
-    if (info->__signo == __SIGKILL || info->__signo == __SIGSTOP) force = true;
+    if (info->__signo == __SIGKILL || info->__signo == __SIGSTOP) flags |= QUEUE_SIGNAL_FORCE;
 
     queued_signal_t *sig = buffer ? buffer : vmalloc(sizeof(*sig));
     if (unlikely(!sig)) return ENOMEM;
     memset(sig, 0, sizeof(*sig));
 
     sig->info = *info;
-    sig->force = force;
-    sig->heap = buffer == NULL;
+    sig->force = flags & QUEUE_SIGNAL_FORCE;
+    sig->heap = buffer == NULL || (flags & QUEUE_SIGNAL_HEAP) != 0;
 
     mutex_acq(&process->sig_lock, 0, false);
 
     signal_disposition_t disp = get_sig_disp(info->__signo, &process->sig_handlers[info->__signo]);
 
-    if (!force && info->__signo != __SIGCONT && disp == SIGNAL_IGNORE) {
+    if (!sig->force && info->__signo != __SIGCONT && disp == SIGNAL_IGNORE) {
         mutex_rel(&process->sig_lock);
-        vfree(sig, sizeof(*sig));
+        if (sig->heap) vfree(sig, sizeof(*sig));
         return 0;
     }
 
@@ -101,21 +124,16 @@ int queue_signal(process_t *process, signal_target_t *target, __siginfo_t *info,
             }
         }
 
-        if (!force && disp == SIGNAL_IGNORE) {
+        if (!sig->force && disp == SIGNAL_IGNORE) {
             mutex_rel(&target->lock);
             mutex_rel(&process->threads_lock);
             mutex_rel(&process->sig_lock);
-            vfree(sig, sizeof(*sig));
+            if (sig->heap) vfree(sig, sizeof(*sig));
             return 0;
         }
     }
 
-    list_insert_tail(&target->queued_signals[info->__signo], &sig->node);
-    __atomic_store_n(&target->queue_map, target->queue_map | (1ull << info->__signo), __ATOMIC_RELEASE);
-
-    LIST_FOREACH(process->threads, thread_t, process_node, thread) {
-        sched_interrupt(thread, true);
-    }
+    do_add_signal(process, target, sig);
 
     mutex_rel(&target->lock);
     mutex_rel(&process->threads_lock);
@@ -123,7 +141,18 @@ int queue_signal(process_t *process, signal_target_t *target, __siginfo_t *info,
     return 0;
 }
 
-static queued_signal_t *get_queued_signal(signal_target_t *target) {
+void add_queued_signal(process_t *process, signal_target_t *target, queued_signal_t *sig) {
+    signal_disposition_t disp = get_sig_disp(sig->info.__signo, &process->sig_handlers[sig->info.__signo]);
+
+    if (!sig->force && sig->info.__signo != __SIGCONT && disp == SIGNAL_IGNORE) {
+        if (sig->heap) vfree(sig, sizeof(*sig));
+        return;
+    }
+
+    do_add_signal(process, target, sig);
+}
+
+queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set) {
     list_t *signals = target->queued_signals;
     __sigset_t map = target->queue_map;
     __sigset_t mask = current_thread->sig_mask;
@@ -133,10 +162,13 @@ static queued_signal_t *get_queued_signal(signal_target_t *target) {
         signals += extra;
         map >>= extra;
         mask >>= extra;
+        set >>= extra;
 
-        LIST_FOREACH(*signals, queued_signal_t, node, sig) {
-            if (sig->force) return sig;
-            if ((mask & 1) == 0) return sig;
+        if ((set & 1) == 1) {
+            LIST_FOREACH(*signals, queued_signal_t, node, sig) {
+                if (sig->force) return sig;
+                if ((mask & 1) == 0) return sig;
+            }
         }
 
         map &= 1;
@@ -160,7 +192,7 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr) {
     mutex_acq(&target->lock, 0, false);
 
     queued_signal_t segv_sig;
-    queued_signal_t *sig = get_queued_signal(target);
+    queued_signal_t *sig = get_queued_signal(target, -1);
 
     if (!sig) {
         mutex_rel(&target->lock);
@@ -240,9 +272,7 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr) {
     want_exit = true;
 handled:
     if (sig != &segv_sig) {
-        list_remove(&target->queued_signals[sig->info.__signo], &sig->node);
-        update_after_remove(target, sig->info.__signo);
-        if (sig->heap) vfree(sig, sizeof(*sig));
+        remove_queued_signal(target, sig);
     }
 
     mutex_rel(&target->lock);
@@ -263,6 +293,12 @@ signal_disposition_t get_sig_disp(int signal, struct __sigaction *action) {
     }
 
     return default_sig_disp(signal);
+}
+
+void remove_queued_signal(signal_target_t *target, queued_signal_t *sig) {
+    list_remove(&target->queued_signals[sig->info.__signo], &sig->node);
+    update_after_remove(target, sig->info.__signo);
+    if (sig->heap) vfree(sig, sizeof(*sig));
 }
 
 void handle_signal_ignored(signal_target_t *target, int signal) {

@@ -98,6 +98,7 @@ void proc_thread_exit(process_t *process, struct thread *thread);
 void proc_wait_until_single_threaded(void);
 
 int sigaction(process_t *process, int signal, const struct __sigaction *action, struct __sigaction *old);
+int sigwait(process_t *process, __sigset_t set, __siginfo_t *info, uint64_t deadline);
 
 void create_user_siginfo(__siginfo_t *out, int signal);
 

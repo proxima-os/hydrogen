@@ -496,6 +496,99 @@ int sigaction(process_t *process, int signal, const struct __sigaction *action, 
     return 0;
 }
 
+int sigwait(process_t *process, __sigset_t set, __siginfo_t *info, uint64_t deadline) {
+    bool check_thread = process == current_thread->process;
+
+    mutex_acq(&process->sig_lock, 0, false);
+    mutex_acq(&process->threads_lock, 0, false);
+
+    if (check_thread) {
+        mutex_acq(&current_thread->sig_target.lock, 0, false);
+
+        queued_signal_t *sig = get_queued_signal(&current_thread->sig_target, set);
+
+        if (sig != NULL) {
+            int error = user_memcpy(info, &sig->info, sizeof(*info));
+            if (likely(error == 0)) remove_queued_signal(&current_thread->sig_target, sig);
+            mutex_rel(&current_thread->sig_target.lock);
+            mutex_rel(&process->threads_lock);
+            mutex_rel(&process->sig_lock);
+            return error;
+        }
+    }
+
+    mutex_acq(&process->sig_target.lock, 0, false);
+
+    queued_signal_t *sig = get_queued_signal(&process->sig_target, set);
+
+    if (sig != NULL) {
+        int error = user_memcpy(info, &sig->info, sizeof(*info));
+        if (likely(error == 0)) remove_queued_signal(&current_thread->sig_target, sig);
+        mutex_rel(&process->sig_target.lock);
+        if (check_thread) mutex_rel(&current_thread->sig_target.lock);
+        mutex_rel(&process->threads_lock);
+        mutex_rel(&process->sig_lock);
+        return error;
+    }
+
+    int error = EAGAIN;
+
+    if (deadline != 1) {
+        signal_waiter_t proc_wait, thread_wait;
+        proc_wait.set = thread_wait.set = set;
+        proc_wait.thread = thread_wait.thread = current_thread;
+        proc_wait.sig = thread_wait.sig = NULL;
+
+        list_insert_tail(&process->sig_target.signal_waiters, &proc_wait.node);
+        if (check_thread) list_insert_tail(&current_thread->sig_target.signal_waiters, &thread_wait.node);
+        sched_prepare_wait(true);
+
+        mutex_rel(&process->sig_target.lock);
+        if (check_thread) mutex_rel(&current_thread->sig_target.lock);
+        mutex_rel(&process->threads_lock);
+        mutex_rel(&process->sig_lock);
+
+        error = sched_perform_wait(deadline);
+        if (error == ETIMEDOUT) error = EAGAIN;
+
+        mutex_acq(&process->sig_lock, 0, false);
+        mutex_acq(&process->threads_lock, 0, false);
+        if (check_thread) mutex_acq(&current_thread->sig_target.lock, 0, false);
+        mutex_acq(&process->sig_target.lock, 0, false);
+
+        if (likely(error == 0)) {
+            queued_signal_t *sig = thread_wait.sig;
+            signal_target_t *target = &current_thread->sig_target;
+
+            if (sig == NULL) {
+                if (check_thread) list_remove(&current_thread->sig_target.signal_waiters, &thread_wait.node);
+                sig = proc_wait.sig;
+                target = &process->sig_target;
+                ASSERT(sig != NULL);
+            } else {
+                list_remove(&process->sig_target.signal_waiters, &proc_wait.node);
+            }
+
+            error = user_memcpy(info, &sig->info, sizeof(*info));
+
+            if (likely(error == 0)) {
+                if (sig->heap) vfree(sig, sizeof(*sig));
+            } else {
+                add_queued_signal(process, target, sig);
+            }
+        } else {
+            list_remove(&process->sig_target.signal_waiters, &proc_wait.node);
+            if (check_thread) list_remove(&current_thread->sig_target.signal_waiters, &thread_wait.node);
+        }
+    }
+
+    mutex_rel(&process->sig_target.lock);
+    if (check_thread) mutex_rel(&current_thread->sig_target.lock);
+    mutex_rel(&process->threads_lock);
+    mutex_rel(&process->sig_lock);
+    return error;
+}
+
 bool can_send_signal(process_t *process, __siginfo_t *info) {
     rcu_state_t state = rcu_read_lock();
 
@@ -563,7 +656,7 @@ int broadcast_signal(int signal) {
 
                 if (can_send_signal(proc, &info)) {
                     if (signal != 0) {
-                        int ret = queue_signal(proc, &proc->sig_target, &info, false, NULL);
+                        int ret = queue_signal(proc, &proc->sig_target, &info, 0, NULL);
                         if (likely(ret == 0)) sent = true;
                         else if (error == EPERM) error = ret;
                     } else {
@@ -596,7 +689,7 @@ int group_signal(pgroup_t *group, int signal) {
 
         if (can_send_signal(proc, &info)) {
             if (signal != 0) {
-                int ret = queue_signal(proc, &proc->sig_target, &info, false, NULL);
+                int ret = queue_signal(proc, &proc->sig_target, &info, 0, NULL);
                 if (likely(ret == 0)) sent = true;
                 else if (error == EPERM) error = ret;
             } else {

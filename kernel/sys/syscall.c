@@ -105,6 +105,7 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_THREAD_SEND_SIGNAL: return ret_error(hydrogen_thread_send_signal(a0, a1));
     case SYSCALL_THREAD_GET_ID: return hydrogen_thread_get_id(a0);
     case SYSCALL_THREAD_FIND: return hydrogen_thread_find(a0, a1, a2);
+    case SYSCALL_PROCESS_SIGWAIT: return ret_error(hydrogen_process_sigwait(a0, a1, (void *)a2, a3));
     default: return ret_error(ENOSYS);
     }
 }

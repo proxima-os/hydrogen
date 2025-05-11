@@ -111,3 +111,7 @@ EXPORT int hydrogen_process_send_signal(int process, int signal) {
 EXPORT int hydrogen_process_group_send_signal(int group_id, int signal) {
     return SYSCALL2(SYSCALL_PROCESS_GROUP_SEND_SIGNAL, group_id, signal).error;
 }
+
+EXPORT int hydrogen_process_sigwait(int process, __sigset_t set, __siginfo_t *info, uint64_t deadline) {
+    return SYSCALL4(SYSCALL_PROCESS_SIGWAIT, process, set, info, deadline).error;
+}

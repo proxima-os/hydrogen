@@ -364,7 +364,7 @@ int hydrogen_thread_send_signal(int thread_hnd, int signal) {
 
     if (signal == 0) goto ret;
 
-    error = queue_signal(thread->process, &thread->sig_target, &info, false, NULL);
+    error = queue_signal(thread->process, &thread->sig_target, &info, 0, NULL);
 ret:
     if (thread_hnd != HYDROGEN_THIS_THREAD) obj_deref(&thread->base);
     return error;
