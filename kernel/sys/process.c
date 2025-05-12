@@ -334,6 +334,7 @@ ret:
 
 int hydrogen_process_group_send_signal(int group_id, int signal) {
     if (unlikely(signal < 0 || signal >= __NSIG)) return EINVAL;
+    if (unlikely(group_id == 0)) return ESRCH;
 
     pgroup_t *group;
     int error = resolve_pgroup(&group, group_id);
