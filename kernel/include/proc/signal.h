@@ -14,6 +14,7 @@ typedef struct {
     __siginfo_t info;
     bool force;
     bool heap;
+    bool queued;
 } queued_signal_t;
 
 typedef struct {
@@ -40,11 +41,10 @@ typedef enum {
 } signal_disposition_t;
 
 #define QUEUE_SIGNAL_FORCE (1u << 0) /**< force the signal to be handled */
-#define QUEUE_SIGNAL_HEAP (1u << 1)  /**< the provided buffer is on the heap */
 
 // note: if force is true and the default disposition of info->__signo is SIGNAL_IGNORE,
 // the signal might cause the process to terminate instead
-// if `buffer` is provided, the operation cannot fail
+// if `buffer` is provided, the operation cannot fail. note that the same buffer cannot be used for different targets.
 int queue_signal(
         struct process *process,
         signal_target_t *target,

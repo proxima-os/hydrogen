@@ -403,6 +403,39 @@ static void reap_process(process_t *process) {
     obj_deref_n(&parent->base, 2); // ref from get_parent_with_locked_children + process->parent
 }
 
+static bool does_inhibit_orphaning(pgroup_t *parent_group, pgroup_t *child_group) {
+    return parent_group != child_group && parent_group->session == child_group->session;
+}
+
+static void handle_process_group_orphaned(process_t *process) {
+    __siginfo_t info = {.__signo = __SIGHUP};
+    queue_signal(process, &process->sig_target, &info, 0, &process->hup_sig);
+    info = (__siginfo_t){.__signo = __SIGCONT};
+    queue_signal(process, &process->sig_target, &info, 0, &process->cont_sig);
+}
+
+static void handle_group_orphaned(pgroup_t *group) {
+    mutex_acq(&group->members_lock, 0, false);
+
+    bool have_stopped = false;
+
+    LIST_FOREACH(group->members, process_t, group_node, process) {
+        if (have_stopped) {
+            handle_process_group_orphaned(process);
+        } else if (__atomic_load_n(&process->stopped, __ATOMIC_ACQUIRE)) {
+            LIST_FOREACH(group->members, process_t, group_node, cur) {
+                handle_process_group_orphaned(cur);
+                if (process == cur) break;
+            }
+
+            have_stopped = true;
+        }
+    }
+
+    mutex_rel(&group->members_lock);
+    pgroup_deref(group);
+}
+
 static void reparent_children(process_t *process) {
     ASSERT(init_process != NULL);
 
@@ -411,6 +444,32 @@ static void reparent_children(process_t *process) {
     for (;;) {
         process_t *child = LIST_REMOVE_HEAD(process->children, process_t, parent_node);
         if (!child) break;
+
+        rcu_state_t state = rcu_read_lock();
+
+        pgroup_t *opgroup = process->group;
+        pgroup_t *npgroup = init_process->group;
+        pgroup_t *cgroup = child->group;
+
+        bool old_inhibit = does_inhibit_orphaning(opgroup, cgroup);
+        bool new_inhibit = does_inhibit_orphaning(npgroup, cgroup);
+        bool newly_orphaned = false;
+
+        if (old_inhibit) {
+            if (!new_inhibit && __atomic_fetch_sub(&cgroup->orphan_inhibitors, 1, __ATOMIC_ACQ_REL) == 1) {
+                newly_orphaned = true;
+                pgroup_ref(cgroup);
+            }
+        } else if (new_inhibit) {
+            __atomic_fetch_add(&cgroup->orphan_inhibitors, 1, __ATOMIC_ACQ_REL);
+        }
+
+        rcu_read_unlock(state);
+
+        if (newly_orphaned) {
+            handle_group_orphaned(cgroup);
+            pgroup_deref(cgroup);
+        }
 
         mutex_acq(&init_process->children_lock, 0, false);
         obj_deref(&process->base);
@@ -443,7 +502,22 @@ static void handle_process_exit(process_t *process) {
     if (process == init_process) panic("attempted to kill init");
 
     reparent_children(process);
+
+    rcu_state_t state = rcu_read_lock();
+    pgroup_t *pgroup = rcu_read(rcu_read(process->parent)->group);
+    pgroup_t *cgroup = rcu_read(process->group);
+    pgroup_ref(cgroup);
+    bool newly_orphaned = does_inhibit_orphaning(pgroup, cgroup) &&
+                          __atomic_fetch_sub(&cgroup->orphan_inhibitors, 1, __ATOMIC_ACQ_REL) == 1;
+    rcu_read_unlock(state);
+
     leave_group(process->group, process);
+
+    if (newly_orphaned) {
+        handle_group_orphaned(cgroup);
+    }
+
+    pgroup_deref(cgroup);
 
     // TODO: For now, behave as if the parent's SIGCHLD handler has SA_NOCLDWAIT.
     // In the future, this should send a SIGCHLD and, if SA_NOCLDWAIT isn't set,
@@ -877,9 +951,20 @@ int setpgid(process_t *process, int pgid) {
         goto err;
     }
 
+    state = rcu_read_lock();
+
+    pgroup_t *parent_group = rcu_read(rcu_read(process->parent)->group);
+    bool old_inhibit = does_inhibit_orphaning(parent_group, old_group);
+    bool new_inhibit = does_inhibit_orphaning(parent_group, new_group);
+    bool newly_orphaned = old_inhibit && __atomic_fetch_sub(&old_group->orphan_inhibitors, 1, __ATOMIC_ACQ_REL) == 1;
+    if (new_inhibit) __atomic_fetch_add(&new_group->orphan_inhibitors, 1, __ATOMIC_ACQ_REL);
+    rcu_read_unlock(state);
+
     do_leave_group(old_group, process);
     list_insert_tail(&new_group->members, &process->group_node);
     do_unlock_two(old_group, new_group);
+
+    if (newly_orphaned) handle_group_orphaned(old_group);
 
     if (created) rcu_write(new_group->pid->group, new_group);
     rcu_write(process->group, new_group);
@@ -927,7 +1012,15 @@ hydrogen_ret_t setsid(process_t *process) {
     group->session = session;
 
     pgroup_t *old_group = process->group;
+
+    rcu_state_t state = rcu_read_lock();
+    bool newly_orphaned = does_inhibit_orphaning(rcu_read(rcu_read(process->parent)->group), old_group) &&
+                          __atomic_fetch_sub(&old_group->orphan_inhibitors, 1, __ATOMIC_ACQ_REL) == 1;
+    rcu_read_unlock(state);
+
     leave_group(old_group, process);
+
+    if (newly_orphaned) handle_group_orphaned(old_group);
 
     list_insert_tail(&group->members, &process->group_node);
     rcu_write(group->pid->session, session);

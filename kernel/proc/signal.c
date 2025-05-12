@@ -6,6 +6,7 @@
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
 #include "proc/process.h"
+#include "proc/rcu.h"
 #include "proc/sched.h"
 #include "string.h"
 #include "sys/syscall.h"
@@ -82,6 +83,19 @@ static void do_add_signal(process_t *process, signal_target_t *target, queued_si
     }
 }
 
+static void update_after_remove(signal_target_t *target, int signal) {
+    if (list_empty(&target->queued_signals[signal])) {
+        __sigset_t map = target->queue_map & ~(1ull << signal);
+        __atomic_store_n(&target->queue_map, map, __ATOMIC_RELEASE);
+        if (map == 0) event_source_reset(&target->event_source);
+    }
+}
+
+static void do_remove_sig(signal_target_t *target, queued_signal_t *sig) {
+    list_remove(&target->queued_signals[sig->info.__signo], &sig->node);
+    update_after_remove(target, sig->info.__signo);
+}
+
 int queue_signal(
         process_t *process,
         signal_target_t *target,
@@ -93,13 +107,14 @@ int queue_signal(
 
     if (info->__signo == __SIGKILL || info->__signo == __SIGSTOP) flags |= QUEUE_SIGNAL_FORCE;
 
-    queued_signal_t *sig = buffer ? buffer : vmalloc(sizeof(*sig));
-    if (unlikely(!sig)) return ENOMEM;
-    memset(sig, 0, sizeof(*sig));
+    queued_signal_t *sig = buffer;
 
-    sig->info = *info;
-    sig->force = flags & QUEUE_SIGNAL_FORCE;
-    sig->heap = buffer == NULL || (flags & QUEUE_SIGNAL_HEAP) != 0;
+    if (!sig) {
+        sig = vmalloc(sizeof(*sig));
+        if (unlikely(!sig)) return ENOMEM;
+        memset(sig, 0, sizeof(*sig));
+        sig->heap = true;
+    }
 
     mutex_acq(&process->sig_lock, 0, false);
 
@@ -107,12 +122,20 @@ int queue_signal(
 
     if (!sig->force && info->__signo != __SIGCONT && disp == SIGNAL_IGNORE) {
         mutex_rel(&process->sig_lock);
-        if (sig->heap) vfree(sig, sizeof(*sig));
+        if (!sig->queued && sig->heap) vfree(sig, sizeof(*sig));
         return 0;
     }
 
     mutex_acq(&process->threads_lock, 0, false);
     mutex_acq(&target->lock, 0, false);
+
+    if (sig->queued) {
+        do_remove_sig(target, sig);
+    }
+
+    sig->info = *info;
+    sig->force = flags & QUEUE_SIGNAL_FORCE;
+    sig->queued = true;
 
     if (default_sig_disp(info->__signo) == SIGNAL_STOP) {
         discard_all(process, target, __SIGCONT);
@@ -185,14 +208,6 @@ queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set) {
     return NULL;
 }
 
-static void update_after_remove(signal_target_t *target, int signal) {
-    if (list_empty(&target->queued_signals[signal])) {
-        __sigset_t map = target->queue_map & ~(1ull << signal);
-        __atomic_store_n(&target->queue_map, map, __ATOMIC_RELEASE);
-        if (map == 0) event_source_reset(&target->event_source);
-    }
-}
-
 bool check_signals(signal_target_t *target, bool was_sys_eintr) {
     if (__atomic_load_n(&target->queue_map, __ATOMIC_ACQUIRE) == 0) return false;
 
@@ -263,6 +278,19 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr) {
 
         printk("signal: failed to write signal info to stack (%e), terminating with SIGSEGV\n", error);
     } else if (disp == SIGNAL_STOP) {
+        if (sig->info.__signo != __SIGSTOP) {
+            rcu_state_t state = rcu_read_lock();
+            bool orphaned = __atomic_load_n(
+                                    &rcu_read(current_thread->process->group)->orphan_inhibitors,
+                                    __ATOMIC_ACQUIRE
+                            ) == 0;
+            rcu_read_unlock(state);
+
+            if (orphaned) {
+                goto handled;
+            }
+        }
+
         __atomic_store_n(&process->stopped, true, __ATOMIC_RELEASE);
 
         LIST_FOREACH(process->threads, thread_t, process_node, thread) {
@@ -310,8 +338,7 @@ signal_disposition_t get_sig_disp(int signal, struct __sigaction *action) {
 }
 
 void remove_queued_signal(signal_target_t *target, queued_signal_t *sig) {
-    list_remove(&target->queued_signals[sig->info.__signo], &sig->node);
-    update_after_remove(target, sig->info.__signo);
+    do_remove_sig(target, sig);
     if (sig->heap) vfree(sig, sizeof(*sig));
 }
 

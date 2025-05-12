@@ -58,6 +58,7 @@ struct process {
     signal_target_t sig_target;
     mutex_t sig_lock;
     struct thread *singlethreaded_handler;
+    queued_signal_t hup_sig, cont_sig;
 
     bool did_exec;
     bool exiting;
@@ -72,6 +73,7 @@ struct pgroup {
 
     list_t members;
     mutex_t members_lock;
+    size_t orphan_inhibitors;
 };
 
 struct session {
