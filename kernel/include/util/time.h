@@ -3,7 +3,6 @@
 #include "arch/time.h"
 #include "kernel/time.h"
 #include "kernel/types.h"
-#include "util/list.h"
 #include <stdint.h>
 
 #define FS_PER_SEC 1000000000000000ull
@@ -14,7 +13,10 @@
 #define NS_PER_US 1000ull
 
 typedef struct timer_event {
-    list_node_t node;
+    struct timer_event *parent;
+    struct timer_event *prev;
+    struct timer_event *next;
+    struct timer_event *children;
     void (*func)(struct timer_event *self);
     uint64_t deadline;
     struct cpu *cpu;

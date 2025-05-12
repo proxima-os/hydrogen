@@ -7,7 +7,6 @@
 #include "kernel/vdso.h"
 #include "limine.h"
 #include "sections.h"
-#include "util/list.h"
 #include "util/spinlock.h"
 #include <stdint.h>
 
@@ -65,9 +64,70 @@ timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq) {
     };
 }
 
-void time_handle_irq(void) {
-    list_t triggered = {};
+static timer_event_t *meld(timer_event_t *a, timer_event_t *b) {
+    if (!a) return b;
+    if (!b) return a;
 
+    if (b->deadline < a->deadline) {
+        timer_event_t *tmp = a;
+        a = b;
+        b = tmp;
+    }
+
+    b->parent = a;
+    b->prev = NULL;
+    b->next = a->children;
+    if (a->children) a->children->prev = b;
+    a->children = b;
+    return a;
+}
+
+static void remove_event(cpu_t *cpu, timer_event_t *event) {
+    timer_event_t *pairs = NULL;
+
+    while (event->children) {
+        timer_event_t *a = event->children;
+        timer_event_t *b = a->next;
+        event->children = b ? b->next : NULL;
+
+        timer_event_t *melded = meld(a, b);
+        melded->parent = pairs;
+        pairs = melded;
+    }
+
+    timer_event_t *replacement = NULL;
+
+    while (pairs) {
+        timer_event_t *pair = pairs;
+        pairs = pair->parent;
+        replacement = meld(pair, replacement);
+    }
+
+    if (replacement != NULL) {
+        if (event->parent != NULL) {
+            replacement->parent = event->parent;
+            replacement->prev = event->prev;
+            replacement->next = event->next;
+
+            if (event->prev) event->prev->next = replacement;
+            else event->parent->children = replacement;
+
+            if (event->next) event->next->prev = replacement;
+        } else {
+            replacement->parent = NULL;
+            cpu->events = replacement;
+        }
+    } else if (event->parent != NULL) {
+        if (event->prev) event->prev->next = event->next;
+        else event->parent->children = event->next;
+
+        if (event->next) event->next->prev = event->prev;
+    } else {
+        cpu->events = NULL;
+    }
+}
+
+void time_handle_irq(void) {
     cpu_t *cpu = get_current_cpu();
     spin_acq_noirq(&cpu->events_lock);
 
@@ -75,12 +135,20 @@ void time_handle_irq(void) {
 
     timer_event_t *event;
 
+    timer_event_t *head = NULL;
+    timer_event_t *tail = NULL;
+
     for (;;) {
-        event = LIST_HEAD(cpu->events, timer_event_t, node);
+        event = cpu->events;
         if (!event || time < event->deadline) break;
 
-        list_remove(&cpu->events, &event->node);
-        list_insert_tail(&triggered, &event->node);
+        remove_event(cpu, event);
+
+        event->next = NULL;
+        if (head) tail->next = event;
+        else head = event;
+        tail = event;
+
         __atomic_store_n(&event->cpu, NULL, __ATOMIC_RELEASE);
         __atomic_store_n(&event->running, true, __ATOMIC_RELEASE);
     }
@@ -92,8 +160,9 @@ void time_handle_irq(void) {
     spin_rel_noirq(&cpu->events_lock);
 
     for (;;) {
-        timer_event_t *event = LIST_REMOVE_HEAD(triggered, timer_event_t, node);
+        timer_event_t *event = head;
         if (!event) break;
+        head = event->next;
         void (*func)(timer_event_t *) = event->func;
         __atomic_store_n(&event->running, false, __ATOMIC_RELEASE);
         func(event);
@@ -108,13 +177,12 @@ void timer_queue_event(timer_event_t *event) {
     cpu_t *cpu = get_current_cpu();
     spin_acq_noirq(&cpu->events_lock);
 
-    timer_event_t *next = LIST_HEAD(cpu->events, timer_event_t, node);
-    while (next && next->deadline <= event->deadline) next = LIST_NEXT(*next, timer_event_t, node);
+    event->children = NULL;
+    cpu->events = meld(cpu->events, event);
 
-    list_insert_before(&cpu->events, &next->node, &event->node);
     __atomic_store_n(&event->cpu, cpu, __ATOMIC_RELEASE);
 
-    if (event == LIST_HEAD(cpu->events, timer_event_t, node)) {
+    if (event == cpu->events) {
         arch_queue_timer_irq(event->deadline);
     }
 
@@ -153,7 +221,7 @@ void timer_cancel_event(timer_event_t *event) {
         spin_acq_noirq(&cpu->events_lock);
     }
 
-    list_remove(&cpu->events, &event->node);
+    remove_event(cpu, event);
     __atomic_store_n(&event->cpu, NULL, __ATOMIC_RELEASE);
 
     spin_rel(&cpu->events_lock, state);
