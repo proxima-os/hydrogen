@@ -119,7 +119,7 @@ hydrogen_ret_t hydrogen_thread_get_id(int thread) __asm__("__hydrogen_thread_get
  *
  * \param[in] process The process the thread belongs to. Can be #HYDROGEN_THIS_PROCESS.
  *                    If #HYDROGEN_INVALID_HANDLE, all processes are searched.
- * \param[in] thread_id The ID of the thread.
+ * \param[in] thread_id The ID of the thread. If negative, returns the current thread.
  * \param[in] flags The flags that should be set on the returned handle.
  * \return A handle to the thread (in `integer`).
  */

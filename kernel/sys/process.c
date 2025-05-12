@@ -20,7 +20,7 @@ hydrogen_ret_t hydrogen_process_find(int id, uint32_t flags) {
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
     if (unlikely(id == 0)) return ret_error(ESRCH);
 
-    if (id == HYDROGEN_THIS_PROCESS || id == getpid(current_thread->process)) {
+    if (id < 0 || id == getpid(current_thread->process)) {
         return hnd_alloc(&current_thread->process->base, PROCESS_RIGHTS, flags);
     }
 

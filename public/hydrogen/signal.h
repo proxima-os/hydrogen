@@ -14,34 +14,33 @@ extern "C" {
 #define __SIG_DFL ((void (*)(int))0)
 #define __SIG_IGN ((void (*)(int))1)
 
-#define __SIGABRT 1
-#define __SIGALRM 2
-#define __SIGBUS 3
-#define __SIGCHLD 4
-#define __SIGCONT 5
-#define __SIGFPE 6
-#define __SIGHUP 7
-#define __SIGILL 8
-#define __SIGINT 9
-#define __SIGKILL 10
-#define __SIGPIPE 11
-#define __SIGQUIT 12
-#define __SIGSEGV 13
-#define __SIGSTOP 14
+#define __SIGHUP 1
+#define __SIGINT 2
+#define __SIGQUIT 3
+#define __SIGILL 4
+#define __SIGTRAP 5
+#define __SIGABRT 6
+#define __SIGBUS 7
+#define __SIGFPE 8
+#define __SIGKILL 9
+#define __SIGUSR1 10
+#define __SIGSEGV 11
+#define __SIGUSR2 12
+#define __SIGPIPE 13
+#define __SIGALRM 14
 #define __SIGTERM 15
-#define __SIGTSTP 16
-#define __SIGTTIN 17
-#define __SIGTTOU 18
-#define __SIGUSR1 19
-#define __SIGUSR2 20
-#define __SIGWINCH 21
-#define __SIGSYS 22
-#define __SIGTRAP 23
-#define __SIGURG 24
-#define __SIGVTALRM 25
-#define __SIGXCPU 26
-#define __SIGXFSZ 27
-
+#define __SIGCHLD 17
+#define __SIGCONT 18
+#define __SIGSTOP 19
+#define __SIGTSTP 20
+#define __SIGTTIN 21
+#define __SIGTTOU 22
+#define __SIGURG 23
+#define __SIGXCPU 24
+#define __SIGXFSZ 25
+#define __SIGVTALRM 26
+#define __SIGWINCH 28
+#define __SIGSYS 31
 #define __SIGRTMIN 32
 #define __SIGRTMAX 63
 

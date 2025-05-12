@@ -83,7 +83,41 @@ static void thread_free(object_t *ptr) {
     vfree(thread, sizeof(*thread));
 }
 
-static const object_ops_t thread_ops = {.free = thread_free};
+static int thread_event_add(object_t *ptr, active_event_t *event) {
+    thread_t *self = (thread_t *)ptr;
+
+    switch (event->source.type) {
+    case HYDROGEN_EVENT_SIGNAL_PENDING: return event_source_add(&self->sig_target.event_source, event);
+    default: return EINVAL;
+    }
+}
+
+static bool thread_event_get(object_t *ptr, active_event_t *event, hydrogen_event_t *out) {
+    thread_t *self = (thread_t *)ptr;
+
+    switch (event->source.type) {
+    case HYDROGEN_EVENT_SIGNAL_PENDING:
+        out->data = __atomic_load_n(&self->sig_target.queue_map, __ATOMIC_ACQUIRE) & event->source.data;
+        return out->data != 0;
+    default: UNREACHABLE();
+    }
+}
+
+static void thread_event_del(object_t *ptr, active_event_t *event) {
+    thread_t *self = (thread_t *)ptr;
+
+    switch (event->source.type) {
+    case HYDROGEN_EVENT_SIGNAL_PENDING: return event_source_del(&self->sig_target.event_source, event);
+    default: UNREACHABLE();
+    }
+}
+
+static const object_ops_t thread_ops = {
+        .free = thread_free,
+        .event_add = thread_event_add,
+        .event_get = thread_event_get,
+        .event_del = thread_event_del,
+};
 
 INIT_TEXT void sched_init(void) {
     cpu_t *cpu = get_current_cpu();
@@ -402,8 +436,12 @@ bool sched_interrupt(thread_t *thread, bool force_user_transition) {
 
     if (wake) {
         do_wake(cpu, thread, EINTR);
-    } else if (force_user_transition && thread->user_thread && cpu != get_current_cpu()) {
-        smp_trigger_user_transition(cpu);
+    } else {
+        thread->interrupted = true;
+
+        if (force_user_transition && thread->user_thread && cpu != get_current_cpu()) {
+            smp_trigger_user_transition(cpu);
+        }
     }
 
     spin_rel_noirq(&cpu->sched.lock);
@@ -436,15 +474,21 @@ int sched_perform_wait(uint64_t deadline) {
     thread_t *thread = cpu->sched.current;
 
     if (thread->state == THREAD_BLOCKED || thread->state == THREAD_BLOCKED_INTERRUPTIBLE) {
-        thread->timeout_event.deadline = deadline;
+        if (thread->state == THREAD_BLOCKED_INTERRUPTIBLE && thread->interrupted) {
+            thread->interrupted = false;
+            thread->state = THREAD_RUNNING;
+            thread->wake_status = EINTR;
+        } else {
+            thread->timeout_event.deadline = deadline;
 
-        if (deadline != 0) {
-            timer_queue_event(&thread->timeout_event);
+            if (deadline != 0) {
+                timer_queue_event(&thread->timeout_event);
+            }
+
+            thread->wake_status = -1;
+            do_yield(cpu, false);
+            cpu = get_current_cpu();
         }
-
-        thread->wake_status = -1;
-        do_yield(cpu, false);
-        cpu = get_current_cpu();
     }
 
     spin_rel(&cpu->sched.lock, istate);

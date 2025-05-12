@@ -65,6 +65,11 @@ int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible) {
     return status;
 }
 
+bool mutex_try_acq(mutex_t *mutex) {
+    unsigned char wanted = MUTEX_UNLOCKED;
+    return __atomic_compare_exchange_n(&mutex->state, &wanted, MUTEX_LOCKED, false, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED);
+}
+
 void mutex_rel(mutex_t *mutex) {
     unsigned char value = MUTEX_LOCKED;
     if (likely(__atomic_compare_exchange_n(

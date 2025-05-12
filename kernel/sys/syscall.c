@@ -3,6 +3,7 @@
 #include "arch/pmap.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
+#include "hydrogen/eventqueue.h"
 #include "hydrogen/handle.h"
 #include "hydrogen/memory.h"
 #include "hydrogen/process.h"
@@ -106,6 +107,10 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_THREAD_GET_ID: return hydrogen_thread_get_id(a0);
     case SYSCALL_THREAD_FIND: return hydrogen_thread_find(a0, a1, a2);
     case SYSCALL_PROCESS_SIGWAIT: return ret_error(hydrogen_process_sigwait(a0, a1, (void *)a2, a3));
+    case SYSCALL_EVENT_QUEUE_CREATE: return hydrogen_event_queue_create(a0);
+    case SYSCALL_EVENT_QUEUE_ADD: return ret_error(hydrogen_event_queue_add(a0, a1, a2, a3, (void *)a4, a5));
+    case SYSCALL_EVENT_QUEUE_REMOVE: return hydrogen_event_queue_remove(a0, a1, a2, a3);
+    case SYSCALL_EVENT_QUEUE_WAIT: return hydrogen_event_queue_wait(a0, (void *)a1, a2, a3);
     default: return ret_error(ENOSYS);
     }
 }

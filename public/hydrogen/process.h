@@ -38,7 +38,7 @@ extern "C" {
 /**
  * Find a process by its ID.
  *
- * \param[in] id The ID of the process to find. Can be #HYDROGEN_THIS_PROCESS.
+ * \param[in] id The ID of the process to find. If negative, returns the current process.
  * \param[in] flags The flags that should be set on the returned handle.
  * \return A handle to the process (in `integer`). The rights of the handle change according to the relation this
  *         process has to the target process:

@@ -2,6 +2,7 @@
 
 #include "hydrogen/signal.h"
 #include "proc/mutex.h"
+#include "util/eventqueue.h"
 #include "util/list.h"
 #include <stdbool.h>
 
@@ -26,6 +27,7 @@ typedef struct {
     list_t queued_signals[__NSIG];
     list_t signal_waiters;
     __sigset_t queue_map;
+    event_source_t event_source;
     mutex_t lock;
 } signal_target_t;
 

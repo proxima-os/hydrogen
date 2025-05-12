@@ -3,6 +3,7 @@
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
+#include "hydrogen/eventqueue.h"
 #include "hydrogen/signal.h"
 #include "hydrogen/types.h"
 #include "kernel/compiler.h"
@@ -14,6 +15,7 @@
 #include "proc/signal.h"
 #include "sections.h"
 #include "string.h"
+#include "util/eventqueue.h"
 #include "util/list.h"
 #include "util/object.h"
 #include "util/panic.h"
@@ -157,7 +159,41 @@ static void process_free(object_t *ptr) {
     vfree(process, sizeof(*process));
 }
 
-static const object_ops_t process_ops = {.free = process_free};
+static int process_event_add(object_t *ptr, active_event_t *event) {
+    process_t *self = (process_t *)ptr;
+
+    switch (event->source.type) {
+    case HYDROGEN_EVENT_SIGNAL_PENDING: return event_source_add(&self->sig_target.event_source, event);
+    default: return EINVAL;
+    }
+}
+
+static bool process_event_get(object_t *ptr, active_event_t *event, hydrogen_event_t *out) {
+    process_t *self = (process_t *)ptr;
+
+    switch (event->source.type) {
+    case HYDROGEN_EVENT_SIGNAL_PENDING:
+        out->data = __atomic_load_n(&self->sig_target.queue_map, __ATOMIC_ACQUIRE) & event->source.data;
+        return out->data != 0;
+    default: UNREACHABLE();
+    }
+}
+
+static void process_event_del(object_t *ptr, active_event_t *event) {
+    process_t *self = (process_t *)ptr;
+
+    switch (event->source.type) {
+    case HYDROGEN_EVENT_SIGNAL_PENDING: return event_source_del(&self->sig_target.event_source, event);
+    default: UNREACHABLE();
+    }
+}
+
+static const object_ops_t process_ops = {
+        .free = process_free,
+        .event_add = process_event_add,
+        .event_get = process_event_get,
+        .event_del = process_event_del,
+};
 
 INIT_TEXT void proc_init(void) {
     kernel_process.base.ops = &process_ops;

@@ -1,6 +1,7 @@
 vdso_include += include_directories('include')
 vdso_sources += files(
     'assert.c',
+    'eventqueue.c',
     'handle.c',
     'memory.c',
     'process.c',

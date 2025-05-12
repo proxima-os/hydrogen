@@ -47,6 +47,7 @@ typedef struct thread {
     spinlock_t cpu_lock;
     bool active;
     bool user_thread;
+    bool interrupted;
     signal_target_t sig_target;
     __sigset_t sig_mask;
     __stack_t sig_stack;

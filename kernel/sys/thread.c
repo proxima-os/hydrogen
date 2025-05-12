@@ -383,6 +383,10 @@ hydrogen_ret_t hydrogen_thread_get_id(int thread_hnd) {
 hydrogen_ret_t hydrogen_thread_find(int process, int thread_id, uint32_t flags) {
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
 
+    if (thread_id < 0 || thread_id == current_thread->pid->id) {
+        return hnd_alloc(&current_thread->base, THIS_THREAD_RIGHTS, flags);
+    }
+
     thread_t *thread;
     int error = resolve_thread(&thread, thread_id);
     if (unlikely(error)) return ret_error(error);

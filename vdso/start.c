@@ -2,6 +2,5 @@
 #include <stdint.h>
 
 _Noreturn void vdso_start(void) {
-    hydrogen_thread_yield();
     hydrogen_thread_exit(0);
 }

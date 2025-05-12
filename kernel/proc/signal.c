@@ -10,6 +10,7 @@
 #include "string.h"
 #include "sys/syscall.h"
 #include "sys/transition.h"
+#include "util/eventqueue.h"
 #include "util/list.h"
 #include "util/printk.h"
 
@@ -46,7 +47,9 @@ static void discard_all_target(signal_target_t *target, signal_target_t *owned, 
         if (queued->heap) vfree(queued, sizeof(*queued));
     }
 
-    __atomic_store_n(&target->queue_map, target->queue_map & ~(1ull << signal), __ATOMIC_RELAXED);
+    __sigset_t map = target->queue_map & ~(1ull << signal);
+    __atomic_store_n(&target->queue_map, map, __ATOMIC_RELAXED);
+    if (map == 0) event_source_reset(&target->event_source);
 
     if (target != owned) mutex_rel(&target->lock);
 }
@@ -70,9 +73,12 @@ static void do_add_signal(process_t *process, signal_target_t *target, queued_si
 
     list_insert_tail(&target->queued_signals[sig->info.__signo], &sig->node);
     __atomic_store_n(&target->queue_map, target->queue_map | (1ull << sig->info.__signo), __ATOMIC_RELEASE);
+    event_source_signal(&target->event_source);
 
     LIST_FOREACH(process->threads, thread_t, process_node, thread) {
-        sched_interrupt(thread, true);
+        if (thread != current_thread) {
+            sched_interrupt(thread, true);
+        }
     }
 }
 
@@ -120,7 +126,9 @@ int queue_signal(
 
         if (__atomic_exchange_n(&process->stopped, false, __ATOMIC_ACQ_REL)) {
             LIST_FOREACH(process->threads, thread_t, process_node, thread) {
-                sched_interrupt(thread, false);
+                if (thread != current_thread) {
+                    sched_interrupt(thread, false);
+                }
             }
         }
 
@@ -171,7 +179,7 @@ queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set) {
             }
         }
 
-        map &= 1;
+        map &= ~1;
     }
 
     return NULL;
@@ -179,7 +187,9 @@ queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set) {
 
 static void update_after_remove(signal_target_t *target, int signal) {
     if (list_empty(&target->queued_signals[signal])) {
-        __atomic_store_n(&target->queue_map, target->queue_map & ~(1ull << signal), __ATOMIC_RELEASE);
+        __sigset_t map = target->queue_map & ~(1ull << signal);
+        __atomic_store_n(&target->queue_map, map, __ATOMIC_RELEASE);
+        if (map == 0) event_source_reset(&target->event_source);
     }
 }
 
@@ -256,7 +266,9 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr) {
         __atomic_store_n(&process->stopped, true, __ATOMIC_RELEASE);
 
         LIST_FOREACH(process->threads, thread_t, process_node, thread) {
-            sched_interrupt(thread, true);
+            if (thread != current_thread) {
+                sched_interrupt(thread, true);
+            }
         }
 
         goto handled;
@@ -266,7 +278,9 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr) {
     __atomic_store_n(&process->exiting, true, __ATOMIC_RELEASE);
 
     LIST_FOREACH(process->threads, thread_t, process_node, thread) {
-        sched_interrupt(thread, true);
+        if (thread != current_thread) {
+            sched_interrupt(thread, true);
+        }
     }
 
     want_exit = true;

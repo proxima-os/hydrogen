@@ -1,5 +1,6 @@
 install_headers(
     'hydrogen/errno.h',
+    'hydrogen/eventqueue.h',
     'hydrogen/handle.h',
     'hydrogen/memory.h',
     'hydrogen/process.h',
