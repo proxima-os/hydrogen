@@ -413,10 +413,18 @@ static bool does_inhibit_orphaning(pgroup_t *parent_group, pgroup_t *child_group
 }
 
 static void handle_process_group_orphaned(process_t *process) {
+    mutex_acq(&process->sig_lock, 0, false);
+    mutex_acq(&process->threads_lock, 0, false);
+    mutex_acq(&process->sig_target.lock, 0, false);
+
     __siginfo_t info = {.__signo = __SIGHUP};
     queue_signal(process, &process->sig_target, &info, 0, &process->hup_sig);
     info = (__siginfo_t){.__signo = __SIGCONT};
     queue_signal(process, &process->sig_target, &info, 0, &process->cont_sig);
+
+    mutex_rel(&process->sig_target.lock);
+    mutex_rel(&process->threads_lock);
+    mutex_rel(&process->sig_lock);
 }
 
 static void handle_group_orphaned(pgroup_t *group) {
@@ -477,10 +485,14 @@ static void reparent_children(process_t *process) {
         }
 
         mutex_acq(&init_process->children_lock, 0, false);
+
         obj_deref(&process->base);
         obj_ref(&init_process->base);
         list_insert_tail(&init_process->children, &child->parent_node);
         rcu_write(child->parent, init_process);
+
+        // TODO: Send a SIGCHLD to init_process if child has status information available.
+
         mutex_rel(&init_process->children_lock);
     }
 
@@ -524,9 +536,35 @@ static void handle_process_exit(process_t *process) {
 
     pgroup_deref(cgroup);
 
+    __siginfo_t info = {
+            .__signo = __SIGCHLD,
+            .__code = __CLD_EXITED,
+            .__data.__user_or_sigchld.__pid = getpid(process),
+            .__data.__user_or_sigchld.__status = 0, // TODO
+            .__data.__user_or_sigchld.__uid = getuid(process),
+    };
+
+    mutex_acq(&process->sigchld_lock, 0, false);
+
+    if (!process->exit_signal_sent) {
+
+        process_t *parent = get_parent_with_locked_children(process);
+        mutex_acq(&parent->sig_lock, 0, false);
+        mutex_acq(&parent->threads_lock, 0, false);
+        mutex_acq(&parent->sig_target.lock, 0, false);
+
+        queue_signal_unlocked(parent, &parent->sig_target, &info, 0, &process->chld_sig);
+
+        mutex_rel(&parent->sig_target.lock);
+        mutex_rel(&parent->threads_lock);
+        mutex_rel(&parent->sig_lock);
+        mutex_rel(&parent->children_lock);
+    }
+
+    mutex_rel(&process->sigchld_lock);
+
     // TODO: For now, behave as if the parent's SIGCHLD handler has SA_NOCLDWAIT.
-    // In the future, this should send a SIGCHLD and, if SA_NOCLDWAIT isn't set,
-    // make wait information available.
+    // In the future, this should only happen if that is actually the case.
     reap_process(process);
 }
 
@@ -536,12 +574,97 @@ void proc_thread_exit(process_t *process, struct thread *thread) {
 
     bool proc_exit = list_empty(&process->threads);
 
-    if (!proc_exit && process->threads.head == process->threads.tail && process->singlethreaded_handler != NULL) {
-        sched_wake(process->singlethreaded_handler);
+    if (!proc_exit) {
+        if (process->threads.head == process->threads.tail && process->singlethreaded_handler != NULL) {
+            sched_wake(process->singlethreaded_handler);
+        }
+    } else {
+        process->exiting = true;
     }
 
     mutex_rel(&process->threads_lock);
     if (proc_exit) handle_process_exit(process);
+}
+
+void handle_process_terminated(process_t *process, int signal, bool dump) {
+    __siginfo_t info = {
+            .__signo = __SIGCHLD,
+            .__code = dump ? __CLD_DUMPED : __CLD_KILLED,
+            .__data.__user_or_sigchld.__pid = getpid(process),
+            .__data.__user_or_sigchld.__status = signal,
+            .__data.__user_or_sigchld.__uid = getuid(process),
+    };
+
+    mutex_acq(&process->sigchld_lock, 0, false);
+
+    process_t *parent = get_parent_with_locked_children(process);
+    mutex_acq(&parent->sig_lock, 0, false);
+
+    mutex_acq(&parent->threads_lock, 0, false);
+    mutex_acq(&parent->sig_target.lock, 0, false);
+    queue_signal_unlocked(parent, &parent->sig_target, &info, 0, &process->chld_sig);
+    mutex_rel(&parent->sig_target.lock);
+    mutex_rel(&parent->threads_lock);
+
+    mutex_rel(&parent->sig_lock);
+    mutex_rel(&parent->children_lock);
+
+    process->exit_signal_sent = true;
+    mutex_rel(&process->sigchld_lock);
+}
+
+void handle_process_stopped(process_t *process, int signal) {
+    __siginfo_t info = {
+            .__signo = __SIGCHLD,
+            .__code = __CLD_STOPPED,
+            .__data.__user_or_sigchld.__pid = getpid(process),
+            .__data.__user_or_sigchld.__status = signal,
+            .__data.__user_or_sigchld.__uid = getuid(process),
+    };
+
+    mutex_acq(&process->sigchld_lock, 0, false);
+
+    process_t *parent = get_parent_with_locked_children(process);
+    mutex_acq(&parent->sig_lock, 0, false);
+
+    if ((parent->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDSTOP) == 0) {
+        mutex_acq(&parent->threads_lock, 0, false);
+        mutex_acq(&parent->sig_target.lock, 0, false);
+        queue_signal_unlocked(parent, &parent->sig_target, &info, 0, &process->chld_sig);
+        mutex_rel(&parent->sig_target.lock);
+        mutex_rel(&parent->threads_lock);
+    }
+
+    mutex_rel(&parent->sig_lock);
+    mutex_rel(&parent->children_lock);
+    mutex_rel(&process->sigchld_lock);
+}
+
+void handle_process_continued(process_t *process, int signal) {
+    __siginfo_t info = {
+            .__signo = __SIGCHLD,
+            .__code = __CLD_CONTINUED,
+            .__data.__user_or_sigchld.__pid = getpid(process),
+            .__data.__user_or_sigchld.__status = signal,
+            .__data.__user_or_sigchld.__uid = getuid(process),
+    };
+
+    mutex_acq(&process->sigchld_lock, 0, false);
+
+    process_t *parent = get_parent_with_locked_children(process);
+    mutex_acq(&parent->sig_lock, 0, false);
+
+    if ((parent->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDSTOP) == 0) {
+        mutex_acq(&parent->threads_lock, 0, false);
+        mutex_acq(&parent->sig_target.lock, 0, false);
+        queue_signal_unlocked(parent, &parent->sig_target, &info, 0, &process->chld_sig);
+        mutex_rel(&parent->sig_target.lock);
+        mutex_rel(&parent->threads_lock);
+    }
+
+    mutex_rel(&parent->sig_lock);
+    mutex_rel(&parent->children_lock);
+    mutex_rel(&process->sigchld_lock);
 }
 
 void proc_wait_until_single_threaded(void) {

@@ -57,6 +57,13 @@ signal_disposition_t get_sig_disp(int signal, struct __sigaction *action);
 void handle_signal_ignored(signal_target_t *target, int signal);
 
 // these require target->lock to be held
+void queue_signal_unlocked(
+        struct process *process,
+        signal_target_t *target,
+        __siginfo_t *info,
+        unsigned flags,
+        queued_signal_t *buffer
+);
 queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set);
 void remove_queued_signal(signal_target_t *target, queued_signal_t *signal);
 void add_queued_signal(struct process *process, signal_target_t *target, queued_signal_t *signal);

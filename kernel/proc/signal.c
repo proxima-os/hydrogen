@@ -94,6 +94,7 @@ static void update_after_remove(signal_target_t *target, int signal) {
 static void do_remove_sig(signal_target_t *target, queued_signal_t *sig) {
     list_remove(&target->queued_signals[sig->info.__signo], &sig->node);
     update_after_remove(target, sig->info.__signo);
+    sig->queued = false;
 }
 
 int queue_signal(
@@ -105,8 +106,6 @@ int queue_signal(
 ) {
     ASSERT(info->__signo >= 1 && info->__signo < __NSIG);
 
-    if (info->__signo == __SIGKILL || info->__signo == __SIGSTOP) flags |= QUEUE_SIGNAL_FORCE;
-
     queued_signal_t *sig = buffer;
 
     if (!sig) {
@@ -117,31 +116,29 @@ int queue_signal(
     }
 
     mutex_acq(&process->sig_lock, 0, false);
-
-    signal_disposition_t disp = get_sig_disp(info->__signo, &process->sig_handlers[info->__signo]);
-
-    if (!sig->force && info->__signo != __SIGCONT && disp == SIGNAL_IGNORE) {
-        mutex_rel(&process->sig_lock);
-        if (!sig->queued && sig->heap) vfree(sig, sizeof(*sig));
-        return 0;
-    }
-
     mutex_acq(&process->threads_lock, 0, false);
     mutex_acq(&target->lock, 0, false);
 
-    if (sig->queued) {
-        do_remove_sig(target, sig);
-    }
+    queue_signal_unlocked(process, target, info, flags, buffer);
 
-    sig->info = *info;
-    sig->force = flags & QUEUE_SIGNAL_FORCE;
-    sig->queued = true;
+    mutex_rel(&target->lock);
+    mutex_rel(&process->threads_lock);
+    mutex_rel(&process->sig_lock);
+    return 0;
+}
 
-    if (default_sig_disp(info->__signo) == SIGNAL_STOP) {
-        discard_all(process, target, __SIGCONT);
-    }
+void queue_signal_unlocked(
+        struct process *process,
+        signal_target_t *target,
+        __siginfo_t *info,
+        unsigned flags,
+        queued_signal_t *sig
+) {
+    ASSERT(info->__signo >= 1 && info->__signo < __NSIG);
 
-    if (info->__signo == __SIGCONT) {
+    if (info->__signo == __SIGKILL || info->__signo == __SIGSTOP) {
+        flags |= QUEUE_SIGNAL_FORCE;
+    } else if (info->__signo == __SIGCONT) {
         discard_all(process, target, __SIGSTOP);
         discard_all(process, target, __SIGTSTP);
         discard_all(process, target, __SIGTTIN);
@@ -155,28 +152,37 @@ int queue_signal(
             }
         }
 
-        if (!sig->force && disp == SIGNAL_IGNORE) {
-            mutex_rel(&target->lock);
-            mutex_rel(&process->threads_lock);
-            mutex_rel(&process->sig_lock);
-            if (sig->heap) vfree(sig, sizeof(*sig));
-            return 0;
-        }
+        handle_process_continued(process, info->__signo);
+    }
+
+    signal_disposition_t disp = get_sig_disp(info->__signo, &process->sig_handlers[info->__signo]);
+
+    if (!(flags & QUEUE_SIGNAL_FORCE) && disp == SIGNAL_IGNORE) {
+        if (!sig->queued) vfree(sig, sizeof(*sig));
+        return;
+    }
+
+    if (sig->queued) {
+        do_remove_sig(target, sig);
+    }
+
+    sig->info = *info;
+    sig->force = flags & QUEUE_SIGNAL_FORCE;
+    sig->queued = true;
+
+    if (default_sig_disp(info->__signo) == SIGNAL_STOP) {
+        discard_all(process, target, __SIGCONT);
     }
 
     do_add_signal(process, target, sig);
-
-    mutex_rel(&target->lock);
-    mutex_rel(&process->threads_lock);
-    mutex_rel(&process->sig_lock);
-    return 0;
 }
 
 void add_queued_signal(process_t *process, signal_target_t *target, queued_signal_t *sig) {
     signal_disposition_t disp = get_sig_disp(sig->info.__signo, &process->sig_handlers[sig->info.__signo]);
 
-    if (!sig->force && sig->info.__signo != __SIGCONT && disp == SIGNAL_IGNORE) {
+    if (!sig->force && disp == SIGNAL_IGNORE) {
         if (sig->heap) vfree(sig, sizeof(*sig));
+        else sig->queued = false;
         return;
     }
 
@@ -226,14 +232,16 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr) {
         return false;
     }
 
-    struct __sigaction *handler = &process->sig_handlers[sig->info.__signo];
-    signal_disposition_t disp = get_sig_disp(sig->info.__signo, handler);
-    if (disp == SIGNAL_IGNORE) disp = default_sig_disp(sig->info.__signo);
+    int signal = sig->info.__signo;
+
+    struct __sigaction *handler = &process->sig_handlers[signal];
+    signal_disposition_t disp = get_sig_disp(signal, handler);
+    if (disp == SIGNAL_IGNORE) disp = default_sig_disp(signal);
 
     bool want_exit = false;
     bool did_handle = false;
 
-    if (disp == SIGNAL_FUNCTION && (current_thread->sig_mask & (1ull << sig->info.__signo)) == 0) {
+    if (disp == SIGNAL_FUNCTION && (current_thread->sig_mask & (1ull << signal)) == 0) {
         if (was_sys_eintr && (handler->__flags & __SA_RESTART) != 0) {
             arch_syscall_restart();
         }
@@ -261,7 +269,7 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr) {
             current_thread->sig_mask |= handler->__mask;
 
             if ((handler->__flags & __SA_NODEFER) == 0) {
-                current_thread->sig_mask |= 1ull << sig->info.__signo;
+                current_thread->sig_mask |= 1ull << signal;
             }
 
             did_handle = true;
@@ -278,7 +286,7 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr) {
 
         printk("signal: failed to write signal info to stack (%e), terminating with SIGSEGV\n", error);
     } else if (disp == SIGNAL_STOP) {
-        if (sig->info.__signo != __SIGSTOP) {
+        if (signal != __SIGSTOP) {
             rcu_state_t state = rcu_read_lock();
             bool orphaned = __atomic_load_n(
                                     &rcu_read(current_thread->process->group)->orphan_inhibitors,
@@ -299,6 +307,7 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr) {
             }
         }
 
+        handle_process_stopped(process, signal);
         goto handled;
     }
 
@@ -322,9 +331,11 @@ handled:
 
     if (want_exit) {
         proc_wait_until_single_threaded();
+        handle_process_terminated(process, signal, disp == SIGNAL_CORE_DUMP);
     }
 
     mutex_rel(&process->threads_lock);
+
     return did_handle || want_exit;
 }
 

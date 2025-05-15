@@ -58,11 +58,13 @@ struct process {
     signal_target_t sig_target;
     mutex_t sig_lock;
     struct thread *singlethreaded_handler;
-    queued_signal_t hup_sig, cont_sig;
+    queued_signal_t hup_sig, cont_sig, chld_sig;
+    mutex_t sigchld_lock;
 
     bool did_exec;
     bool exiting;
     bool stopped;
+    bool exit_signal_sent;
 };
 
 struct pgroup {
@@ -95,6 +97,10 @@ int proc_clone(process_t **out);
 
 int proc_thread_create(process_t *process, struct thread *thread);
 void proc_thread_exit(process_t *process, struct thread *thread);
+
+void handle_process_terminated(process_t *process, int signal, bool dump);
+void handle_process_stopped(process_t *process, int signal);
+void handle_process_continued(process_t *process, int signal);
 
 // you must hold current_thread->process->threads_lock
 void proc_wait_until_single_threaded(void);
