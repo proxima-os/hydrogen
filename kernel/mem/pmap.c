@@ -980,6 +980,62 @@ void pmap_unmap(vmm_t *vmm, uintptr_t virt, size_t size) {
     if (!vmm) mutex_rel(&kernel_pt_lock);
 }
 
+static void do_rmmap(void *table, unsigned level, uintptr_t virt, size_t size, tlb_ctx_t *tlb) {
+    size_t index = arch_pt_get_index(virt, level);
+    size_t entry_size = 1ul << arch_pt_entry_bits(level);
+    size_t entry_mask = entry_size - 1;
+
+    do {
+        size_t cur = entry_size - (virt & entry_mask);
+        if (cur > size) cur = size;
+
+        pte_t pte = arch_pt_read(table, level, index);
+
+        if (level == 0 || !arch_pt_is_edge(level, pte)) {
+#if PT_PREPARE_DEBUG
+            ENSURE(pte != 0);
+#endif
+
+            ASSERT(table != kernel_page_table);
+
+            if (pte != 0 && (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
+                arch_pt_write(table, level, index, PT_PREPARE_DEBUG ? ARCH_PT_PREPARE_PTE : 0);
+                tlb_add_unmap_leaf(tlb, virt, level, pte);
+            }
+        } else {
+            ASSERT(pte != 0);
+            ASSERT(arch_pt_is_edge(level, pte));
+
+            do_rmmap(arch_pt_edge_target(level, pte), level - 1, virt, cur, tlb);
+        }
+
+        index += 1;
+        virt += cur;
+        size -= cur;
+    } while (size > 0);
+}
+
+void pmap_rmmap(struct vmm *vmm, uintptr_t virt, size_t size) {
+    ASSERT(arch_pt_get_offset(virt | size) == 0);
+    ASSERT(size > 0);
+    ASSERT(virt < virt + (size - 1));
+    ASSERT(arch_pt_is_canonical(virt));
+    ASSERT(arch_pt_is_canonical(virt + (size - 1)));
+    ASSERT(is_kernel_address(virt) == is_kernel_address(virt + (size - 1)));
+    ASSERT(is_kernel_address(virt) == (vmm == NULL));
+
+    if (!vmm) mutex_acq(&kernel_pt_lock, 0, false);
+    migrate_state_t state = migrate_lock();
+
+    tlb_ctx_t tlb;
+    tlb_init(&tlb, vmm ? &vmm->pmap : NULL);
+    do_rmmap(vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, size, &tlb);
+    tlb_commit(&tlb, vmm);
+
+    migrate_unlock(state);
+    if (!vmm) mutex_rel(&kernel_pt_lock);
+}
+
 typedef struct {
     size_t root_index;
     pte_t root_pte;
@@ -1323,7 +1379,11 @@ static void create_new_user_mapping(
             return user_fault_fail(context, pc, address, flags, __SIGBUS, __BUS_ADRERR, ENXIO);
         }
 
-        hydrogen_ret_t ret = ops->get_page(region->object, (region->offset + (address - region->head)) >> PAGE_SHIFT);
+        hydrogen_ret_t ret = ops->get_page(
+                region->object,
+                (region->offset + (address - region->head)) >> PAGE_SHIFT,
+                NULL
+        );
         if (unlikely(ret.error)) {
             return user_fault_fail(
                     context,

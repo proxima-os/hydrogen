@@ -3,7 +3,6 @@
 #include "arch/context.h"
 #include "arch/sched.h"
 #include "hydrogen/signal.h"
-#include "mem/vmm.h"
 #include "proc/process.h"
 #include "proc/signal.h"
 #include "util/list.h"
@@ -18,6 +17,7 @@ typedef bool preempt_state_t;
 typedef bool migrate_state_t;
 
 struct namespace;
+struct vmm;
 
 typedef enum {
     THREAD_CREATED,
@@ -36,7 +36,7 @@ typedef struct thread {
     list_node_t wait_node;
     arch_thread_t arch;
     void *stack;
-    vmm_t *vmm;
+    struct vmm *vmm;
     process_t *process;
     struct namespace *namespace;
     arch_context_t *user_ctx;

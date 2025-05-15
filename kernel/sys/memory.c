@@ -469,6 +469,18 @@ hydrogen_ret_t hydrogen_mem_object_create(size_t size, uint32_t flags) {
     return ret;
 }
 
+int hydrogen_mem_object_resize(int object, size_t size) {
+    if (unlikely((size & PAGE_MASK) != 0)) return EINVAL;
+
+    handle_data_t data;
+    int error = hnd_resolve(&data, object, OBJECT_MEMORY, HYDROGEN_MEM_OBJECT_WRITE);
+    if (unlikely(error)) return error;
+
+    error = anon_mem_object_resize((mem_object_t *)data.object, size >> PAGE_SHIFT);
+    obj_deref(data.object);
+    return error;
+}
+
 int hydrogen_mem_object_read(int object_hnd, void *buffer, size_t count, uint64_t position) {
     if (unlikely(count == 0)) return 0;
 

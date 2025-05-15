@@ -117,6 +117,19 @@ int rmutex_acq(rmutex_t *mutex, uint64_t deadline, bool interruptible) {
     return 0;
 }
 
+bool rmutex_try_acq(rmutex_t *mutex) {
+    if (__atomic_load_n(&mutex->owner, __ATOMIC_ACQUIRE) == current_thread) {
+        mutex->levels += 1;
+        return true;
+    }
+
+    if (!mutex_try_acq(&mutex->base)) return false;
+
+    __atomic_store_n(&mutex->owner, current_thread, __ATOMIC_RELEASE);
+    mutex->levels = 1;
+    return true;
+}
+
 void rmutex_rel(rmutex_t *mutex) {
     if (--mutex->levels != 0) return;
 

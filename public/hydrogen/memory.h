@@ -230,6 +230,15 @@ hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) __asm__("_
 hydrogen_ret_t hydrogen_mem_object_create(size_t size, uint32_t flags) __asm__("__hydrogen_mem_object_create");
 
 /**
+ * Resize a memory object.
+ *
+ * \param[in] object The object to resize. Requires #HYDROGEN_MEM_OBJECT_WRITE.
+ * \param[in] size The new size of the object. Must be a multiple of the page size.
+ * \return 0, if successful; if not, an error code.
+ */
+int hydrogen_mem_object_resize(int object, size_t size) __asm__("__hydrogen_mem_object_resize");
+
+/**
  * Read data from a memory object.
  *
  * \param[in] object The object to read from. Requires #HYDROGEN_MEM_OBJECT_READ.

@@ -54,6 +54,10 @@ EXPORT hydrogen_ret_t hydrogen_mem_object_create(size_t size, uint32_t flags) {
     return SYSCALL2(SYSCALL_MEM_OBJECT_CREATE, size, flags);
 }
 
+EXPORT int hydrogen_mem_object_resize(int object, size_t size) {
+    return SYSCALL2(SYSCALL_MEM_OBJECT_RESIZE, object, size).error;
+}
+
 EXPORT int hydrogen_mem_object_read(int object, void *buffer, size_t count, uint64_t position) {
     return SYSCALL4(SYSCALL_MEM_OBJECT_READ, object, buffer, count, position).error;
 }

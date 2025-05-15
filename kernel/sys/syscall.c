@@ -115,6 +115,7 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_PROCESS_EXIT: hydrogen_process_exit(a0);
     case SYSCALL_PROCESS_WAIT: return ret_error(hydrogen_process_wait(a0, a1, (__siginfo_t *)a2, a3));
     case SYSCALL_PROCESS_WAIT_ID: return hydrogen_process_wait_id(a0, a1, (__siginfo_t *)a2, a3);
+    case SYSCALL_MEM_OBJECT_RESIZE: return ret_error(hydrogen_mem_object_resize(a0, a1));
     default: return ret_error(ENOSYS);
     }
 }

@@ -4,6 +4,7 @@
 #include "hydrogen/types.h"
 #include "mem/pmap.h"
 #include "proc/mutex.h"
+#include "proc/rcu.h"
 #include "util/list.h"
 #include "util/object.h"
 #include <stddef.h>
@@ -20,7 +21,9 @@ typedef struct vmm vmm_t;
 typedef struct {
     object_ops_t base;
     void (*post_map)(mem_object_t *self, vmm_t *vmm, uintptr_t head, uintptr_t tail, unsigned flags, uint64_t offset);
-    hydrogen_ret_t (*get_page)(mem_object_t *self, uint64_t index);
+    // if state_out isn't null, this function locks rcu without unlocking it, and writes the state to state_out.
+    // this is done in such a way that the returned page stays valid until rcu is unlocked.
+    hydrogen_ret_t (*get_page)(mem_object_t *self, uint64_t index, rcu_state_t *state_out);
 } mem_object_ops_t;
 
 #define SHARED_VM_ID 0

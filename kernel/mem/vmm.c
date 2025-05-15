@@ -13,6 +13,7 @@
 #include "mem/pmem.h"
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
+#include "proc/rcu.h"
 #include "proc/sched.h"
 #include "string.h"
 #include "sys/vdso.h"
@@ -784,7 +785,7 @@ hydrogen_ret_t vmm_map(
 ) {
     ASSERT(object != &vdso_object);
 
-    if (unlikely(((hint | size | offset) & PAGE_MASK) != 0)) return ret_error(EINVAL);
+    if (unlikely(((hint | size) & PAGE_MASK) != 0)) return ret_error(EINVAL);
     if (unlikely((flags & ~VMM_MAP_FLAGS) != 0)) return ret_error(EINVAL);
     if (unlikely(size == 0)) return ret_error(EINVAL);
     if (unlikely((flags & (HYDROGEN_MEM_EXACT | HYDROGEN_MEM_OVERWRITE)) == HYDROGEN_MEM_OVERWRITE)) {
@@ -792,6 +793,8 @@ hydrogen_ret_t vmm_map(
     }
 
     if (object != NULL) {
+        if (unlikely((offset & PAGE_MASK) != 0)) return ret_error(EINVAL);
+        if (unlikely(offset > offset + (size - 1))) return ret_error(EINVAL);
         if (unlikely(!check_rights(rights, flags))) return ret_error(EACCES);
 
         const mem_object_ops_t *ops = (const mem_object_ops_t *)object->base.ops;
@@ -1246,11 +1249,10 @@ void mem_object_init(mem_object_t *object) {
     object->id = __atomic_fetch_add(&next_id, 1, __ATOMIC_RELAXED);
 }
 
-// TODO: mem_object_read and mem_object_write assume that pages returned by get_page are
-// valid until the object has been destroyed. This is fine for now, because the only
-// object that implements get_page is anon_mem_object_t, which satisfies this property.
-// However, this should be fixed before implementing any objects that are shrinkable
-// or that are capable of evicting pages.
+// These functions copy the data twice, because the actual read/write to/from the object data
+// needs to be within an RCU critical section, and user_memcpy might page fault and sleep.
+
+#define BUFFER_SIZE 1024
 
 int mem_object_read(mem_object_t *object, void *buffer, size_t count, uint64_t position) {
     if (unlikely(count == 0)) return 0;
@@ -1258,16 +1260,22 @@ int mem_object_read(mem_object_t *object, void *buffer, size_t count, uint64_t p
     const mem_object_ops_t *ops = (const mem_object_ops_t *)object;
     if (unlikely(!ops->get_page)) return ENXIO;
 
+    unsigned char buf[BUFFER_SIZE];
+
     do {
         size_t offset = count & PAGE_MASK;
         size_t current = PAGE_SIZE - offset;
         if (current > count) current = count;
+        if (current > sizeof(buf)) current = sizeof(buf);
 
-        hydrogen_ret_t ret = ops->get_page(object, position >> PAGE_SHIFT);
+        rcu_state_t state;
+        hydrogen_ret_t ret = ops->get_page(object, position >> PAGE_SHIFT, &state);
         if (unlikely(ret.error)) return ret.error;
         page_t *page = ret.pointer;
+        memcpy(buf, page_to_virt(page) + offset, current);
+        rcu_read_unlock(state);
 
-        int error = user_memcpy(buffer, page_to_virt(page) + offset, current);
+        int error = user_memcpy(buffer, buf, current);
         if (unlikely(error)) return error;
 
         buffer += current;
@@ -1281,20 +1289,26 @@ int mem_object_read(mem_object_t *object, void *buffer, size_t count, uint64_t p
 int mem_object_write(mem_object_t *object, const void *buffer, size_t count, uint64_t position) {
     if (unlikely(count == 0)) return 0;
 
-    const mem_object_ops_t *ops = (const mem_object_ops_t *)object->base.ops;
+    const mem_object_ops_t *ops = (const mem_object_ops_t *)object;
     if (unlikely(!ops->get_page)) return ENXIO;
+
+    unsigned char buf[BUFFER_SIZE];
 
     do {
         size_t offset = count & PAGE_MASK;
         size_t current = PAGE_SIZE - offset;
         if (current > count) current = count;
+        if (current > sizeof(buf)) current = sizeof(buf);
 
-        hydrogen_ret_t ret = ops->get_page(object, position >> PAGE_SHIFT);
+        int error = user_memcpy(buf, buffer, current);
+        if (unlikely(error)) return error;
+
+        rcu_state_t state;
+        hydrogen_ret_t ret = ops->get_page(object, position >> PAGE_SHIFT, &state);
         if (unlikely(ret.error)) return ret.error;
         page_t *page = ret.pointer;
-
-        int error = user_memcpy(page_to_virt(page) + offset, buffer, current);
-        if (unlikely(error)) return error;
+        memcpy(page_to_virt(page) + offset, buf, current);
+        rcu_read_unlock(state);
 
         buffer += current;
         position += current;

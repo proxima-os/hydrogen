@@ -906,7 +906,11 @@ again:
                 have_candidate = true;
 
                 if (!mutex_try_acq(&process->status_lock)) {
+                    obj_ref(&process->base);
                     mutex_rel(&parent->waitid_lock);
+                    mutex_acq(&process->status_lock, 0, false);
+                    mutex_rel(&process->status_lock);
+                    obj_deref(&process->base);
                     goto again;
                 }
 

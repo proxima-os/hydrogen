@@ -270,9 +270,12 @@ void event_source_cleanup(event_source_t *source) {
         if (!event) break;
 
         while (!mutex_try_acq(&event->queue->lock)) {
+            event_queue_t *queue = event->queue;
+            obj_ref(&queue->base);
             mutex_rel(&source->lock);
-            mutex_acq(&event->queue->lock, 0, false);
-            mutex_rel(&event->queue->lock);
+            mutex_acq(&queue->lock, 0, false);
+            mutex_rel(&queue->lock);
+            obj_deref(&queue->base);
             mutex_acq(&source->lock, 0, false);
             event = LIST_HEAD(source->events, active_event_t, source_node);
             if (!event) break;
