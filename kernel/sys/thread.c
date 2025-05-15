@@ -334,13 +334,11 @@ __sigset_t hydrogen_thread_sigpending(void) {
 int hydrogen_thread_sigsuspend(__sigset_t mask) {
     arch_context_set_syscall_return(current_thread->user_ctx, ret_error(EINTR));
 
-    current_thread->sig_mask = mask;
-
     for (;;) {
         sched_prepare_wait(true);
 
-        if (!check_signals(&current_thread->sig_target, false) &&
-            !check_signals(&current_thread->process->sig_target, false)) {
+        if (!check_signals(&current_thread->sig_target, false, mask) &&
+            !check_signals(&current_thread->process->sig_target, false, mask)) {
             sched_perform_wait(0);
         } else {
             sched_cancel_wait();

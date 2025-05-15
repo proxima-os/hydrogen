@@ -189,10 +189,9 @@ void add_queued_signal(process_t *process, signal_target_t *target, queued_signa
     do_add_signal(process, target, sig);
 }
 
-queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set) {
+queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set, __sigset_t mask) {
     list_t *signals = target->queued_signals;
     __sigset_t map = target->queue_map;
-    __sigset_t mask = current_thread->sig_mask;
 
     while (map != 0) {
         size_t extra = __builtin_ctzll(map);
@@ -214,7 +213,7 @@ queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set) {
     return NULL;
 }
 
-bool check_signals(signal_target_t *target, bool was_sys_eintr) {
+bool check_signals(signal_target_t *target, bool was_sys_eintr, __sigset_t mask) {
     if (__atomic_load_n(&target->queue_map, __ATOMIC_ACQUIRE) == 0) return false;
 
     process_t *process = current_thread->process;
@@ -223,7 +222,7 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr) {
     mutex_acq(&target->lock, 0, false);
 
     queued_signal_t segv_sig;
-    queued_signal_t *sig = get_queued_signal(target, -1);
+    queued_signal_t *sig = get_queued_signal(target, -1, mask);
 
     if (!sig) {
         mutex_rel(&target->lock);

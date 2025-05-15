@@ -52,7 +52,7 @@ int queue_signal(
         unsigned flags,
         queued_signal_t *buffer
 );
-bool check_signals(signal_target_t *target, bool was_sys_eintr);
+bool check_signals(signal_target_t *target, bool was_sys_eintr, __sigset_t mask);
 signal_disposition_t get_sig_disp(int signal, struct __sigaction *action);
 void handle_signal_ignored(signal_target_t *target, int signal);
 
@@ -64,7 +64,7 @@ void queue_signal_unlocked(
         unsigned flags,
         queued_signal_t *buffer
 );
-queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set);
+queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set, __sigset_t mask);
 void remove_queued_signal(signal_target_t *target, queued_signal_t *signal);
 void add_queued_signal(struct process *process, signal_target_t *target, queued_signal_t *signal);
 

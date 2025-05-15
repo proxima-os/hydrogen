@@ -16,8 +16,8 @@ void exit_to_user_mode(int syscall_status) {
     process_t *process = current_thread->process;
 
     for (;;) {
-        if (!check_signals(&current_thread->sig_target, syscall_status == EINTR) &&
-            !check_signals(&process->sig_target, syscall_status == EINTR)) {
+        if (!check_signals(&current_thread->sig_target, syscall_status == EINTR, current_thread->sig_mask) &&
+            !check_signals(&process->sig_target, syscall_status == EINTR, current_thread->sig_mask)) {
             if (syscall_status == EINTR) {
                 arch_syscall_restart();
                 syscall_status = -1;

@@ -766,7 +766,7 @@ int sigwait(process_t *process, __sigset_t set, __siginfo_t *info, uint64_t dead
     if (check_thread) {
         mutex_acq(&current_thread->sig_target.lock, 0, false);
 
-        queued_signal_t *sig = get_queued_signal(&current_thread->sig_target, set);
+        queued_signal_t *sig = get_queued_signal(&current_thread->sig_target, set, current_thread->sig_mask);
 
         if (sig != NULL) {
             int error = user_memcpy(info, &sig->info, sizeof(*info));
@@ -780,7 +780,7 @@ int sigwait(process_t *process, __sigset_t set, __siginfo_t *info, uint64_t dead
 
     mutex_acq(&process->sig_target.lock, 0, false);
 
-    queued_signal_t *sig = get_queued_signal(&process->sig_target, set);
+    queued_signal_t *sig = get_queued_signal(&process->sig_target, set, current_thread->sig_mask);
 
     if (sig != NULL) {
         int error = user_memcpy(info, &sig->info, sizeof(*info));
