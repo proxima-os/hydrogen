@@ -27,81 +27,76 @@
 process_t kernel_process;
 process_t *init_process;
 
-static pid_t **pids;
-static uint64_t *pids_map;
+typedef union {
+    pid_t *allocated;
+    struct {
+        // For determining whether a given PID has been allocated, we rely on `limit` overlapping the upper 32 bits of
+        // `allocated`. A valid value of `allocated` always has its highest bit set, as it is a kernel address, and a
+        // valid value of `limit` never has its highest bit set, as the highest valid PID is INT32_MAX.
+#if __SIZEOF_POINTER__ == 4 || __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        int32_t limit;
+        int32_t next;
+#else
+        int32_t next;
+        int32_t limit;
+#endif
+    } free;
+} pid_table_entry_t;
+
+static pid_table_entry_t *pid_table;
+static int32_t free_pids = -1;
 static size_t pids_capacity;
-static size_t pids_search_start;
 static mutex_t pids_update_lock;
 
 static pgroup_t kernel_group = {.references = REF_INIT(1)};
 static session_t kernel_session = {.references = REF_INIT(1)};
 
-static size_t get_free_pid(void) {
-    for (size_t i = pids_search_start; i < pids_capacity; i += 64) {
-        uint64_t value = pids_map[i / 64];
-        if (value == UINT64_MAX) continue;
-        return i + __builtin_ctzll(~value);
-    }
-
-    for (size_t i = 0; i < pids_search_start; i += 64) {
-        uint64_t value = pids_map[i / 64];
-        if (value == UINT64_MAX) continue;
-        return i + __builtin_ctzll(~value);
-    }
-
-    return pids_capacity;
-}
-
-static size_t get_map_offset(size_t capacity) {
-    return (capacity * sizeof(*pids) + (_Alignof(uint64_t) - 1)) & ~(_Alignof(uint64_t) - 1);
-}
-
-static size_t get_map_size(size_t capacity) {
-    return (capacity + 63) / 64 * sizeof(*pids_map);
-}
-
 INIT_TEXT static void init_pids(void) {
     pids_capacity = 8;
+    pid_table = vmalloc(pids_capacity * sizeof(*pid_table));
+    if (unlikely(!pid_table)) panic("failed to allocate pid table");
+    memset(pid_table, 0, sizeof(*pid_table) * pids_capacity);
 
-    size_t map_offs = get_map_offset(pids_capacity);
-    size_t map_size = get_map_size(pids_capacity);
-    void *buffer = vmalloc(map_offs + map_size);
-    if (unlikely(!buffer)) panic("failed to allocate pid table");
-    memset(buffer, 0, map_offs + map_size);
-
-    pids = buffer;
-    pids_map = buffer + map_offs;
+    pid_table[0].free.limit = pids_capacity - 1;
+    pid_table[0].free.next = -1;
+    free_pids = 0;
 }
 
-static bool expand_pids(void) {
+static int expand_pids(void) {
     ASSERT(pids_capacity != 0);
+
     size_t new_cap = pids_capacity * 2;
+    if (new_cap > (size_t)INT32_MAX) new_cap = (size_t)INT32_MAX + 1;
+    if (new_cap <= pids_capacity) return EAGAIN;
 
-    size_t map_offs = get_map_offset(new_cap);
-    size_t map_size = get_map_size(new_cap);
-    void *buffer = vmalloc(map_offs + map_size);
-    if (unlikely(!buffer)) return false;
+    pid_table_entry_t *new_table = vmalloc(new_cap * sizeof(*pid_table));
+    if (unlikely(!new_table)) return ENOMEM;
 
-    pid_t **new_pids = buffer;
-    uint64_t *new_map = buffer + map_offs;
+    memcpy(new_table, pid_table, pids_capacity * sizeof(*pid_table));
+    memset(&new_table[pids_capacity], 0, (new_cap - pids_capacity) * sizeof(*pid_table));
 
-    memcpy(new_pids, pids, pids_capacity * sizeof(*pids));
-    memset(&new_pids[pids_capacity], 0, (new_cap - pids_capacity) * sizeof(*pids));
+    new_table[pids_capacity].free.next = free_pids;
+    new_table[pids_capacity].free.limit = new_cap - pids_capacity - 1;
+    free_pids = pids_capacity;
 
-    size_t old_size = get_map_size(pids_capacity);
-    memcpy(new_map, pids_map, old_size);
-    memset((void *)new_map + old_size, 0, map_size - old_size);
+    pid_table_entry_t *old_table = pid_table;
+    size_t old_table_size = pids_capacity * sizeof(*pid_table);
 
-    pid_t **old_pids = pids;
-    size_t old_pids_size = get_map_size(pids_capacity) + old_size;
-
-    pids_map = new_map;
-    rcu_write(pids, new_pids);
+    rcu_write(pid_table, new_table);
     __atomic_store_n(&pids_capacity, new_cap, __ATOMIC_RELEASE);
     rcu_sync();
-    vfree(old_pids, old_pids_size);
+    vfree(old_table, old_table_size);
 
-    return true;
+    return 0;
+}
+
+static void make_free_entry(int32_t pid, int32_t next, int32_t limit) {
+#if __SIZEOF_POINTER__ == 4
+    __atomic_store_n(&pid_table[pid].allocated, (pid_t *)limit, __ATOMIC_RELEASE);
+    pid_table[pid].next = next;
+#else
+    __atomic_store_n(&pid_table[pid].allocated, (pid_t *)(((uint64_t)limit << 32) | next), __ATOMIC_RELEASE);
+#endif
 }
 
 static int allocate_pid(process_t *process, thread_t *thread) {
@@ -123,22 +118,27 @@ static int allocate_pid(process_t *process, thread_t *thread) {
 
     mutex_acq(&pids_update_lock, 0, false);
 
-    size_t id = get_free_pid();
-    if (id > (size_t)INT_MAX) {
-        mutex_rel(&pids_update_lock);
-        return EAGAIN;
+    if (free_pids < 0) {
+        int error = expand_pids();
+
+        if (unlikely(error)) {
+            mutex_rel(&pids_update_lock);
+            return error;
+        }
     }
 
-    if (id >= pids_capacity && unlikely(!expand_pids())) {
-        mutex_rel(&pids_update_lock);
-        return ENOMEM;
+    int32_t id = free_pids;
+    pid_table_entry_t *entry = &pid_table[id];
+
+    if (entry->free.limit == 0) {
+        free_pids = entry->free.next;
+    } else {
+        free_pids = id + 1;
+        make_free_entry(free_pids, entry->free.next, entry->free.limit - 1);
     }
 
     pid->id = id;
-
-    pids_map[id / 64] |= 1ull << (id % 64);
-    pids_search_start = id - (id % 64);
-    rcu_write(pids[id], pid);
+    rcu_write(entry->allocated, pid);
     mutex_rel(&pids_update_lock);
     return 0;
 }
@@ -196,9 +196,10 @@ static const object_ops_t process_ops = {
 };
 
 INIT_TEXT void proc_init(void) {
+    init_pids();
+
     kernel_process.base.ops = &process_ops;
     obj_init(&kernel_process.base, OBJECT_PROCESS);
-    init_pids();
 
     int error = allocate_pid(&kernel_process, NULL);
     if (unlikely(error)) panic("proc: failed to allocate pid for kernel process (%e)", error);
@@ -226,15 +227,19 @@ INIT_TEXT void proc_init(void) {
     session_ref(&kernel_session);
 }
 
+static inline bool is_resolved_pid_valid(pid_t *pid) {
+    return (uintptr_t)pid & (1ul << (sizeof(pid_t *) * 8 - 1));
+}
+
 int resolve_thread(struct thread **out, int tid) {
     if (tid < 0) return EINVAL;
     if ((size_t)tid >= __atomic_load_n(&pids_capacity, __ATOMIC_ACQUIRE)) return ESRCH;
 
     rcu_state_t state = rcu_read_lock();
 
-    pid_t *pid = rcu_read(rcu_read(pids)[tid]);
+    pid_t *pid = rcu_read(rcu_read(pid_table)[tid].allocated);
 
-    if (unlikely(!pid)) {
+    if (unlikely(!is_resolved_pid_valid(pid))) {
         rcu_read_unlock(state);
         return ESRCH;
     }
@@ -258,9 +263,9 @@ int resolve_process(process_t **out, int pid) {
 
     rcu_state_t state = rcu_read_lock();
 
-    pid_t *ppid = rcu_read(rcu_read(pids)[pid]);
+    pid_t *ppid = rcu_read(rcu_read(pid_table)[pid].allocated);
 
-    if (unlikely(!ppid)) {
+    if (unlikely(!is_resolved_pid_valid(ppid))) {
         rcu_read_unlock(state);
         return ESRCH;
     }
@@ -284,9 +289,9 @@ int resolve_pgroup(pgroup_t **out, int pgid) {
 
     rcu_state_t state = rcu_read_lock();
 
-    pid_t *pid = rcu_read(rcu_read(pids)[pgid]);
+    pid_t *pid = rcu_read(rcu_read(pid_table)[pgid].allocated);
 
-    if (unlikely(!pid)) {
+    if (unlikely(!is_resolved_pid_valid(pid))) {
         rcu_read_unlock(state);
         return ESRCH;
     }
@@ -746,38 +751,25 @@ int broadcast_signal(int signal) {
 
     mutex_acq(&pids_update_lock, 0, false);
 
-    uint64_t *bitmap = pids_map;
+    for (size_t i = 0; i < pids_capacity; i++) {
+        pid_t *pid = pid_table[i].allocated;
+        if (!is_resolved_pid_valid(pid)) continue;
 
-    for (size_t i = 0; i < pids_capacity; i += 64) {
-        uint64_t bmval = *bitmap++;
-        if (!bmval) continue;
+        process_t *proc = pid->process;
+        if (proc == NULL || proc == current_thread->process) continue;
 
-        pid_t **pid = &pids[i];
+        if (error == ESRCH) error = EPERM;
 
-        do {
-            size_t extra = __builtin_ctzll(bmval);
-            bmval >>= extra;
-            pid += extra;
-
-            process_t *proc = pid[0]->process;
-
-            if (proc && proc != current_thread->process) {
-                if (error == ESRCH) error = EPERM;
-
-                if (can_send_signal(proc, &info)) {
-                    if (signal != 0) {
-                        int ret = queue_signal(proc, &proc->sig_target, &info, 0, NULL);
-                        if (likely(ret == 0)) sent = true;
-                        else if (error == EPERM) error = ret;
-                    } else {
-                        sent = true;
-                        goto done;
-                    }
-                }
+        if (can_send_signal(proc, &info)) {
+            if (signal != 0) {
+                int ret = queue_signal(proc, &proc->sig_target, &info, 0, NULL);
+                if (likely(ret == 0)) sent = true;
+                else if (error == EPERM) error = ret;
+            } else {
+                sent = true;
+                goto done;
             }
-
-            bmval &= ~1;
-        } while (bmval);
+        }
     }
 
 done:
@@ -1324,8 +1316,8 @@ void ident_deref(ident_t *ident) {
 void pid_handle_removal_and_unlock(pid_t *pid) {
     if (pid->thread == NULL && pid->process == NULL && pid->group == NULL) {
         mutex_acq(&pids_update_lock, 0, false);
-        pids_map[pid->id / 64] &= ~(1ull << pid->id % 64);
-        rcu_write(pids[pid->id], NULL);
+        make_free_entry(pid->id, free_pids, 0);
+        free_pids = pid->id;
         mutex_rel(&pids_update_lock);
         rcu_sync();
         vfree(pid, sizeof(*pid));
