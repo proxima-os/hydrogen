@@ -13,6 +13,10 @@ EXPORT hydrogen_ret_t hydrogen_process_create(uint32_t flags) {
     return SYSCALL1(SYSCALL_PROCESS_CREATE, flags);
 }
 
+EXPORT hydrogen_ret_t hydrogen_process_getpid(int process) {
+    return SYSCALL1(SYSCALL_PROCESS_GETPID, process);
+}
+
 EXPORT hydrogen_ret_t hydrogen_process_getppid(int process) {
     return SYSCALL1(SYSCALL_PROCESS_GETPPID, process);
 }
