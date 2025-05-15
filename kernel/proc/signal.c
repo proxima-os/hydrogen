@@ -150,9 +150,9 @@ void queue_signal_unlocked(
                     sched_interrupt(thread, false);
                 }
             }
-        }
 
-        handle_process_continued(process, info->__signo);
+            handle_process_continued(process, info->__signo);
+        }
     }
 
     signal_disposition_t disp = get_sig_disp(info->__signo, &process->sig_handlers[info->__signo]);
