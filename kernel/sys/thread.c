@@ -335,13 +335,21 @@ int hydrogen_thread_sigsuspend(__sigset_t mask) {
     arch_context_set_syscall_return(current_thread->user_ctx, ret_error(EINTR));
 
     current_thread->sig_mask = mask;
-    sched_prepare_wait(true);
 
-    if (!check_signals(&current_thread->sig_target, false) &&
-        !check_signals(&current_thread->process->sig_target, false)) {
-        sched_perform_wait(0);
-    } else {
-        sched_cancel_wait();
+    for (;;) {
+        sched_prepare_wait(true);
+
+        if (!check_signals(&current_thread->sig_target, false) &&
+            !check_signals(&current_thread->process->sig_target, false)) {
+            sched_perform_wait(0);
+        } else {
+            sched_cancel_wait();
+            break;
+        }
+
+        if (__atomic_load_n(&current_thread->process->exiting, __ATOMIC_ACQUIRE)) {
+            sched_exit(0);
+        }
     }
 
     arch_enter_user_mode_context(current_thread->user_ctx);
