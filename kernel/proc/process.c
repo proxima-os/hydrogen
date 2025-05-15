@@ -516,7 +516,29 @@ static void leave_group(pgroup_t *group, process_t *process) {
 
 static void handle_process_exit(process_t *process) {
     ASSERT(process != &kernel_process);
-    if (process == init_process) panic("attempted to kill init");
+
+    if (process == init_process) {
+        mutex_acq(&process->sigchld_lock, 0, false);
+
+        const char *type;
+        int status;
+
+        if (process->exit_signal_sent) {
+            switch (process->chld_sig.info.__code) {
+            case __CLD_KILLED: type = "kill"; break;
+            case __CLD_DUMPED: type = "kill with core dump"; break;
+            default: UNREACHABLE();
+            }
+
+            status = process->chld_sig.info.__data.__user_or_sigchld.__status;
+        } else {
+            type = "exit";
+            status = process->exit_status;
+        }
+
+        mutex_rel(&process->sigchld_lock);
+        panic("init tried to exit! type: %s, status: %d\n", type, status);
+    }
 
     reparent_children(process);
 
@@ -540,7 +562,7 @@ static void handle_process_exit(process_t *process) {
             .__signo = __SIGCHLD,
             .__code = __CLD_EXITED,
             .__data.__user_or_sigchld.__pid = getpid(process),
-            .__data.__user_or_sigchld.__status = 0, // TODO
+            .__data.__user_or_sigchld.__status = process->exit_status,
             .__data.__user_or_sigchld.__uid = getuid(process),
     };
 
@@ -568,7 +590,7 @@ static void handle_process_exit(process_t *process) {
     reap_process(process);
 }
 
-void proc_thread_exit(process_t *process, struct thread *thread) {
+void proc_thread_exit(process_t *process, struct thread *thread, int status) {
     mutex_acq(&process->threads_lock, 0, false);
     list_remove(&process->threads, &thread->process_node);
 
@@ -580,6 +602,7 @@ void proc_thread_exit(process_t *process, struct thread *thread) {
         }
     } else {
         process->exiting = true;
+        process->exit_status = status;
     }
 
     mutex_rel(&process->threads_lock);

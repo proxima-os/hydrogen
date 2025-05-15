@@ -251,7 +251,7 @@ void hydrogen_thread_yield(void) {
 }
 
 _Noreturn void hydrogen_thread_exit(int status) {
-    sched_exit();
+    sched_exit(status);
 }
 
 int hydrogen_thread_sleep(uint64_t deadline) {

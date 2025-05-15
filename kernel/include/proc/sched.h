@@ -44,6 +44,7 @@ typedef struct thread {
     thread_state_t state;
     timer_event_t timeout_event;
     int wake_status;
+    int exit_status;
     spinlock_t cpu_lock;
     bool active;
     bool user_thread;
@@ -100,7 +101,7 @@ bool sched_interrupt(thread_t *thread, bool force_user_transition);
 void sched_prepare_wait(bool interruptible);
 int sched_perform_wait(uint64_t deadline);
 void sched_cancel_wait(void);
-_Noreturn void sched_exit(void);
+_Noreturn void sched_exit(int status);
 void sched_migrate(struct cpu *dest);
 
 void sched_queue_task(task_t *task);

@@ -42,7 +42,7 @@ static void reap_thread(thread_t *thread) {
     free_kernel_stack(thread->stack);
     if (thread->vmm) obj_deref(&thread->vmm->base);
 
-    if (thread->process) proc_thread_exit(thread->process, thread);
+    if (thread->process) proc_thread_exit(thread->process, thread, thread->exit_status);
 
     // Note: the namespace deference MUST be done during reaping, not during thread free!
     // Otherwise, you have a potential for permanent reference cycles:
@@ -514,7 +514,7 @@ void sched_cancel_wait(void) {
     restore_irq(state);
 }
 
-_Noreturn void sched_exit(void) {
+_Noreturn void sched_exit(int status) {
     UNUSED preempt_state_t state = preempt_lock();
     ASSERT(state == PREEMPT_ENABLED);
 
@@ -526,6 +526,8 @@ _Noreturn void sched_exit(void) {
     ASSERT(thread != &cpu->sched.idle_thread);
 
     thread->state = THREAD_EXITING;
+    thread->exit_status = status;
+
     do_yield(cpu, false);
     UNREACHABLE();
 }
@@ -580,7 +582,7 @@ _Noreturn void sched_init_thread(thread_t *prev, void (*func)(void *), void *ctx
     enable_irq();
     preempt_unlock(PREEMPT_ENABLED);
     func(ctx);
-    sched_exit();
+    sched_exit(0);
 }
 
 void sched_queue_task(task_t *task) {

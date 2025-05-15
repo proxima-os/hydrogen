@@ -61,6 +61,7 @@ struct process {
     queued_signal_t hup_sig, cont_sig, chld_sig;
     mutex_t sigchld_lock;
 
+    int exit_status;
     bool did_exec;
     bool exiting;
     bool stopped;
@@ -96,7 +97,7 @@ int resolve_pgroup(pgroup_t **out, int pgid);
 int proc_clone(process_t **out);
 
 int proc_thread_create(process_t *process, struct thread *thread);
-void proc_thread_exit(process_t *process, struct thread *thread);
+void proc_thread_exit(process_t *process, struct thread *thread, int status);
 
 void handle_process_terminated(process_t *process, int signal, bool dump);
 void handle_process_stopped(process_t *process, int signal);

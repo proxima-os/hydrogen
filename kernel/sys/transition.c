@@ -27,7 +27,7 @@ void exit_to_user_mode(int syscall_status) {
         }
 
         if (__atomic_load_n(&process->exiting, __ATOMIC_ACQUIRE)) {
-            sched_exit();
+            sched_exit(0);
         }
 
         if (__atomic_load_n(&process->stopped, __ATOMIC_ACQUIRE)) {

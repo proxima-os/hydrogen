@@ -76,7 +76,7 @@ __attribute__((noinline)) static _Noreturn void finalize_init(void) {
     sched_wake(thread);
     obj_deref(&thread->base);
 
-    sched_exit();
+    sched_exit(0);
 }
 
 INIT_TEXT static void kernel_init(void *ctx) {
