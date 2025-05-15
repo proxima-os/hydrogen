@@ -20,7 +20,7 @@ typedef struct object object_t;
 
 typedef struct {
     void (*free)(object_t *self);
-    int (*event_add)(object_t *self, struct active_event *event);
+    int (*event_add)(object_t *self, uint32_t rights, struct active_event *event);
     bool (*event_get)(object_t *self, struct active_event *event, hydrogen_event_t *out);
     void (*event_del)(object_t *self, struct active_event *event);
 } object_ops_t;

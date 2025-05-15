@@ -7,6 +7,7 @@
 #include "hydrogen/handle.h"
 #include "hydrogen/memory.h"
 #include "hydrogen/process.h"
+#include "hydrogen/signal.h"
 #include "hydrogen/thread.h"
 #include "hydrogen/time.h"
 #include "hydrogen/types.h"
@@ -111,6 +112,9 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_EVENT_QUEUE_ADD: return ret_error(hydrogen_event_queue_add(a0, a1, a2, a3, (void *)a4, a5));
     case SYSCALL_EVENT_QUEUE_REMOVE: return hydrogen_event_queue_remove(a0, a1, a2, a3);
     case SYSCALL_EVENT_QUEUE_WAIT: return hydrogen_event_queue_wait(a0, (void *)a1, a2, a3);
+    case SYSCALL_PROCESS_EXIT: hydrogen_process_exit(a0);
+    case SYSCALL_PROCESS_WAIT: return ret_error(hydrogen_process_wait(a0, a1, (__siginfo_t *)a2, a3));
+    case SYSCALL_PROCESS_WAIT_ID: return hydrogen_process_wait_id(a0, a1, (__siginfo_t *)a2, a3);
     default: return ret_error(ENOSYS);
     }
 }

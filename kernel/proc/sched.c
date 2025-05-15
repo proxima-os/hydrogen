@@ -83,40 +83,8 @@ static void thread_free(object_t *ptr) {
     vfree(thread, sizeof(*thread));
 }
 
-static int thread_event_add(object_t *ptr, active_event_t *event) {
-    thread_t *self = (thread_t *)ptr;
-
-    switch (event->source.type) {
-    case HYDROGEN_EVENT_SIGNAL_PENDING: return event_source_add(&self->sig_target.event_source, event);
-    default: return EINVAL;
-    }
-}
-
-static bool thread_event_get(object_t *ptr, active_event_t *event, hydrogen_event_t *out) {
-    thread_t *self = (thread_t *)ptr;
-
-    switch (event->source.type) {
-    case HYDROGEN_EVENT_SIGNAL_PENDING:
-        out->data = __atomic_load_n(&self->sig_target.queue_map, __ATOMIC_ACQUIRE) & event->source.data;
-        return out->data != 0;
-    default: UNREACHABLE();
-    }
-}
-
-static void thread_event_del(object_t *ptr, active_event_t *event) {
-    thread_t *self = (thread_t *)ptr;
-
-    switch (event->source.type) {
-    case HYDROGEN_EVENT_SIGNAL_PENDING: return event_source_del(&self->sig_target.event_source, event);
-    default: UNREACHABLE();
-    }
-}
-
 static const object_ops_t thread_ops = {
         .free = thread_free,
-        .event_add = thread_event_add,
-        .event_get = thread_event_get,
-        .event_del = thread_event_del,
 };
 
 INIT_TEXT void sched_init(void) {

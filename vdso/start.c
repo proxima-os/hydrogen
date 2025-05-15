@@ -1,6 +1,6 @@
-#include "hydrogen/thread.h"
+#include "hydrogen/process.h"
 #include <stdint.h>
 
 _Noreturn void vdso_start(void) {
-    hydrogen_thread_exit(0);
+    hydrogen_process_exit(0);
 }

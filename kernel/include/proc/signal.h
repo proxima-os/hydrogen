@@ -8,13 +8,15 @@
 
 struct process;
 struct thread;
+struct signal_target;
 
 typedef struct {
     list_node_t node;
     __siginfo_t info;
+    struct process *process;
+    struct signal_target *target;
     bool force;
     bool heap;
-    bool queued;
 } queued_signal_t;
 
 typedef struct {
@@ -24,7 +26,7 @@ typedef struct {
     queued_signal_t *sig;
 } signal_waiter_t;
 
-typedef struct {
+typedef struct signal_target {
     list_t queued_signals[__NSIG];
     list_t signal_waiters;
     __sigset_t queue_map;
@@ -44,7 +46,7 @@ typedef enum {
 
 // note: if force is true and the default disposition of info->__signo is SIGNAL_IGNORE,
 // the signal might cause the process to terminate instead
-// if `buffer` is provided, the operation cannot fail. note that the same buffer cannot be used for different targets.
+// if `buffer` is provided, the operation cannot fail.
 int queue_signal(
         struct process *process,
         signal_target_t *target,
@@ -55,6 +57,8 @@ int queue_signal(
 bool check_signals(signal_target_t *target, bool was_sys_eintr, __sigset_t mask);
 signal_disposition_t get_sig_disp(int signal, struct __sigaction *action);
 void handle_signal_ignored(signal_target_t *target, int signal);
+
+void unqueue_signal(queued_signal_t *signal);
 
 // these require target->lock to be held
 void queue_signal_unlocked(

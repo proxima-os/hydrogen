@@ -19,6 +19,7 @@ extern "C" {
 #define HYDROGEN_PROCESS_CREATE_THREAD (1u << 4)  /**< Allow threads to be created in this process. */
 #define HYDROGEN_PROCESS_CHANGE_SIGHAND (1u << 5) /**< Alter the signal handling of the process. */
 #define HYDROGEN_PROCESS_WAIT_SIGNAL (1u << 6)    /**< Allow the usage of #hydrogen_process_sigwait. */
+#define HYDROGEN_PROCESS_WAIT_STATUS (1u << 8)    /**< Allow the usage of #hydrogen_process_wait and friends. */
 
 /**
  * Pseudo-handle that refers to the current process.
@@ -35,6 +36,13 @@ extern "C" {
  */
 #define HYDROGEN_THIS_PROCESS (-2)
 
+#define HYDROGEN_PROCESS_WAIT_EXITED (1u << 0)    /**< Return status information of exited processes. */
+#define HYDROGEN_PROCESS_WAIT_KILLED (1u << 1)    /**< Return status information of killed processes. */
+#define HYDROGEN_PROCESS_WAIT_STOPPED (1u << 2)   /**< Return status information of stopped processes. */
+#define HYDROGEN_PROCESS_WAIT_CONTINUED (1u << 3) /**< Return status information of continued processes. */
+#define HYDROGEN_PROCESS_WAIT_DISCARD (1u << 4)   /**< Discard the process's status information. */
+#define HYDROGEN_PROCESS_WAIT_UNQUEUE (1u << 5)   /**< Discard any queued SIGCHLD signals coming from the process.*/
+
 /**
  * Find a process by its ID.
  *
@@ -45,6 +53,7 @@ extern "C" {
  *         - If `id` names the current process, the handle has the same rights as #HYDROGEN_THIS_PROCESS.
  *         - If `id` names a child process that has not yet executed a file, the handle has
  *           #HYDROGEN_PROCESS_CHANGE_GROUP.
+ *         - If `id` names a child process, the handle has #HYDROGEN_PROCESS_WAIT_STATUS.
  *         - The handle always has #HYDROGEN_PROCESS_GET_IDENTITY.
  *         If process rights exist that are not documented in this file, they may be given to handles returned by this
  *         function, with undefined conditions. Process rights that are documented in this file may not be given to
@@ -228,6 +237,46 @@ int hydrogen_process_group_send_signal(int group_id, int signal) __asm__("__hydr
  */
 int hydrogen_process_sigwait(int process, __sigset_t set, __siginfo_t *info, uint64_t deadline) __asm__(
         "__hydrogen_process_sigwait"
+);
+
+/**
+ * Exit the current process. Other threads within the process are terminated.
+ *
+ * \param[in] status The exit status of the process.
+ */
+__attribute__((__noreturn__)) void hydrogen_process_exit(int status) __asm__("__hydrogen_process_exit");
+
+/**
+ * Wait for a process to change state.
+ *
+ * If the process disappears while waiting for it, this function returns #ECHILD.
+ *
+ * \param[in] process The process to wait for. Requires #HYDROGEN_PROCESS_WAIT_STATUS.
+ * \param[in] flags The wait flags.
+ * \param[out] info The state change information.
+ * \param[in] deadline The boot time value at which the wait should stop. If zero, wait forever. If one, do not wait.
+ *                     If the deadline is reached, this call returns #EAGAIN.
+ * \return 0, if successful; if not, an error code.
+ */
+int hydrogen_process_wait(int process, unsigned flags, __siginfo_t *info, uint64_t deadline) __asm__(
+        "__hydrogen_process_wait"
+);
+
+/**
+ * Wait for a member of a set of processes to change state.
+ *
+ * If at any point during the wait `process` no longer refers to any processes, this function returns #ECHILD.
+ *
+ * \param[in] process If zero, wait for any children of the current process. Otherwise, wait for children whose process
+ *                    group ID is `process`.
+ * \param[in] flags The wait flags.
+ * \param[out] info The state change information.
+ * \param[in] deadline The boot time value at which the wait should stop. If zero, wait forever. If one, do not wait.
+ *                     If the deadline is reached, this call returns #EAGAIN.
+ * \return The ID of the process whose state changed (in `integer`).
+ */
+hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned flags, __siginfo_t *info, uint64_t deadline) __asm__(
+        "__hydrogen_process_wait_id"
 );
 
 #ifdef __cplusplus

@@ -94,7 +94,7 @@ static void update_after_remove(signal_target_t *target, int signal) {
 static void do_remove_sig(signal_target_t *target, queued_signal_t *sig) {
     list_remove(&target->queued_signals[sig->info.__signo], &sig->node);
     update_after_remove(target, sig->info.__signo);
-    sig->queued = false;
+    __atomic_store_n(&sig->target, NULL, __ATOMIC_RELEASE);
 }
 
 int queue_signal(
@@ -125,6 +125,24 @@ int queue_signal(
     mutex_rel(&process->threads_lock);
     mutex_rel(&process->sig_lock);
     return 0;
+}
+
+void unqueue_signal(queued_signal_t *signal) {
+    ASSERT(!signal->heap);
+
+    if (!__atomic_load_n(&signal->target, __ATOMIC_ACQUIRE)) return;
+
+    mutex_acq(&signal->process->sig_lock, 0, false);
+    mutex_acq(&signal->process->threads_lock, 0, false);
+    if (!signal->target) goto ret;
+    mutex_acq(&signal->target->lock, 0, false);
+
+    remove_queued_signal(signal->target, signal);
+
+    mutex_rel(&signal->target->lock);
+ret:
+    mutex_rel(&signal->process->threads_lock);
+    mutex_rel(&signal->process->sig_lock);
 }
 
 void queue_signal_unlocked(
@@ -158,17 +176,30 @@ void queue_signal_unlocked(
     signal_disposition_t disp = get_sig_disp(info->__signo, &process->sig_handlers[info->__signo]);
 
     if (!(flags & QUEUE_SIGNAL_FORCE) && disp == SIGNAL_IGNORE) {
-        if (!sig->queued) vfree(sig, sizeof(*sig));
+        if (sig->target == NULL && sig->heap) vfree(sig, sizeof(*sig));
         return;
     }
 
-    if (sig->queued) {
-        do_remove_sig(target, sig);
+    if (__atomic_load_n(&sig->target, __ATOMIC_ACQUIRE) != NULL) {
+        if (process != sig->process) {
+            mutex_acq(&sig->process->sig_lock, 0, false);
+            mutex_acq(&sig->process->threads_lock, 0, false);
+            if (sig->target) mutex_acq(&sig->target->lock, 0, false);
+        }
+
+        if (sig->target) do_remove_sig(sig->target, sig);
+
+        if (process != sig->process) {
+            if (sig->target) mutex_rel(&sig->target->lock);
+            mutex_rel(&sig->process->threads_lock);
+            mutex_rel(&sig->process->sig_lock);
+        }
     }
 
     sig->info = *info;
     sig->force = flags & QUEUE_SIGNAL_FORCE;
-    sig->queued = true;
+    sig->process = process;
+    __atomic_store_n(&sig->target, target, __ATOMIC_RELEASE);
 
     if (default_sig_disp(info->__signo) == SIGNAL_STOP) {
         discard_all(process, target, __SIGCONT);
@@ -182,7 +213,7 @@ void add_queued_signal(process_t *process, signal_target_t *target, queued_signa
 
     if (!sig->force && disp == SIGNAL_IGNORE) {
         if (sig->heap) vfree(sig, sizeof(*sig));
-        else sig->queued = false;
+        else sig->target = NULL;
         return;
     }
 

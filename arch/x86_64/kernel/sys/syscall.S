@@ -7,6 +7,7 @@
 .type x86_64_syscall_entry, @function
 x86_64_syscall_entry:
     .cfi_startproc
+    .cfi_signal_frame
     .cfi_def_cfa rsp, 0
     .cfi_same_value rsp
     .cfi_register rip, rcx

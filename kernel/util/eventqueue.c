@@ -124,7 +124,7 @@ int event_queue_add(
     event->ctx = ctx;
     event->flags = flags;
 
-    int error = object->ops->event_add(object, event);
+    int error = object->ops->event_add(object, rights, event);
 
     if (unlikely(error)) {
         mutex_rel(&queue->lock);

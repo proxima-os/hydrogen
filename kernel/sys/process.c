@@ -5,23 +5,26 @@
 #include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
+#include "proc/mutex.h"
 #include "proc/process.h"
 #include "proc/rcu.h"
+#include "proc/sched.h"
 #include "proc/signal.h"
 #include "sys/process.h"
 #include "sys/syscall.h"
 #include "util/handle.h"
+#include "util/list.h"
 #include "util/object.h"
 #include <stdint.h>
 
-#define PROCESS_RIGHTS THIS_PROCESS_RIGHTS
+#define PROCESS_RIGHTS (THIS_PROCESS_RIGHTS | HYDROGEN_PROCESS_WAIT_SIGNAL)
 
 hydrogen_ret_t hydrogen_process_find(int id, uint32_t flags) {
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
     if (unlikely(id == 0)) return ret_error(ESRCH);
 
     if (id < 0 || id == getpid(current_thread->process)) {
-        return hnd_alloc(&current_thread->process->base, PROCESS_RIGHTS, flags);
+        return hnd_alloc(&current_thread->process->base, THIS_PROCESS_RIGHTS, flags);
     }
 
     process_t *proc;
@@ -356,4 +359,48 @@ int hydrogen_process_sigwait(int process, __sigset_t set, __siginfo_t *info, uin
     error = sigwait(proc, set, info, deadline);
     if (process != HYDROGEN_THIS_PROCESS) obj_deref(&proc->base);
     return error;
+}
+
+void hydrogen_process_exit(int status) {
+    process_t *proc = current_thread->process;
+    __atomic_store_n(&proc->exiting, true, __ATOMIC_RELEASE);
+
+    mutex_acq(&proc->threads_lock, 0, false);
+
+    LIST_FOREACH(proc->threads, thread_t, process_node, thread) {
+        sched_interrupt(thread, true);
+    }
+
+    proc_wait_until_single_threaded();
+    mutex_rel(&proc->threads_lock);
+    sched_exit(status);
+}
+
+#define WAIT_FLAGS                                                                                 \
+    (HYDROGEN_PROCESS_WAIT_EXITED | HYDROGEN_PROCESS_WAIT_KILLED | HYDROGEN_PROCESS_WAIT_STOPPED | \
+     HYDROGEN_PROCESS_WAIT_CONTINUED | HYDROGEN_PROCESS_WAIT_DISCARD | HYDROGEN_PROCESS_WAIT_UNQUEUE)
+
+int hydrogen_process_wait(int process, unsigned flags, __siginfo_t *info, uint64_t deadline) {
+    if (unlikely((flags & ~WAIT_FLAGS) != 0)) return EINVAL;
+
+    int error = verify_user_buffer((uintptr_t)info, sizeof(*info));
+    if (unlikely(error)) return error;
+
+    handle_data_t data;
+    error = hnd_resolve(&data, process, OBJECT_PROCESS, HYDROGEN_PROCESS_WAIT_STATUS);
+    if (unlikely(error)) return error;
+
+    error = proc_wait((process_t *)data.object, flags, info, deadline);
+    obj_deref(data.object);
+    return error;
+}
+
+hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned flags, __siginfo_t *info, uint64_t deadline) {
+    if (unlikely(process < 0)) return ret_error(EINVAL);
+    if (unlikely((flags & ~WAIT_FLAGS) != 0)) return ret_error(EINVAL);
+
+    int error = verify_user_buffer((uintptr_t)info, sizeof(*info));
+    if (unlikely(error)) return ret_error(error);
+
+    return proc_waitid(process, flags, info, deadline);
 }

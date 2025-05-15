@@ -8,6 +8,7 @@
 .type x86_64_idt_entry, @function
 x86_64_idt_entry:
     .cfi_startproc
+    .cfi_signal_frame
     .cfi_def_cfa rsp, 0x38
     .cfi_rel_offset rip, 0x10
     .cfi_rel_offset cs, 0x18

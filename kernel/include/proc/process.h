@@ -4,6 +4,7 @@
 #include "hydrogen/types.h"
 #include "proc/mutex.h"
 #include "proc/signal.h"
+#include "util/eventqueue.h"
 #include "util/list.h"
 #include "util/object.h"
 #include "util/refcount.h"
@@ -59,13 +60,22 @@ struct process {
     mutex_t sig_lock;
     struct thread *singlethreaded_handler;
     queued_signal_t hup_sig, cont_sig, chld_sig;
-    mutex_t sigchld_lock;
+
+    list_t waiters;
+    event_source_t status_event;
+    mutex_t status_lock;
+
+    list_t waitid_available;
+    list_node_t waitid_node;
+    list_t waitid_waiting;
+    mutex_t waitid_lock;
 
     int exit_status;
     bool did_exec;
     bool exiting;
     bool stopped;
     bool exit_signal_sent;
+    bool have_status;
 };
 
 struct pgroup {
@@ -102,6 +112,9 @@ void proc_thread_exit(process_t *process, struct thread *thread, int status);
 void handle_process_terminated(process_t *process, int signal, bool dump);
 void handle_process_stopped(process_t *process, int signal);
 void handle_process_continued(process_t *process, int signal);
+
+int proc_wait(process_t *process, unsigned flags, __siginfo_t *info, uint64_t deadline);
+hydrogen_ret_t proc_waitid(int id, unsigned flags, __siginfo_t *info, uint64_t deadline);
 
 // you must hold current_thread->process->threads_lock
 void proc_wait_until_single_threaded(void);

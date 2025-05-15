@@ -1,5 +1,7 @@
 #include "hydrogen/process.h"
 #include "arch/syscall.h"
+#include "hydrogen/types.h"
+#include "kernel/compiler.h"
 #include "kernel/syscall.h"
 #include "vdso.h"
 
@@ -114,4 +116,17 @@ EXPORT int hydrogen_process_group_send_signal(int group_id, int signal) {
 
 EXPORT int hydrogen_process_sigwait(int process, __sigset_t set, __siginfo_t *info, uint64_t deadline) {
     return SYSCALL4(SYSCALL_PROCESS_SIGWAIT, process, set, info, deadline).error;
+}
+
+EXPORT void hydrogen_process_exit(int status) {
+    SYSCALL1(SYSCALL_PROCESS_EXIT, status);
+    UNREACHABLE();
+}
+
+EXPORT int hydrogen_process_wait(int process, unsigned int flags, __siginfo_t *info, uint64_t deadline) {
+    return SYSCALL4(SYSCALL_PROCESS_WAIT, process, flags, info, deadline).error;
+}
+
+EXPORT hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned int flags, __siginfo_t *info, uint64_t deadline) {
+    return SYSCALL4(SYSCALL_PROCESS_WAIT_ID, process, flags, info, deadline);
 }

@@ -4,6 +4,7 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "hydrogen/eventqueue.h"
+#include "hydrogen/process.h"
 #include "hydrogen/signal.h"
 #include "hydrogen/types.h"
 #include "kernel/compiler.h"
@@ -143,27 +144,54 @@ static int allocate_pid(process_t *process, thread_t *thread) {
     return 0;
 }
 
+static process_t *get_parent_with_locked_children(process_t *process);
+static void reap_process(process_t *process, process_t *parent);
+
 static void process_free(object_t *ptr) {
     process_t *process = (process_t *)ptr;
-    ASSERT(process != &kernel_process);
 
-    pid_t *pid = process->pid;
-    mutex_acq(&pid->remove_lock, 0, false);
-    rcu_write(pid->process, NULL);
-    pid_handle_removal_and_unlock(pid);
+    do {
+        ASSERT(process != &kernel_process);
 
-    pgroup_deref(process->group);
-    ident_deref(process->identity);
+        process_t *parent;
 
-    signal_cleanup(&process->sig_target);
-    vfree(process, sizeof(*process));
+        if (!process->exit_signal_sent) {
+            parent = get_parent_with_locked_children(process);
+            reap_process(process, parent);
+            mutex_rel(&parent->children_lock);
+        } else {
+            parent = NULL;
+        }
+
+        pid_t *pid = process->pid;
+        mutex_acq(&pid->remove_lock, 0, false);
+        rcu_write(pid->process, NULL);
+        pid_handle_removal_and_unlock(pid);
+
+        pgroup_deref(process->group);
+        ident_deref(process->identity);
+
+        signal_cleanup(&process->sig_target);
+        vfree(process, sizeof(*process));
+
+        if (parent != NULL && ref_dec(&parent->base.references)) {
+            process = parent;
+        } else {
+            process = NULL;
+        }
+    } while (process != NULL);
 }
 
-static int process_event_add(object_t *ptr, active_event_t *event) {
+static int process_event_add(object_t *ptr, uint32_t rights, active_event_t *event) {
     process_t *self = (process_t *)ptr;
 
     switch (event->source.type) {
-    case HYDROGEN_EVENT_SIGNAL_PENDING: return event_source_add(&self->sig_target.event_source, event);
+    case HYDROGEN_EVENT_PROCESS_SIGNAL:
+        if ((rights & HYDROGEN_PROCESS_WAIT_SIGNAL) == 0) return EBADF;
+        return event_source_add(&self->sig_target.event_source, event);
+    case HYDROGEN_EVENT_PROCESS_STATUS:
+        if ((rights & HYDROGEN_PROCESS_WAIT_STATUS) == 0) return EBADF;
+        return event_source_add(&self->status_event, event);
     default: return EINVAL;
     }
 }
@@ -172,9 +200,21 @@ static bool process_event_get(object_t *ptr, active_event_t *event, hydrogen_eve
     process_t *self = (process_t *)ptr;
 
     switch (event->source.type) {
-    case HYDROGEN_EVENT_SIGNAL_PENDING:
+    case HYDROGEN_EVENT_PROCESS_SIGNAL:
         out->data = __atomic_load_n(&self->sig_target.queue_map, __ATOMIC_ACQUIRE) & event->source.data;
         return out->data != 0;
+    case HYDROGEN_EVENT_PROCESS_STATUS:
+        mutex_acq(&self->status_lock, 0, false);
+
+        if (!self->have_status) {
+            mutex_rel(&self->status_lock);
+            return false;
+        }
+
+        out->data = ((uint64_t)self->chld_sig.info.__code << 32) |
+                    self->chld_sig.info.__data.__user_or_sigchld.__status;
+        mutex_rel(&self->status_lock);
+        return true;
     default: UNREACHABLE();
     }
 }
@@ -183,7 +223,8 @@ static void process_event_del(object_t *ptr, active_event_t *event) {
     process_t *self = (process_t *)ptr;
 
     switch (event->source.type) {
-    case HYDROGEN_EVENT_SIGNAL_PENDING: return event_source_del(&self->sig_target.event_source, event);
+    case HYDROGEN_EVENT_PROCESS_SIGNAL: return event_source_del(&self->sig_target.event_source, event);
+    case HYDROGEN_EVENT_PROCESS_STATUS: return event_source_del(&self->status_event, event);
     default: UNREACHABLE();
     }
 }
@@ -345,6 +386,10 @@ int proc_clone(process_t **out) {
     list_insert_tail(&group->members, &process->group_node);
     mutex_rel(&group->members_lock);
 
+    mutex_acq(&current_thread->process->waitid_lock, 0, false);
+    list_insert_tail(&current_thread->process->waitid_available, &process->waitid_node);
+    mutex_rel(&current_thread->process->waitid_lock);
+
     *out = process;
     return 0;
 }
@@ -400,12 +445,22 @@ static process_t *get_parent_with_locked_children(process_t *process) {
     }
 }
 
-static void reap_process(process_t *process) {
-    process_t *parent = get_parent_with_locked_children(process);
+static void reap_process(process_t *process, process_t *parent) {
     list_remove(&parent->children, &process->parent_node);
-    mutex_rel(&parent->children_lock);
 
-    obj_deref_n(&parent->base, 2); // ref from get_parent_with_locked_children + process->parent
+    if (!process->exit_signal_sent || process->have_status) {
+        mutex_acq(&parent->waitid_lock, 0, false);
+
+        list_remove(&parent->waitid_available, &process->waitid_node);
+
+        LIST_FOREACH(parent->waitid_waiting, thread_t, wait_node, thread) {
+            sched_wake(thread);
+        }
+
+        mutex_rel(&parent->waitid_lock);
+    }
+
+    obj_deref(&parent->base);
 }
 
 static bool does_inhibit_orphaning(pgroup_t *parent_group, pgroup_t *child_group) {
@@ -484,16 +539,51 @@ static void reparent_children(process_t *process) {
             pgroup_deref(cgroup);
         }
 
+        mutex_acq(&child->status_lock, 0, false);
         mutex_acq(&init_process->children_lock, 0, false);
-
         obj_deref(&process->base);
         obj_ref(&init_process->base);
         list_insert_tail(&init_process->children, &child->parent_node);
         rcu_write(child->parent, init_process);
-
-        // TODO: Send a SIGCHLD to init_process if child has status information available.
-
         mutex_rel(&init_process->children_lock);
+
+        if (process->have_status) {
+            mutex_acq(&init_process->sig_lock, 0, false);
+            mutex_acq(&init_process->threads_lock, 0, false);
+            mutex_acq(&init_process->sig_target.lock, 0, false);
+
+            unsigned code = process->chld_sig.info.__code;
+            if ((code != __CLD_CONTINUED && code != __CLD_STOPPED) ||
+                (init_process->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDSTOP) == 0) {
+                queue_signal_unlocked(
+                        init_process,
+                        &init_process->sig_target,
+                        &process->chld_sig.info,
+                        0,
+                        &process->chld_sig
+                );
+            }
+
+            mutex_rel(&init_process->sig_lock);
+            mutex_rel(&init_process->threads_lock);
+            mutex_rel(&init_process->sig_target.lock);
+        }
+
+        if (!process->exit_signal_sent || process->have_status) {
+            mutex_acq(&init_process->waitid_lock, 0, false);
+
+            list_insert_tail(&init_process->waitid_available, &process->waitid_node);
+
+            if (process->have_status) {
+                LIST_FOREACH(init_process->waitid_waiting, thread_t, wait_node, thread) {
+                    sched_wake(thread);
+                }
+            }
+
+            mutex_rel(&init_process->waitid_lock);
+        }
+
+        mutex_rel(&child->status_lock);
     }
 
     mutex_rel(&process->children_lock);
@@ -514,11 +604,44 @@ static void leave_group(pgroup_t *group, process_t *process) {
     mutex_rel(&group->members_lock);
 }
 
+static void handle_status_change(process_t *process, process_t *parent, __siginfo_t *info) {
+    process->chld_sig.info = *info;
+    process->have_status = true;
+    event_source_signal(&process->status_event);
+
+    LIST_FOREACH(process->waiters, thread_t, wait_node, thread) {
+        sched_wake(thread);
+    }
+}
+
+static void discard_status(process_t *process, process_t *parent, bool own_waitid_lock) {
+    process->have_status = false;
+    event_source_reset(&process->status_event);
+
+    LIST_FOREACH(process->waiters, thread_t, wait_node, thread) {
+        sched_wake(thread);
+    }
+
+    if (process->exit_signal_sent) {
+        if (!own_waitid_lock) mutex_acq(&parent->waitid_lock, 0, false);
+
+        list_remove(&parent->waitid_available, &process->waitid_node);
+
+        LIST_FOREACH(parent->waitid_waiting, thread_t, wait_node, thread) {
+            sched_wake(thread);
+        }
+
+        if (!own_waitid_lock) mutex_rel(&parent->waitid_lock);
+
+        reap_process(process, parent);
+    }
+}
+
 static void handle_process_exit(process_t *process) {
     ASSERT(process != &kernel_process);
 
     if (process == init_process) {
-        mutex_acq(&process->sigchld_lock, 0, false);
+        mutex_acq(&process->status_lock, 0, false);
 
         const char *type;
         int status;
@@ -536,8 +659,8 @@ static void handle_process_exit(process_t *process) {
             status = process->exit_status;
         }
 
-        mutex_rel(&process->sigchld_lock);
-        panic("init tried to exit! type: %s, status: %d\n", type, status);
+        mutex_rel(&process->status_lock);
+        panic("init tried to exit! type: %s, status: %d", type, status);
     }
 
     reparent_children(process);
@@ -566,28 +689,35 @@ static void handle_process_exit(process_t *process) {
             .__data.__user_or_sigchld.__uid = getuid(process),
     };
 
-    mutex_acq(&process->sigchld_lock, 0, false);
+    mutex_acq(&process->status_lock, 0, false);
+
+    process_t *parent = get_parent_with_locked_children(process);
+    mutex_acq(&parent->sig_lock, 0, false);
 
     if (!process->exit_signal_sent) {
+        process->exit_signal_sent = true;
 
-        process_t *parent = get_parent_with_locked_children(process);
         mutex_acq(&parent->sig_lock, 0, false);
         mutex_acq(&parent->threads_lock, 0, false);
         mutex_acq(&parent->sig_target.lock, 0, false);
 
+        handle_status_change(process, parent, &info);
         queue_signal_unlocked(parent, &parent->sig_target, &info, 0, &process->chld_sig);
 
         mutex_rel(&parent->sig_target.lock);
         mutex_rel(&parent->threads_lock);
         mutex_rel(&parent->sig_lock);
-        mutex_rel(&parent->children_lock);
     }
 
-    mutex_rel(&process->sigchld_lock);
+    bool should_reap = parent->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDWAIT;
+    if (should_reap) discard_status(process, parent, false);
+    else obj_ref(&process->base);
 
-    // TODO: For now, behave as if the parent's SIGCHLD handler has SA_NOCLDWAIT.
-    // In the future, this should only happen if that is actually the case.
-    reap_process(process);
+    mutex_rel(&parent->sig_lock);
+    mutex_rel(&process->status_lock);
+
+    mutex_rel(&parent->children_lock);
+    obj_deref(&parent->base);
 }
 
 void proc_thread_exit(process_t *process, struct thread *thread, int status) {
@@ -601,8 +731,8 @@ void proc_thread_exit(process_t *process, struct thread *thread, int status) {
             sched_wake(process->singlethreaded_handler);
         }
     } else {
-        process->exiting = true;
         process->exit_status = status;
+        __atomic_store_n(&process->exiting, true, __ATOMIC_RELEASE);
     }
 
     mutex_rel(&process->threads_lock);
@@ -618,14 +748,17 @@ void handle_process_terminated(process_t *process, int signal, bool dump) {
             .__data.__user_or_sigchld.__uid = getuid(process),
     };
 
-    mutex_acq(&process->sigchld_lock, 0, false);
+    mutex_acq(&process->status_lock, 0, false);
 
     process_t *parent = get_parent_with_locked_children(process);
     mutex_acq(&parent->sig_lock, 0, false);
 
     mutex_acq(&parent->threads_lock, 0, false);
     mutex_acq(&parent->sig_target.lock, 0, false);
+
+    handle_status_change(process, parent, &info);
     queue_signal_unlocked(parent, &parent->sig_target, &info, 0, &process->chld_sig);
+
     mutex_rel(&parent->sig_target.lock);
     mutex_rel(&parent->threads_lock);
 
@@ -633,7 +766,7 @@ void handle_process_terminated(process_t *process, int signal, bool dump) {
     mutex_rel(&parent->children_lock);
 
     process->exit_signal_sent = true;
-    mutex_rel(&process->sigchld_lock);
+    mutex_rel(&process->status_lock);
 }
 
 void handle_process_stopped(process_t *process, int signal) {
@@ -645,10 +778,12 @@ void handle_process_stopped(process_t *process, int signal) {
             .__data.__user_or_sigchld.__uid = getuid(process),
     };
 
-    mutex_acq(&process->sigchld_lock, 0, false);
+    mutex_acq(&process->status_lock, 0, false);
 
     process_t *parent = get_parent_with_locked_children(process);
     mutex_acq(&parent->sig_lock, 0, false);
+
+    handle_status_change(process, parent, &info);
 
     if ((parent->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDSTOP) == 0) {
         mutex_acq(&parent->threads_lock, 0, false);
@@ -660,7 +795,7 @@ void handle_process_stopped(process_t *process, int signal) {
 
     mutex_rel(&parent->sig_lock);
     mutex_rel(&parent->children_lock);
-    mutex_rel(&process->sigchld_lock);
+    mutex_rel(&process->status_lock);
 }
 
 void handle_process_continued(process_t *process, int signal) {
@@ -672,10 +807,12 @@ void handle_process_continued(process_t *process, int signal) {
             .__data.__user_or_sigchld.__uid = getuid(process),
     };
 
-    mutex_acq(&process->sigchld_lock, 0, false);
+    mutex_acq(&process->status_lock, 0, false);
 
     process_t *parent = get_parent_with_locked_children(process);
     mutex_acq(&parent->sig_lock, 0, false);
+
+    handle_status_change(process, parent, &info);
 
     if ((parent->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDSTOP) == 0) {
         mutex_acq(&parent->threads_lock, 0, false);
@@ -687,7 +824,135 @@ void handle_process_continued(process_t *process, int signal) {
 
     mutex_rel(&parent->sig_lock);
     mutex_rel(&parent->children_lock);
-    mutex_rel(&process->sigchld_lock);
+    mutex_rel(&process->status_lock);
+}
+
+static bool status_qualifies(process_t *process, unsigned flags) {
+    switch (process->chld_sig.info.__code) {
+    case __CLD_EXITED: return flags & HYDROGEN_PROCESS_WAIT_EXITED;
+    case __CLD_KILLED:
+    case __CLD_DUMPED: return flags & HYDROGEN_PROCESS_WAIT_KILLED;
+    case __CLD_STOPPED: return flags & HYDROGEN_PROCESS_WAIT_STOPPED;
+    case __CLD_CONTINUED: return flags & HYDROGEN_PROCESS_WAIT_CONTINUED;
+    default: return false;
+    }
+}
+
+static void handle_got_status(process_t *process, unsigned flags, bool own_waitid_lock) {
+    if ((flags & HYDROGEN_PROCESS_WAIT_DISCARD) != 0) {
+        process_t *parent = get_parent_with_locked_children(process);
+
+        discard_status(process, parent, own_waitid_lock);
+
+        if (process->exit_signal_sent) {
+            reap_process(process, parent);
+            obj_deref(&process->base);
+        }
+
+        mutex_rel(&parent->children_lock);
+        obj_deref(&parent->base);
+    }
+
+    if ((flags & HYDROGEN_PROCESS_WAIT_UNQUEUE) != 0) {
+        unqueue_signal(&process->chld_sig);
+    }
+}
+
+int proc_wait(process_t *process, unsigned flags, __siginfo_t *info, uint64_t deadline) {
+    mutex_acq(&process->status_lock, 0, false);
+
+    while (!process->have_status || !status_qualifies(process, flags)) {
+        if (deadline == 1) {
+            mutex_rel(&process->status_lock);
+            return EAGAIN;
+        }
+
+        sched_prepare_wait(true);
+        list_insert_tail(&process->waiters, &current_thread->wait_node);
+        mutex_rel(&process->status_lock);
+        int error = sched_perform_wait(deadline);
+        mutex_acq(&process->status_lock, 0, false);
+        list_remove(&process->waiters, &current_thread->wait_node);
+
+        if (unlikely(error)) {
+            mutex_rel(&process->status_lock);
+            return error == ETIMEDOUT ? EAGAIN : error;
+        }
+    }
+
+    int error = user_memcpy(info, &process->chld_sig.info, sizeof(*info));
+    if (unlikely(error)) {
+        mutex_rel(&process->status_lock);
+        return error;
+    }
+
+    handle_got_status(process, flags, false);
+    mutex_rel(&process->status_lock);
+
+    return 0;
+}
+
+hydrogen_ret_t proc_waitid(int id, unsigned flags, __siginfo_t *info, uint64_t deadline) {
+    process_t *parent = current_thread->process;
+
+again:
+    mutex_acq(&parent->waitid_lock, 0, false);
+
+    for (;;) {
+        bool have_candidate = false;
+
+        LIST_FOREACH(parent->waitid_available, process_t, waitid_node, process) {
+            if (id == 0 || getpgid(process) == id) {
+                have_candidate = true;
+
+                if (!mutex_try_acq(&process->status_lock)) {
+                    mutex_rel(&parent->waitid_lock);
+                    goto again;
+                }
+
+                if (process->have_status && status_qualifies(process, flags)) {
+                    int error = user_memcpy(info, &process->chld_sig.info, sizeof(*info));
+
+                    if (unlikely(error)) {
+                        mutex_rel(&process->status_lock);
+                        mutex_rel(&parent->waitid_lock);
+                        return ret_error(error);
+                    }
+
+                    handle_got_status(process, flags, true);
+
+                    int id = process->pid->id;
+                    mutex_rel(&process->status_lock);
+                    mutex_rel(&parent->waitid_lock);
+                    return ret_integer(id);
+                }
+
+                mutex_rel(&process->status_lock);
+            }
+        }
+
+        if (!have_candidate) {
+            mutex_rel(&parent->waitid_lock);
+            return ret_error(ECHILD);
+        }
+
+        if (deadline == 1) {
+            mutex_rel(&parent->waitid_lock);
+            return ret_error(EAGAIN);
+        }
+
+        sched_prepare_wait(true);
+        list_insert_tail(&parent->waitid_waiting, &current_thread->wait_node);
+        mutex_rel(&parent->waitid_lock);
+        int error = sched_perform_wait(deadline);
+        mutex_acq(&parent->waitid_lock, 0, false);
+        list_remove(&parent->waitid_waiting, &current_thread->wait_node);
+
+        if (unlikely(error)) {
+            mutex_rel(&parent->waitid_lock);
+            return ret_error(error == ETIMEDOUT ? EAGAIN : error);
+        }
+    }
 }
 
 void proc_wait_until_single_threaded(void) {
@@ -1110,6 +1375,23 @@ int setpgid(process_t *process, int pgid) {
     session_deref(own_session);
     rcu_sync();
     pgroup_deref(old_group);
+
+    mutex_acq(&process->status_lock, 0, false);
+
+    if (!process->exit_signal_sent || process->have_status) {
+        // setpgid could cause a parent's waitid call to fail with ECHILD. wake all the waiters
+        // to ensure they can check for it.
+        process_t *parent = get_parent_with_locked_children(process);
+        mutex_acq(&parent->waitid_lock, 0, false);
+
+        LIST_FOREACH(parent->waitid_waiting, thread_t, wait_node, thread) {
+            sched_wake(thread);
+        }
+
+        mutex_rel(&parent->waitid_lock);
+    }
+
+    mutex_rel(&process->status_lock);
     return 0;
 
 err:

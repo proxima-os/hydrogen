@@ -19,8 +19,21 @@ extern "C" {
 #define HYDROGEN_EVENT_QUEUE_WAIT (1u << 2)   /**< Allow the queue to be waited on. */
 
 typedef enum {
-    /** Active when a signal is pending. The input data is the signal mask, the output data is the pending set. */
-    HYDROGEN_EVENT_SIGNAL_PENDING,
+    /**
+     * Active when a process has a pending signal. Requires #HYDROGEN_PROCESS_WAIT_SIGNAL.
+     * The input data is the signal mask, the output data is the pending set.
+     */
+    HYDROGEN_EVENT_PROCESS_SIGNAL,
+    /**
+     * Active when a process has status information available. Requires #HYDROGEN_PROCESS_WAIT_STATUS.
+     * The input data is a bitmask allowing the following flags:
+     * - #HYDROGEN_PROCESS_WAIT_EXITED
+     * - #HYDROGEN_PROCESS_WAIT_KILLED
+     * - #HYDROGEN_PROCESS_WAIT_STOPPED
+     * - #HYDROGEN_PROCESS_WAIT_CONTINUED
+     * The output data is the status type (in the upper 32 bits) and status value (in the lower 32 bits).
+     */
+    HYDROGEN_EVENT_PROCESS_STATUS,
 } hydrogen_event_type_t;
 
 typedef struct {
