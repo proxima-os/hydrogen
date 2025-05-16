@@ -419,3 +419,13 @@ int hydrogen_process_get_cpu_time(hydrogen_cpu_time_t *time) {
     };
     return user_memcpy(time, &value, sizeof(*time));
 }
+
+hydrogen_ret_t hydrogen_process_alarm(int process, uint64_t time) {
+    process_t *proc;
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_ALARM);
+    if (unlikely(error)) return ret_error(error);
+
+    time = proc_alarm(proc, time);
+    if (process != HYDROGEN_THIS_PROCESS) obj_deref(&proc->base);
+    return ret_integer(time);
+}

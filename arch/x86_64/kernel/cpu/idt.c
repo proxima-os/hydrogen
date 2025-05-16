@@ -6,6 +6,7 @@
 #include "hydrogen/signal.h"
 #include "kernel/compiler.h"
 #include "mem/pmap.h"
+#include "proc/process.h"
 #include "proc/sched.h"
 #include "proc/signal.h"
 #include "sections.h"

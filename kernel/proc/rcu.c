@@ -15,6 +15,7 @@ static size_t rcu_max_generation;
 
 static void run_callbacks(task_t *task) {
     rcu_cpu_state_t *state = &get_current_cpu()->rcu;
+    state->task_queued = false;
 
     for (;;) {
         task_t *task = SLIST_REMOVE_HEAD(state->prev_cb, task_t, node);
@@ -60,7 +61,11 @@ void rcu_quiet(cpu_t *cpu) {
 
     if (!slist_empty(&state->cur_cb) && __atomic_load_n(&rcu_generation, __ATOMIC_RELAXED) > state->generation) {
         slist_append_end(&state->prev_cb, &state->cur_cb);
-        sched_queue_task(&state->run_callbacks_task);
+
+        if (!state->task_queued) {
+            state->task_queued = true;
+            sched_queue_task(&state->run_callbacks_task);
+        }
     }
 
     if (!slist_empty(&state->next_cb)) {

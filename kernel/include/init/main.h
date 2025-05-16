@@ -1,6 +1,7 @@
 #pragma once
 
 #include "proc/event.h"
+#include "proc/sched.h"
 
 // called during early initialization, i.e. right before the init thread is started
 void arch_init_early(void);
@@ -13,3 +14,5 @@ void arch_init_current(void *ctx);
 
 _Noreturn void smp_init_current(event_t *event, void *ctx);
 void smp_init_current_late(void);
+
+void schedule_kernel_task(task_t *task);

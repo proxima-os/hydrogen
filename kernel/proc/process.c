@@ -1,5 +1,7 @@
 #include "proc/process.h"
+#include "arch/irq.h"
 #include "arch/pmap.h"
+#include "arch/time.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
@@ -7,6 +9,7 @@
 #include "hydrogen/process.h"
 #include "hydrogen/signal.h"
 #include "hydrogen/types.h"
+#include "init/main.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
@@ -21,6 +24,8 @@
 #include "util/object.h"
 #include "util/panic.h"
 #include "util/refcount.h"
+#include "util/spinlock.h"
+#include "util/time.h"
 #include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -155,6 +160,8 @@ static void process_free(object_t *ptr) {
 
         process_t *parent;
 
+        proc_alarm(process, 0);
+
         if (!process->exit_signal_sent) {
             parent = get_parent_with_locked_children(process);
             reap_process(process, parent);
@@ -236,11 +243,36 @@ static const object_ops_t process_ops = {
         .event_del = process_event_del,
 };
 
+static void alarm_trigger(timer_event_t *timer) {
+    process_t *process = CONTAINER(process_t, alarm_event, timer);
+    spin_acq_noirq(&process->alarm_lock);
+
+    if (arch_read_time() >= process->alarm_event.deadline) {
+        process->alarm_queued = true;
+        schedule_kernel_task(&process->alarm_task);
+    }
+
+    spin_rel_noirq(&process->alarm_lock);
+}
+
+static void alarm_send(task_t *task) {
+    process_t *process = CONTAINER(process_t, alarm_task, task);
+    __siginfo_t info = {.__signo = __SIGALRM, .__code = __SI_TIMER};
+    queue_signal(process, &process->sig_target, &info, 0, &process->alarm_sig);
+
+    irq_state_t state = spin_acq(&process->alarm_lock);
+    process->alarm_queued = false;
+    spin_rel(&process->alarm_lock, state);
+}
+
 INIT_TEXT void proc_init(void) {
     init_pids();
 
     kernel_process.base.ops = &process_ops;
     obj_init(&kernel_process.base, OBJECT_PROCESS);
+
+    kernel_process.alarm_event.func = alarm_trigger;
+    kernel_process.alarm_task.func = alarm_send;
 
     int error = allocate_pid(&kernel_process, NULL);
     if (unlikely(error)) panic("proc: failed to allocate pid for kernel process (%e)", error);
@@ -370,6 +402,9 @@ int proc_clone(process_t **out) {
         vfree(process, sizeof(*process));
         return error;
     }
+
+    process->alarm_event.func = alarm_trigger;
+    process->alarm_task.func = alarm_send;
 
     obj_ref(&process->parent->base);
     mutex_acq(&process->parent->children_lock, 0, false);
@@ -967,6 +1002,28 @@ again:
     }
 }
 
+uint64_t proc_alarm(process_t *process, uint64_t time) {
+    irq_state_t state = spin_acq(&process->alarm_lock);
+
+    while (process->alarm_queued) {
+        list_insert_tail(&process->alarm_waiting, &current_thread->wait_node);
+        sched_prepare_wait(false);
+        spin_rel(&process->alarm_lock, state);
+        sched_perform_wait(0);
+        state = spin_acq(&process->alarm_lock);
+    }
+
+    uint64_t prev_time = process->alarm_event.deadline;
+    if (prev_time) timer_cancel_event(&process->alarm_event);
+
+    process->alarm_event.deadline = time;
+
+    if (time) timer_queue_event(&process->alarm_event);
+
+    spin_rel(&process->alarm_lock, state);
+    return prev_time;
+}
+
 void proc_wait_until_single_threaded(void) {
     process_t *process = current_thread->process;
     ASSERT(process->exiting);
@@ -1008,8 +1065,8 @@ int sigaction(process_t *process, int signal, const struct __sigaction *action, 
 
         if (new_act.__func.__handler != __SIG_DFL) {
             if ((signal == __SIGKILL || signal == __SIGSTOP) ||
-                (new_act.__func.__handler != __SIG_IGN && (uintptr_t)new_act.__func.__handler > arch_pt_max_user_addr()
-                )) {
+                (new_act.__func.__handler != __SIG_IGN &&
+                 (uintptr_t)new_act.__func.__handler > arch_pt_max_user_addr())) {
                 mutex_rel(&process->sig_lock);
                 return EINVAL;
             }
@@ -1630,8 +1687,9 @@ int seteuid(process_t *process, uint32_t euid) {
 
 int setregid(process_t *process, uint32_t gid, uint32_t egid) {
     update_identity(
-            (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->sgid
-            ) && (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid || egid == old_ident->sgid),
+            (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->sgid) &&
+                    (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid ||
+                     egid == old_ident->sgid),
             ({
                 if (egid != (uint32_t)-1) {
                     new_ident->egid = egid;
@@ -1650,8 +1708,9 @@ int setregid(process_t *process, uint32_t gid, uint32_t egid) {
 
 int setreuid(process_t *process, uint32_t uid, uint32_t euid) {
     update_identity(
-            (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->suid
-            ) && (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid || euid == old_ident->suid),
+            (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->suid) &&
+                    (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid ||
+                     euid == old_ident->suid),
             ({
                 if (euid != (uint32_t)-1) {
                     new_ident->euid = euid;
@@ -1673,8 +1732,8 @@ int setresgid(process_t *process, uint32_t gid, uint32_t egid, uint32_t sgid) {
             (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->egid || gid == old_ident->sgid) &&
                     (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid ||
                      egid == old_ident->sgid) &&
-                    (sgid == (uint32_t)-1 || gid == old_ident->gid || sgid == old_ident->egid || sgid == old_ident->sgid
-                    ),
+                    (sgid == (uint32_t)-1 || gid == old_ident->gid || sgid == old_ident->egid ||
+                     sgid == old_ident->sgid),
             ({
                 if (gid != (uint32_t)-1) new_ident->gid = gid;
                 if (egid != (uint32_t)-1) new_ident->egid = egid;
@@ -1690,8 +1749,8 @@ int setresuid(process_t *process, uint32_t uid, uint32_t euid, uint32_t suid) {
             (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->euid || uid == old_ident->suid) &&
                     (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid ||
                      euid == old_ident->suid) &&
-                    (suid == (uint32_t)-1 || uid == old_ident->uid || suid == old_ident->euid || suid == old_ident->suid
-                    ),
+                    (suid == (uint32_t)-1 || uid == old_ident->uid || suid == old_ident->euid ||
+                     suid == old_ident->suid),
             ({
                 if (uid != (uint32_t)-1) new_ident->uid = uid;
                 if (euid != (uint32_t)-1) new_ident->euid = euid;

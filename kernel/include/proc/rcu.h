@@ -10,6 +10,7 @@ typedef struct {
     slist_t cur_cb;
     slist_t next_cb;
     task_t run_callbacks_task;
+    bool task_queued;
 } rcu_cpu_state_t;
 
 typedef preempt_state_t rcu_state_t;

@@ -1,4 +1,5 @@
 #include "init/main.h"
+#include "arch/irq.h"
 #include "cpu/cpudata.h"
 #include "drv/framebuffer.h"
 #include "hydrogen/memory.h"
@@ -23,6 +24,8 @@
 #include "util/object.h"
 #include "util/panic.h"
 #include "util/printk.h"
+#include "util/slist.h"
+#include "util/spinlock.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -32,6 +35,10 @@ __attribute__((used, section(".requests2"))) static LIMINE_REQUESTS_END_MARKER;
 LIMINE_REQ LIMINE_BASE_REVISION(3);
 
 #define USER_STACK_SIZE 0x800000
+
+static slist_t kernel_tasks;
+static thread_t *task_thread;
+static spinlock_t kernel_tasks_lock;
 
 static void launch_init_process(void *ctx) {
     int error = namespace_create(&current_thread->namespace);
@@ -74,10 +81,23 @@ __attribute__((noinline)) static _Noreturn void finalize_init(void) {
     thread_t *thread;
     error = sched_create_thread(&thread, launch_init_process, NULL, NULL, init_process, THREAD_USER);
     if (unlikely(error)) panic("failed to create init process main thread (%d)", error);
+
+    task_thread = current_thread;
     sched_wake(thread);
     obj_deref(&thread->base);
 
-    sched_exit(0);
+    for (;;) {
+        irq_state_t state = spin_acq(&kernel_tasks_lock);
+        task_t *task = SLIST_REMOVE_HEAD(kernel_tasks, task_t, node);
+        if (!task) sched_prepare_wait(false);
+        spin_rel(&kernel_tasks_lock, state);
+        if (!task) {
+            sched_perform_wait(0);
+            continue;
+        }
+
+        task->func(task);
+    }
 }
 
 INIT_TEXT static void kernel_init(void *ctx) {
@@ -134,4 +154,10 @@ INIT_TEXT _Noreturn void smp_init_current(event_t *event, void *ctx) {
 
 INIT_TEXT void smp_init_current_late(void) {
     sched_init_late();
+}
+
+void schedule_kernel_task(task_t *task) {
+    irq_state_t state = spin_acq(&kernel_tasks_lock);
+    slist_insert_tail(&kernel_tasks, &task->node);
+    spin_rel(&kernel_tasks_lock, state);
 }

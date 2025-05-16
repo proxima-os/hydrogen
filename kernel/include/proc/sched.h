@@ -3,7 +3,6 @@
 #include "arch/context.h"
 #include "arch/sched.h"
 #include "hydrogen/signal.h"
-#include "proc/process.h"
 #include "proc/signal.h"
 #include "util/list.h"
 #include "util/object.h"
@@ -17,6 +16,8 @@ typedef bool preempt_state_t;
 typedef bool migrate_state_t;
 
 struct namespace;
+struct pid;
+struct process;
 struct vmm;
 
 typedef enum {
@@ -30,14 +31,14 @@ typedef enum {
 
 typedef struct thread {
     object_t base;
-    pid_t *pid;
+    struct pid *pid;
     struct cpu *cpu;
     list_node_t queue_node;
     list_node_t wait_node;
     arch_thread_t arch;
     void *stack;
     struct vmm *vmm;
-    process_t *process;
+    struct process *process;
     struct namespace *namespace;
     arch_context_t *user_ctx;
     list_node_t process_node;
@@ -90,7 +91,7 @@ int sched_create_thread(
         void (*func)(void *),
         void *ctx,
         struct cpu *cpu,
-        process_t *process,
+        struct process *process,
         unsigned flags
 );
 

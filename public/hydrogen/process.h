@@ -19,7 +19,8 @@ extern "C" {
 #define HYDROGEN_PROCESS_CREATE_THREAD (1u << 4)  /**< Allow threads to be created in this process. */
 #define HYDROGEN_PROCESS_CHANGE_SIGHAND (1u << 5) /**< Alter the signal handling of the process. */
 #define HYDROGEN_PROCESS_WAIT_SIGNAL (1u << 6)    /**< Allow the usage of #hydrogen_process_sigwait. */
-#define HYDROGEN_PROCESS_WAIT_STATUS (1u << 8)    /**< Allow the usage of #hydrogen_process_wait and friends. */
+#define HYDROGEN_PROCESS_WAIT_STATUS (1u << 7)    /**< Allow the usage of #hydrogen_process_wait and friends. */
+#define HYDROGEN_PROCESS_ALARM (1u << 8)          /**< Allow the usage of #hydrogen_process_alarm. */
 
 /**
  * Pseudo-handle that refers to the current process.
@@ -33,6 +34,7 @@ extern "C" {
  * - #HYDROGEN_PROCESS_CREATE_THREAD
  * - #HYDROGEN_PROCESS_CHANGE_SIGHAND
  * - #HYDROGEN_PROCESS_WAIT_SIGNAL
+ * - #HYDROGEN_PROCESS_ALARM
  */
 #define HYDROGEN_THIS_PROCESS (-2)
 
@@ -44,7 +46,7 @@ extern "C" {
 #define HYDROGEN_PROCESS_WAIT_UNQUEUE (1u << 5)   /**< Discard any queued SIGCHLD signals coming from the process.*/
 
 typedef struct {
-    uint64_t user_time; /**< The CPU time used by user code in this process. */
+    uint64_t user_time;   /**< The CPU time used by user code in this process. */
     uint64_t kernel_time; /**< The CPU time used by kernel code in this process. */
     /**
      * The CPU time used by user code in child processes that have exited and whose status information has been consumed
@@ -212,7 +214,8 @@ int hydrogen_process_setresuid(int process, uint32_t ruid, uint32_t euid, uint32
  * \param[in] count The number of groups in the new group list.
  * \return 0, if successful; if not, an error code.
  */
-int hydrogen_process_setgroups(int process, const uint32_t *groups, size_t count) __asm__("__hydrogen_process_setgroups"
+int hydrogen_process_setgroups(int process, const uint32_t *groups, size_t count) __asm__(
+        "__hydrogen_process_setgroups"
 );
 
 /**
@@ -301,6 +304,17 @@ hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned flags, __siginfo_t
  * \return 0, if successful; if not, an error code.
  */
 int hydrogen_process_get_cpu_time(hydrogen_cpu_time_t *time) __asm__("__hydrogen_process_get_cpu_time");
+
+/**
+ * Schedule a `SIGABRT` signal to be sent to a process.
+ *
+ * \param[in] process The process to schedule the signal for. Can be #HYDROGEN_THIS_PROCESS.
+ *                    Requires #HYDROGEN_PROCESS_ALARM.
+ * \param[in] time The boot time value at which to send the signal. If zero, cancel an existing alarm.
+ * \return The boot time value for which the signal was previously scheduled (in `integer`).
+ *         If zero, there was no signal scheduled.
+ */
+hydrogen_ret_t hydrogen_process_alarm(int process, uint64_t time) __asm__("__hydrogen_process_alarm");
 
 #ifdef __cplusplus
 };

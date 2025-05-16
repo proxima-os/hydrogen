@@ -3,11 +3,14 @@
 #include "hydrogen/signal.h"
 #include "hydrogen/types.h"
 #include "proc/mutex.h"
+#include "proc/sched.h"
 #include "proc/signal.h"
 #include "util/eventqueue.h"
 #include "util/list.h"
 #include "util/object.h"
 #include "util/refcount.h"
+#include "util/spinlock.h"
+#include "util/time.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -15,7 +18,7 @@ typedef struct pgroup pgroup_t;
 typedef struct process process_t;
 typedef struct session session_t;
 
-typedef struct {
+typedef struct pid {
     int id;
     mutex_t remove_lock;
     struct thread *thread;
@@ -75,6 +78,13 @@ struct process {
     uint64_t child_user_time;
     uint64_t child_kern_time;
 
+    spinlock_t alarm_lock;
+    timer_event_t alarm_event;
+    task_t alarm_task;
+    list_t alarm_waiting;
+    queued_signal_t alarm_sig;
+    bool alarm_queued;
+
     int exit_status;
     bool did_exec;
     bool exiting;
@@ -120,6 +130,8 @@ void handle_process_continued(process_t *process, int signal);
 
 int proc_wait(process_t *process, unsigned flags, __siginfo_t *info, uint64_t deadline);
 hydrogen_ret_t proc_waitid(int id, unsigned flags, __siginfo_t *info, uint64_t deadline);
+
+uint64_t proc_alarm(process_t *process, uint64_t time);
 
 // you must hold current_thread->process->threads_lock
 void proc_wait_until_single_threaded(void);

@@ -19,6 +19,7 @@
 #include "mem/vmalloc.h"
 #include "mem/vmm.h"
 #include "proc/mutex.h"
+#include "proc/process.h"
 #include "proc/sched.h"
 #include "proc/signal.h"
 #include "sections.h"

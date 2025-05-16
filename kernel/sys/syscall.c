@@ -120,6 +120,7 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_PROCESS_GET_CPU_TIME: return ret_error(hydrogen_process_get_cpu_time((hydrogen_cpu_time_t *)a0));
     case SYSCALL_GET_HOST_NAME: return hydrogen_get_host_name((void *)a0, a1);
     case SYSCALL_SET_HOST_NAME: return ret_error(hydrogen_set_host_name((const void *)a0, a1));
+    case SYSCALL_PROCESS_ALARM: return hydrogen_process_alarm(a0, a1);
     default: return ret_error(ENOSYS);
     }
 }

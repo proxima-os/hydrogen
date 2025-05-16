@@ -138,3 +138,7 @@ EXPORT hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned int flags, 
 EXPORT int hydrogen_process_get_cpu_time(hydrogen_cpu_time_t *time) {
     return SYSCALL1(SYSCALL_PROCESS_GET_CPU_TIME, time).error;
 }
+
+EXPORT hydrogen_ret_t hydrogen_process_alarm(int process, uint64_t time) {
+    return SYSCALL2(SYSCALL_PROCESS_ALARM, process, time);
+}

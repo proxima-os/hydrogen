@@ -131,8 +131,6 @@ void time_handle_irq(void) {
     cpu_t *cpu = get_current_cpu();
     spin_acq_noirq(&cpu->events_lock);
 
-    uint64_t time = arch_read_time();
-
     timer_event_t *event;
 
     timer_event_t *head = NULL;
@@ -140,7 +138,7 @@ void time_handle_irq(void) {
 
     for (;;) {
         event = cpu->events;
-        if (!event || time < event->deadline) break;
+        if (!event || arch_read_time() < event->deadline) break;
 
         remove_event(cpu, event);
 
