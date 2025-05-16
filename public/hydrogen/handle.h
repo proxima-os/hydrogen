@@ -76,7 +76,8 @@ hydrogen_ret_t hydrogen_namespace_clone(int ns, uint32_t flags) __asm__("__hydro
  *                   Requires #HYDROGEN_NAMESPACE_ADD and, if `dst_obj` already points to an object,
  *                   #HYDROGEN_NAMESPACE_REMOVE.
  * \param[in] dst_hnd The new handle. If this handle already points to an object, the handle is removed first.
- *                    If this is #HYDROGEN_INVALID_HANDLE, a handle is allocated like normal.
+ *                    If this is negative, the lowest-numbered free handle greater than or equal to `-(dst_hnd + 1)` is
+ *                    used.
  * \param[in] rights The rights that the new handle should have. This is masked with the rights of `src_obj`, so this
  *                   function can only remove rights, not add them.
  * \param[in] flags The flags that should be set on the returned handle. This parameter also accepts one of

@@ -52,8 +52,7 @@ hydrogen_ret_t hydrogen_namespace_add(
         uint32_t flags
 ) {
     if (unlikely(src_obj_hnd < 0)) return ret_error(EBADF);
-    if (dst_ns_hnd < 0 && unlikely(dst_hnd != HYDROGEN_THIS_NAMESPACE)) return ret_error(EINVAL);
-    if (dst_hnd < 0 && unlikely(dst_hnd != HYDROGEN_INVALID_HANDLE)) return ret_error(EINVAL);
+    if (dst_ns_hnd < 0 && unlikely(dst_ns_hnd != HYDROGEN_THIS_NAMESPACE)) return ret_error(EINVAL);
 
     int flags_mode = flags & (3u << 30);
     flags &= ~flags_mode;

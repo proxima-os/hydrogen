@@ -200,20 +200,24 @@ int namespace_clone(namespace_t **out, namespace_t *ns) {
     return 0;
 }
 
-static hydrogen_ret_t get_next_handle(namespace_t *ns) {
-    size_t idx = ns->alloc_start & ~63;
+static hydrogen_ret_t get_next_handle(namespace_t *ns, size_t minimum) {
+    size_t idx = ns->alloc_start;
+    if (idx < minimum) idx = minimum;
+
     uint64_t *bitmap = &ns->bitmap[idx / 64];
+    size_t offset = idx % 64;
 
     while (idx < ns->capacity) {
-        uint64_t value = *bitmap;
+        uint64_t value = *bitmap >> offset;
 
         if (value != UINT64_MAX) {
-            idx += __builtin_ctzll(~value);
+            idx += __builtin_ctzll(~value) + offset;
             break;
         }
 
         idx += 64;
         bitmap += 1;
+        offset = 0;
     }
 
     if (idx > INT_MAX) return ret_error(EMFILE);
@@ -232,7 +236,6 @@ hydrogen_ret_t namespace_add(
         object_rights_t rights,
         uint32_t flags
 ) {
-    ASSERT(handle >= 0 || handle == HYDROGEN_INVALID_HANDLE);
     ASSERT((flags & ~HANDLE_FLAGS) == 0);
     ASSERT(object->type != OBJECT_NAMESPACE || (flags & NS_ILL_FLAGS) == 0);
 
@@ -247,8 +250,8 @@ hydrogen_ret_t namespace_add(
 
     handle_data_t *old_data;
 
-    if (handle == HYDROGEN_INVALID_HANDLE) {
-        hydrogen_ret_t ret = get_next_handle(ns);
+    if (handle < 0) {
+        hydrogen_ret_t ret = get_next_handle(ns, -(handle + 1));
 
         if (unlikely(ret.error)) {
             mutex_rel(&ns->update_lock);
@@ -291,7 +294,7 @@ hydrogen_ret_t namespace_add(
 }
 
 hydrogen_ret_t hnd_reserve(namespace_t *ns) {
-    return get_next_handle(ns);
+    return get_next_handle(ns, 0);
 }
 
 void hnd_assoc(
