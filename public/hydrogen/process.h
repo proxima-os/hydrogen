@@ -43,6 +43,21 @@ extern "C" {
 #define HYDROGEN_PROCESS_WAIT_DISCARD (1u << 4)   /**< Discard the process's status information. */
 #define HYDROGEN_PROCESS_WAIT_UNQUEUE (1u << 5)   /**< Discard any queued SIGCHLD signals coming from the process.*/
 
+typedef struct {
+    uint64_t user_time; /**< The CPU time used by user code in this process. */
+    uint64_t kernel_time; /**< The CPU time used by kernel code in this process. */
+    /**
+     * The CPU time used by user code in child processes that have exited and whose status information has been consumed
+     * using #HYDROGEN_PROCESS_WAIT_DISCARD, plus the `child_user_time` values of those processes.
+     */
+    uint64_t child_user_time;
+    /**
+     * The CPU time used by kernel code in child processes that have exited and whose status information has been
+     * consumed using #HYDROGEN_PROCESS_WAIT_DISCARD, plus the `child_kernel_time` values of those processes.
+     */
+    uint64_t child_kernel_time;
+} hydrogen_cpu_time_t;
+
 /**
  * Find a process by its ID.
  *
@@ -278,6 +293,14 @@ int hydrogen_process_wait(int process, unsigned flags, __siginfo_t *info, uint64
 hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned flags, __siginfo_t *info, uint64_t deadline) __asm__(
         "__hydrogen_process_wait_id"
 );
+
+/**
+ * Get the CPU time used by the current process.
+ *
+ * \param[out] time The CPU time used by the current process.
+ * \return 0, if successful; if not, an error code.
+ */
+int hydrogen_process_get_cpu_time(hydrogen_cpu_time_t *time) __asm__("__hydrogen_process_get_cpu_time");
 
 #ifdef __cplusplus
 };

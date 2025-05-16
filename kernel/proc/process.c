@@ -842,12 +842,20 @@ static void handle_got_status(process_t *process, unsigned flags, bool own_waiti
     if ((flags & HYDROGEN_PROCESS_WAIT_DISCARD) != 0) {
         process_t *parent = get_parent_with_locked_children(process);
 
-        discard_status(process, parent, own_waitid_lock);
-
         if (process->exit_signal_sent) {
-            reap_process(process, parent);
-            obj_deref(&process->base);
+            __atomic_fetch_add(
+                    &parent->child_kern_time,
+                    process->kern_time + process->child_kern_time,
+                    __ATOMIC_RELAXED
+            );
+            __atomic_fetch_add(
+                    &parent->child_user_time,
+                    process->user_time + process->child_user_time,
+                    __ATOMIC_RELAXED
+            );
         }
+
+        discard_status(process, parent, own_waitid_lock);
 
         mutex_rel(&parent->children_lock);
         obj_deref(&parent->base);

@@ -1,4 +1,5 @@
 #include "hydrogen/process.h"
+#include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "hydrogen/handle.h"
 #include "hydrogen/signal.h"
@@ -403,4 +404,18 @@ hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned flags, __siginfo_t
     if (unlikely(error)) return ret_error(error);
 
     return proc_waitid(process, flags, info, deadline);
+}
+
+int hydrogen_process_get_cpu_time(hydrogen_cpu_time_t *time) {
+    int error = verify_user_buffer((uintptr_t)time, sizeof(*time));
+    if (unlikely(error)) return error;
+
+    process_t *process = current_thread->process;
+    hydrogen_cpu_time_t value = {
+            .user_time = __atomic_load_n(&process->user_time, __ATOMIC_RELAXED),
+            .kernel_time = __atomic_load_n(&process->kern_time, __ATOMIC_RELAXED),
+            .child_user_time = __atomic_load_n(&process->child_user_time, __ATOMIC_RELAXED),
+            .child_kernel_time = __atomic_load_n(&process->child_kern_time, __ATOMIC_RELAXED),
+    };
+    return user_memcpy(time, &value, sizeof(*time));
 }

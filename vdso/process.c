@@ -134,3 +134,7 @@ EXPORT int hydrogen_process_wait(int process, unsigned int flags, __siginfo_t *i
 EXPORT hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned int flags, __siginfo_t *info, uint64_t deadline) {
     return SYSCALL4(SYSCALL_PROCESS_WAIT_ID, process, flags, info, deadline);
 }
+
+EXPORT int hydrogen_process_get_cpu_time(hydrogen_cpu_time_t *time) {
+    return SYSCALL1(SYSCALL_PROCESS_GET_CPU_TIME, time).error;
+}

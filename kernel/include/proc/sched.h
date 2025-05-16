@@ -53,6 +53,9 @@ typedef struct thread {
     __sigset_t sig_mask;
     __stack_t sig_stack;
     queued_signal_t fault_sig;
+
+    uint64_t account_start_time;
+    uint64_t kernel_start_time;
 } thread_t;
 
 typedef struct task {
@@ -103,6 +106,7 @@ int sched_perform_wait(uint64_t deadline);
 void sched_cancel_wait(void);
 _Noreturn void sched_exit(int status);
 void sched_migrate(struct cpu *dest);
+void sched_commit_time_accounting(void);
 
 void sched_queue_task(task_t *task);
 _Noreturn void sched_idle(void);

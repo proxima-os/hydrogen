@@ -233,6 +233,16 @@ static thread_t *dequeue(cpu_t *cpu) {
     return LIST_REMOVE_HEAD(cpu->sched.queue, thread_t, queue_node);
 }
 
+static void time_account_submit(thread_t *thread, uint64_t time) {
+    process_t *process = thread->process;
+    uint64_t tot_time = time - thread->account_start_time;
+    uint64_t kern_time = time - thread->kernel_start_time;
+    uint64_t user_time = tot_time - kern_time;
+
+    __atomic_fetch_add(&process->kern_time, kern_time, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&process->user_time, user_time, __ATOMIC_RELAXED);
+}
+
 static void do_yield(cpu_t *cpu, bool migrating) {
     ASSERT(cpu == get_current_cpu());
 
@@ -252,6 +262,10 @@ static void do_yield(cpu_t *cpu, bool migrating) {
 
     prev->active = false;
     next->active = true;
+
+    uint64_t time = arch_read_time();
+    time_account_submit(prev, time);
+    next->account_start_time = next->kernel_start_time = time;
 
     post_switch(arch_switch_thread(prev, next));
 }
@@ -542,6 +556,20 @@ void sched_migrate(struct cpu *dest) {
     spin_rel_noirq(&dest->sched.lock);
     restore_irq(istate);
     preempt_unlock(state);
+}
+
+void sched_commit_time_accounting(void) {
+    irq_state_t state = save_disable_irq();
+    cpu_t *cpu = get_current_cpu();
+    spin_acq_noirq(&cpu->sched.lock);
+
+    thread_t *thread = cpu->sched.current;
+    uint64_t time = arch_read_time();
+    time_account_submit(thread, time);
+    thread->account_start_time = thread->kernel_start_time = time;
+
+    spin_rel_noirq(&cpu->sched.lock);
+    restore_irq(state);
 }
 
 _Noreturn void sched_init_thread(thread_t *prev, void (*func)(void *), void *ctx) {

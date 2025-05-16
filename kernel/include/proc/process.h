@@ -70,6 +70,11 @@ struct process {
     list_t waitid_waiting;
     mutex_t waitid_lock;
 
+    uint64_t user_time;
+    uint64_t kern_time;
+    uint64_t child_user_time;
+    uint64_t child_kern_time;
+
     int exit_status;
     bool did_exec;
     bool exiting;
