@@ -29,6 +29,7 @@ kernel_sources = []
 kernel_include = []
 vdso_sources = []
 vdso_include = []
+vdso_config_data = configuration_data()
 
 wanted_components = []
 

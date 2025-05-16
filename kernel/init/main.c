@@ -16,6 +16,7 @@
 #include "proc/rcu.h"
 #include "proc/sched.h"
 #include "sections.h"
+#include "sys/hydrogen.h"
 #include "sys/transition.h"
 #include "sys/vdso.h"
 #include "util/handle.h"
@@ -84,6 +85,7 @@ INIT_TEXT static void kernel_init(void *ctx) {
     sched_init_late();
     arch_init_late();
     vdso_init();
+    host_name_init();
     // the idle thread still holds a reference to this thread, but it can't free it itself because that might sleep
     obj_deref(&current_thread->base);
     finalize_init();
