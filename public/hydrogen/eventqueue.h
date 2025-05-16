@@ -49,7 +49,7 @@ typedef struct {
  * \param[in] flags The flags that should be set on the returned handle.
  * \return A handle to the newly created event queue (in `integer`).
  */
-hydrogen_ret_t hydrogen_event_queue_create(uint32_t flags);
+hydrogen_ret_t hydrogen_event_queue_create(uint32_t flags) __asm__("__hydrogen_event_queue_create");
 
 /**
  * Add an event source to an event queue.
