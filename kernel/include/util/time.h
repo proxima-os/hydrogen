@@ -2,7 +2,6 @@
 
 #include "arch/time.h"
 #include "kernel/time.h"
-#include "kernel/types.h"
 #include <stdint.h>
 
 #define FS_PER_SEC 1000000000000000ull
@@ -24,8 +23,8 @@ typedef struct timer_event {
 } timer_event_t;
 
 void time_init(void);
-timestamp_t get_current_timestamp(void);
-void set_current_timestamp(timestamp_t time);
+__int128_t get_current_timestamp(void);
+void set_current_timestamp(__int128_t time);
 
 // NOTE: The caller is responsible for ensuring this function is not called while
 // the event is queued!

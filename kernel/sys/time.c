@@ -10,11 +10,11 @@ uint64_t hydrogen_boot_time(void) {
     return arch_read_time();
 }
 
-int64_t hydrogen_get_real_time(void) {
+__int128_t hydrogen_get_real_time(void) {
     return get_current_timestamp();
 }
 
-int hydrogen_set_real_time(int64_t time) {
+int hydrogen_set_real_time(__int128_t time) {
     if (unlikely(getuid(current_thread->process) != 0)) return EPERM;
 
     set_current_timestamp(time);

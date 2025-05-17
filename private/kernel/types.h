@@ -13,5 +13,3 @@ typedef int64_t ssize_t;
 #else
 #error "Unsupported size_t width"
 #endif
-
-typedef int64_t timestamp_t; // posix time in nanoseconds

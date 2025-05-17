@@ -6,6 +6,7 @@
 #include "kernel/compiler.h"
 #include "kernel/vdso.h"
 #include "limine.h"
+#include "proc/mutex.h"
 #include "sections.h"
 #include "util/spinlock.h"
 #include <stdint.h>
@@ -14,16 +15,30 @@ INIT_TEXT void time_init(void) {
     static LIMINE_REQ struct limine_date_at_boot_request time_req = {.id = LIMINE_DATE_AT_BOOT_REQUEST};
 
     if (time_req.response) {
-        set_current_timestamp((timestamp_t)time_req.response->timestamp * NS_PER_SEC);
+        set_current_timestamp((__int128_t)time_req.response->timestamp * NS_PER_SEC);
     }
 }
 
-timestamp_t get_current_timestamp(void) {
+__int128_t get_current_timestamp(void) {
     return real_time_from_boot_time(arch_read_time());
 }
 
-void set_current_timestamp(timestamp_t time) {
-    __atomic_store_n(&vdso_info.boot_timestamp, time - arch_read_time(), __ATOMIC_RELEASE);
+void set_current_timestamp(__int128_t time) {
+    static mutex_t timestamp_update_lock;
+    mutex_acq(&timestamp_update_lock, 0, false);
+
+    __uint128_t u = time;
+
+    size_t seq = __atomic_load_n(&vdso_info.boot_timestamp_seq, __ATOMIC_RELAXED);
+    __atomic_store_n(&vdso_info.boot_timestamp_seq, seq + 1, __ATOMIC_RELAXED);
+    __atomic_thread_fence(__ATOMIC_RELEASE);
+
+    __atomic_store_n(&vdso_info.boot_timestamp_low, u, __ATOMIC_RELAXED);
+    __atomic_store_n(&vdso_info.boot_timestamp_high, u >> 64, __ATOMIC_RELAXED);
+
+    __atomic_store_n(&vdso_info.boot_timestamp_seq, seq + 2, __ATOMIC_RELEASE);
+
+    mutex_rel(&timestamp_update_lock);
 }
 
 timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq) {

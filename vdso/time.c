@@ -4,6 +4,8 @@
 #include "vdso.h"
 #include <stdint.h>
 
-EXPORT int hydrogen_set_real_time(int64_t time) {
-    return SYSCALL1(SYSCALL_SET_REAL_TIME, time).error;
+EXPORT int hydrogen_set_real_time(__int128_t time) {
+    uint64_t low = time;
+    uint64_t high = time >> 64;
+    return SYSCALL2(SYSCALL_SET_REAL_TIME, low, high).error;
 }
