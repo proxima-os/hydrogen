@@ -31,7 +31,7 @@ struct object {
     object_type_t type;
 };
 
-typedef uint16_t object_rights_t;
+typedef uint32_t object_rights_t;
 
 // expects object->ops to be set
 void obj_init(object_t *object, object_type_t type);

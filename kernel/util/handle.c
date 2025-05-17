@@ -1,4 +1,5 @@
 #include "util/handle.h"
+#include "cpu/cpudata.h"
 #include "errno.h"
 #include "hydrogen/handle.h"
 #include "hydrogen/types.h"
@@ -7,7 +8,9 @@
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
 #include "proc/rcu.h"
+#include "proc/sched.h"
 #include "string.h"
+#include "util/list.h"
 #include "util/object.h"
 #include <limits.h>
 #include <stddef.h>
@@ -179,6 +182,7 @@ int namespace_clone(namespace_t **out, namespace_t *ns) {
 
                     memcpy(new_data, sdata[0], sizeof(*sdata[0]));
                     obj_ref(new_data->object);
+                    dst->count += 1;
 
                     *ddata = *sdata;
                     *dbitmap |= mask;
@@ -200,7 +204,7 @@ int namespace_clone(namespace_t **out, namespace_t *ns) {
     return 0;
 }
 
-static hydrogen_ret_t get_next_handle(namespace_t *ns, size_t minimum) {
+static size_t get_free_idx(namespace_t *ns, size_t minimum) {
     size_t idx = ns->alloc_start;
     if (idx < minimum) idx = minimum;
 
@@ -220,12 +224,42 @@ static hydrogen_ret_t get_next_handle(namespace_t *ns, size_t minimum) {
         offset = 0;
     }
 
-    if (idx > INT_MAX) return ret_error(EMFILE);
+    return idx;
+}
 
-    int error = expand(ns, idx + 1);
-    if (unlikely(error)) return ret_error(error);
+static hydrogen_ret_t get_next_handle(namespace_t *ns, size_t minimum) {
+again: {
+    size_t idx = get_free_idx(ns, minimum);
+
+    if (idx >= ns->capacity || ns->capacity - ns->count - ns->reserved == 0) {
+        if (ns->capacity > (size_t)INT_MAX) {
+            if (idx == ns->capacity) return ret_error(EMFILE);
+
+            // This can only happen if some slots are reserved. They might be unreserved instead of allocated;
+            // wait until reserved count drops to 0 so that we can be sure there are no handles available.
+            sched_prepare_wait(false);
+            list_insert_tail(&ns->reserved_waiting, &current_thread->wait_node);
+            mutex_rel(&ns->update_lock);
+            sched_perform_wait(0);
+            mutex_acq(&ns->update_lock, 0, false);
+            list_remove(&ns->reserved_waiting, &current_thread->wait_node);
+            goto again;
+        }
+
+        int error = expand(ns, ns->capacity + 1);
+        if (unlikely(error)) return ret_error(error);
+    }
 
     return ret_integer(idx);
+}
+}
+
+static void associate_handle(namespace_t *ns, int handle, handle_data_t *data) {
+    ns->bitmap[handle / 64] |= 1ull << (handle % 64);
+    if ((size_t)handle == ns->alloc_start) ns->alloc_start = handle + 1;
+
+    obj_ref(data->object);
+    rcu_write(ns->data[handle], data);
 }
 
 hydrogen_ret_t namespace_add(
@@ -281,7 +315,8 @@ hydrogen_ret_t namespace_add(
         old_data = NULL;
     }
 
-    hnd_assoc(ns, handle, new_data);
+    associate_handle(ns, handle, new_data);
+    if (old_data == NULL) ns->count += 1;
     mutex_rel(&ns->update_lock);
     rcu_sync();
 
@@ -293,21 +328,64 @@ hydrogen_ret_t namespace_add(
     return ret_integer(handle);
 }
 
-hydrogen_ret_t hnd_reserve(namespace_t *ns) {
-    return get_next_handle(ns, 0);
+int hnd_reserve(namespace_t *ns) {
+    mutex_acq(&ns->update_lock, 0, false);
+
+    if (ns->count + ns->reserved >= ns->capacity) {
+        int error = expand(ns, ns->capacity + 1);
+        if (unlikely(error)) {
+            mutex_rel(&ns->update_lock);
+            return error;
+        }
+    }
+
+    ns->reserved += 1;
+    mutex_rel(&ns->update_lock);
+    return 0;
 }
 
-void hnd_assoc(
-        namespace_t *ns,
-        int handle,
-        handle_data_t *data
-) {
-    ns->bitmap[handle / 64] |= 1ull << (handle % 64);
-    if ((size_t)handle == ns->alloc_start) ns->alloc_start = handle + 1;
+static void wake_reserved_waiter(namespace_t *ns) {
+    LIST_FOREACH(ns->reserved_waiting, thread_t, wait_node, thread) {
+        if (sched_wake(thread)) break;
+    }
+}
 
-    obj_ref(data->object);
-    rcu_write(ns->data[handle], data);
-    // don't need rcu_sync() here since there is no old data to free
+void hnd_unreserve(namespace_t *ns) {
+    mutex_acq(&ns->update_lock, 0, false);
+
+    ns->reserved -= 1;
+    if (ns->reserved == 0) wake_reserved_waiter(ns);
+
+    mutex_rel(&ns->update_lock);
+}
+
+int hnd_alloc_reserved(
+        namespace_t *ns,
+        object_t *object,
+        object_rights_t rights,
+        uint32_t flags,
+        handle_data_t *buffer
+) {
+    memset(buffer, 0, sizeof(*buffer));
+    buffer->object = object;
+    buffer->rights = rights;
+    buffer->flags = flags;
+
+    mutex_acq(&ns->update_lock, 0, false);
+
+    ASSERT(ns->reserved > 0);
+
+    size_t handle = get_free_idx(ns, 0);
+    ASSERT(handle < ns->capacity);
+
+    associate_handle(ns, handle, buffer);
+    ns->count += 1;
+    ns->reserved -= 1;
+    if (ns->reserved == 0) wake_reserved_waiter(ns);
+
+    mutex_rel(&ns->update_lock);
+    // no rcu_sync necessary, as there is no old data for us to free
+    return handle;
 }
 
 int namespace_remove(namespace_t *ns, int handle) {
@@ -329,6 +407,7 @@ int namespace_remove(namespace_t *ns, int handle) {
     rcu_write(ns->data[handle], NULL);
     ns->bitmap[handle / 64] &= ~(1ull << (handle % 64));
     if ((size_t)handle < ns->alloc_start) ns->alloc_start = handle;
+    ns->count -= 1;
 
     mutex_rel(&ns->update_lock);
     rcu_sync();

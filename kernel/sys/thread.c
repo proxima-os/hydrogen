@@ -47,37 +47,26 @@ static int vmm_for_create(vmm_t **out, int handle) {
 static hydrogen_ret_t finalize_thread(process_t *process, thread_t *thread, uint32_t flags) {
     namespace_t *ns = current_thread->namespace;
 
+    int error = hnd_reserve(ns);
+    if (unlikely(error)) return ret_error(error);
+
     handle_data_t *data = vmalloc(sizeof(*data));
     if (unlikely(!data)) return ret_error(ENOMEM);
-    memset(data, 0, sizeof(*data));
-    data->object = &thread->base;
-    data->flags = flags;
-    data->rights = THREAD_RIGHTS;
 
-    mutex_acq(&ns->update_lock, 0, false);
-
-    hydrogen_ret_t ret = hnd_reserve(ns);
-
-    if (unlikely(ret.error)) {
-        mutex_rel(&ns->update_lock);
-        vfree(data, sizeof(*data));
-        return ret;
-    }
-
-    int error = proc_thread_create(process, thread);
+    error = proc_thread_create(process, thread);
 
     if (unlikely(error)) {
         mutex_rel(&ns->update_lock);
         vfree(data, sizeof(*data));
+        hnd_unreserve(ns);
         return ret_error(error);
     }
 
     thread->process = process;
     obj_ref(&process->base);
-    hnd_assoc(ns, ret.integer, data);
-    mutex_rel(&ns->update_lock);
+    int handle = hnd_alloc_reserved(ns, &thread->base, THREAD_RIGHTS, flags, data);
     sched_wake(thread);
-    return ret;
+    return ret_integer(handle);
 }
 
 struct launch_ctx {

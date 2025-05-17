@@ -5,6 +5,7 @@
 #include "hydrogen/handle.h"
 #include "kernel/compiler.h"
 #include "proc/mutex.h"
+#include "util/list.h"
 #include "util/object.h"
 #include <stdint.h>
 
@@ -14,7 +15,7 @@
 typedef struct {
     object_t *object;
     object_rights_t rights;
-    uint16_t flags;
+    uint32_t flags;
 } handle_data_t;
 
 typedef struct namespace {
@@ -22,10 +23,12 @@ typedef struct namespace {
     handle_data_t **data;
     uint64_t *bitmap;
     size_t capacity;
+    size_t count;
+    size_t reserved;
     size_t alloc_start;
+    list_t reserved_waiting;
     mutex_t update_lock;
-}
-namespace_t;
+} namespace_t;
 
 int namespace_create(namespace_t **out);
 int namespace_clone(namespace_t **out, namespace_t *ns);
@@ -40,15 +43,15 @@ hydrogen_ret_t namespace_add(
 int namespace_remove(namespace_t *ns, int handle);
 int namespace_resolve(handle_data_t *out, namespace_t *ns, int handle);
 
-// hnd_reserve must be called with ns->update_lock held, and it must not be released until you have called
-// hnd_assoc (or the operation has failed)
-
-hydrogen_ret_t hnd_reserve(namespace_t *ns);
-void hnd_assoc(
+int hnd_reserve(namespace_t *ns);
+void hnd_unreserve(namespace_t *ns);
+int hnd_alloc_reserved(
         namespace_t *ns,
-        int handle,
-        handle_data_t *data
-); // `data` must have been allocated with `vmalloc(sizeof(*data))`
+        object_t *object,
+        object_rights_t rights,
+        uint32_t flags,
+        handle_data_t *buffer
+); // buffer must have been allocated with `vmalloc(sizeof(*buffer))`
 
 static inline hydrogen_ret_t hnd_alloc(object_t *object, object_rights_t rights, uint32_t flags) {
     return namespace_add(

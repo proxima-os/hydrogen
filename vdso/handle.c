@@ -26,8 +26,8 @@ EXPORT int hydrogen_namespace_resolve(int ns, int handle, uint32_t *rights, uint
     hydrogen_ret_t ret = SYSCALL2(SYSCALL_NAMESPACE_RESOLVE, ns, handle);
     if (unlikely(ret.error)) return ret.error;
 
-    if (rights) *rights = ret.integer & 0xffff;
-    if (flags) *flags = ret.integer >> 16;
+    if (rights) *rights = ret.integer & 0xffffffff;
+    if (flags) *flags = ret.integer >> 32;
 
     return 0;
 }

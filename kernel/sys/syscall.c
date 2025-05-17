@@ -54,7 +54,7 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_NAMESPACE_RESOLVE: {
         uint32_t rights, flags;
         int error = hydrogen_namespace_resolve(a0, a1, &rights, &flags);
-        return RET_MAYBE(integer, error, (flags << 16) | rights);
+        return RET_MAYBE(integer, error, ((uint64_t)flags << 32) | rights);
     }
     case SYSCALL_VMM_CREATE: return hydrogen_vmm_create(a0);
     case SYSCALL_VMM_CLONE: return hydrogen_vmm_clone(a0, a1);
