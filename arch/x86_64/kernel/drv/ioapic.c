@@ -8,7 +8,6 @@
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
 #include "mem/vmalloc.h"
-#include "sections.h"
 #include "string.h"
 #include "uacpi/acpi.h"
 #include "uacpi/status.h"

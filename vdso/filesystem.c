@@ -87,7 +87,8 @@ EXPORT hydrogen_ret_t hydrogen_fs_open(int rel, const void *path, size_t length,
     return SYSCALL5(SYSCALL_FS_OPEN, rel, path, length, flags, mode);
 }
 
-EXPORT hydrogen_ret_t hydrogen_fs_mmap(int file, int vmm, uintptr_t hint, size_t size, uint32_t flags, uint64_t offset) {
+EXPORT hydrogen_ret_t
+hydrogen_fs_mmap(int file, int vmm, uintptr_t hint, size_t size, uint32_t flags, uint64_t offset) {
     return SYSCALL6(SYSCALL_FS_MMAP, file, vmm, hint, size, flags, offset);
 }
 

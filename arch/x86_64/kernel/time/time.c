@@ -6,7 +6,6 @@
 #include "kernel/vdso.h"
 #include "mem/memmap.h" /* IWYU pragma: keep */
 #include "proc/sched.h"
-#include "sections.h"
 #include "util/panic.h"
 #include "util/time.h"
 #include "x86_64/cpu.h"

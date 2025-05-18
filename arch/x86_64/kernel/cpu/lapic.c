@@ -7,7 +7,6 @@
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
-#include "sections.h"
 #include "uacpi/acpi.h"
 #include "uacpi/status.h"
 #include "uacpi/tables.h"

@@ -1,3 +1,4 @@
+#include "smp.h"
 #include "arch/idle.h"
 #include "arch/pmap.h"
 #include "arch/stack.h"
@@ -14,8 +15,6 @@
 #include "mem/vmalloc.h"
 #include "proc/event.h"
 #include "proc/sched.h"
-#include "sections.h"
-#include "smp.h"
 #include "string.h"
 #include "uacpi/acpi.h"
 #include "uacpi/status.h"

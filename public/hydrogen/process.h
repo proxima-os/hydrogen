@@ -220,8 +220,7 @@ int hydrogen_process_setresuid(int process, uint32_t ruid, uint32_t euid, uint32
  * \param[in] count The number of groups in the new group list.
  * \return 0, if successful; if not, an error code.
  */
-int hydrogen_process_setgroups(int process, const uint32_t *groups, size_t count) __asm__(
-        "__hydrogen_process_setgroups"
+int hydrogen_process_setgroups(int process, const uint32_t *groups, size_t count) __asm__("__hydrogen_process_setgroups"
 );
 
 /**

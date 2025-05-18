@@ -3,7 +3,6 @@
 #include "kernel/pgsize.h"
 #include "mem/memmap.h"
 #include "proc/mutex.h"
-#include "sections.h"
 #include "string.h"
 #include "util/shlist.h"
 #include <stddef.h>

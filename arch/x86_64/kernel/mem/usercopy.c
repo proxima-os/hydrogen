@@ -1,7 +1,6 @@
 #include "mem/usercopy.h"
 #include "init/task.h"
 #include "kernel/compiler.h"
-#include "sections.h"
 #include "x86_64/cpu.h"
 #include <stdint.h>
 

@@ -19,7 +19,6 @@
 #include "proc/process.h"
 #include "proc/rcu.h"
 #include "proc/signal.h"
-#include "sections.h"
 #include "string.h"
 #include "util/handle.h"
 #include "util/list.h"

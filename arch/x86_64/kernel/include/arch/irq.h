@@ -13,7 +13,7 @@ static inline void enable_irq(void) {
 
 static inline irq_state_t x86_64_get_irq_state(void) {
     irq_state_t state;
-    asm volatile("pushfq; pop %0" : "=r" (state));
+    asm volatile("pushfq; pop %0" : "=r"(state));
     return state;
 }
 

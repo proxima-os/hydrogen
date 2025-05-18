@@ -28,7 +28,8 @@ typedef struct namespace {
     size_t alloc_start;
     list_t reserved_waiting;
     mutex_t update_lock;
-} namespace_t;
+}
+namespace_t;
 
 int namespace_create(namespace_t **out);
 int namespace_clone(namespace_t **out, namespace_t *ns);

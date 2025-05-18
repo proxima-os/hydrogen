@@ -1,5 +1,4 @@
 #include "x86_64/mca.h"
-#include "sections.h"
 #include "x86_64/cpu.h"
 #include "x86_64/cr.h"
 #include "x86_64/msr.h"

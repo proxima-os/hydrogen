@@ -9,7 +9,6 @@
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
 #include "proc/process.h"
-#include "sections.h"
 #include "string.h"
 #include "sys/syscall.h"
 #include "util/panic.h"

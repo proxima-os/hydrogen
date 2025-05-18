@@ -5,7 +5,6 @@
 #include "mem/memmap.h"
 #include "mem/pmap.h"
 #include "mem/vmm.h"
-#include "sections.h"
 #include <stdint.h>
 
 extern const void __vdso_start, __vdso_end;

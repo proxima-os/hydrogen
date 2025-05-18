@@ -2,7 +2,6 @@
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "mem/vmalloc.h"
-#include "sections.h"
 #include "string.h"
 #include "util/printk.h"
 #include "x86_64/cpu.h"

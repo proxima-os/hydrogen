@@ -3,7 +3,6 @@
 #include "kernel/vdso.h"
 #include "kernel/x86_64/kvmclock.h"
 #include "mem/memmap.h"
-#include "sections.h"
 #include "string.h"
 #include "util/printk.h"
 #include "x86_64/cpu.h"

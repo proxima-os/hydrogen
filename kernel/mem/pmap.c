@@ -23,7 +23,6 @@
 #include "proc/process.h"
 #include "proc/sched.h"
 #include "proc/signal.h"
-#include "sections.h"
 #include "string.h"
 #include "util/hlist.h"
 #include "util/panic.h"
@@ -1170,14 +1169,7 @@ void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags) {
     mutex_rel(&kernel_pt_lock);
 }
 
-static void do_early_alloc(
-        void *table,
-        unsigned level,
-        uintptr_t virt,
-        size_t size,
-        int flags,
-        tlb_ctx_t *tlb
-) {
+static void do_early_alloc(void *table, unsigned level, uintptr_t virt, size_t size, int flags, tlb_ctx_t *tlb) {
     size_t index = arch_pt_get_index(virt, level);
     size_t entry_size = 1ul << arch_pt_entry_bits(level);
     size_t entry_mask = entry_size - 1;

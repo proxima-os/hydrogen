@@ -1,3 +1,4 @@
+#include "kernel/x86_64/syscall.h"
 #include "arch/context.h"
 #include "arch/irq.h"
 #include "cpu/cpudata.h"
@@ -9,8 +10,6 @@
 #include "kernel/return.h"
 #include "kernel/types.h"
 #include "kernel/x86_64/signal.h"
-#include "kernel/x86_64/syscall.h"
-#include "sections.h"
 #include "sys/syscall.h"
 #include "sys/transition.h"
 #include "x86_64/cpu.h"

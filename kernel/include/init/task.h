@@ -1,6 +1,5 @@
 #pragma once
 
-#include "sections.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -15,18 +14,18 @@ typedef struct init_task {
 
 #define INIT_DECLARE(name) extern init_task_t __init_task_##name
 #define INIT_REFERENCE(name) &__init_task_##name
-#define INIT_DEFINE_TARGET(name, func, target, ...)                     \
-    static char __init_name_##name[] = #name;                 \
-    static init_task_t *__init_deps_##name[] = {__VA_ARGS__}; \
-    extern init_task_t *__inittask_start_##target[];                    \
-    init_task_t __init_task_##name = {                        \
-            __init_name_##name,                                         \
-            (func),                                                     \
-            __inittask_start_##target,                                  \
-            __init_deps_##name,                                         \
-            sizeof(__init_deps_##name) / sizeof(*__init_deps_##name),   \
-            (void *)(uintptr_t)-1                                       \
-    };                                                                  \
+#define INIT_DEFINE_TARGET(name, func, target, ...)                   \
+    static char __init_name_##name[] = #name;                         \
+    static init_task_t *__init_deps_##name[] = {__VA_ARGS__};         \
+    extern init_task_t *__inittask_start_##target[];                  \
+    init_task_t __init_task_##name = {                                \
+            __init_name_##name,                                       \
+            (func),                                                   \
+            __inittask_start_##target,                                \
+            __init_deps_##name,                                       \
+            sizeof(__init_deps_##name) / sizeof(*__init_deps_##name), \
+            (void *)(uintptr_t)-1                                     \
+    };                                                                \
     __attribute__((used, section(".inittask." #target))) static init_task_t *__init_taskp_##name = &__init_task_##name
 
 #define INIT_DEFINE_EARLY(name, func, ...) INIT_DEFINE_TARGET(name, func, early, ##__VA_ARGS__)

@@ -14,7 +14,8 @@ EXPORT hydrogen_ret_t hydrogen_namespace_clone(int ns, uint32_t flags) {
     return SYSCALL2(SYSCALL_NAMESPACE_CLONE, ns, flags);
 }
 
-EXPORT hydrogen_ret_t hydrogen_namespace_add(int src_ns, int src_obj, int dst_ns, int dst_hnd, uint32_t rights, uint32_t flags) {
+EXPORT hydrogen_ret_t
+hydrogen_namespace_add(int src_ns, int src_obj, int dst_ns, int dst_hnd, uint32_t rights, uint32_t flags) {
     return SYSCALL6(SYSCALL_NAMESPACE_ADD, src_ns, src_obj, dst_ns, dst_hnd, rights, flags);
 }
 

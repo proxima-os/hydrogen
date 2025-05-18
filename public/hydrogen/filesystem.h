@@ -87,8 +87,7 @@ int hydrogen_fs_stat(int rel, const void *path, size_t length, hydrogen_file_inf
 hydrogen_ret_t hydrogen_fs_readlink(int rel, const void *path, size_t length, void *buffer, size_t size) __asm__(
         "__hydrogen_fs_readlink"
 );
-int hydrogen_fs_chmod(int rel, const void *path, size_t length, uint32_t mode, int flags) __asm__(
-        "__hydrogen_fs_chmod"
+int hydrogen_fs_chmod(int rel, const void *path, size_t length, uint32_t mode, int flags) __asm__("__hydrogen_fs_chmod"
 );
 int hydrogen_fs_chown(int rel, const void *path, size_t length, uint32_t uid, uint32_t gid, int flags) __asm__(
         "__hydrogen_fs_chown"

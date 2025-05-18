@@ -5,7 +5,6 @@
 #include "kernel/compiler.h"
 #include "proc/event.h"
 #include "proc/sched.h"
-#include "sections.h"
 #include "util/slist.h"
 #include "util/spinlock.h"
 

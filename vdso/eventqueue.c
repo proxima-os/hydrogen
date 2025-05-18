@@ -8,7 +8,14 @@ EXPORT hydrogen_ret_t hydrogen_event_queue_create(uint32_t flags) {
     return SYSCALL1(SYSCALL_EVENT_QUEUE_CREATE, flags);
 }
 
-EXPORT int hydrogen_event_queue_add(int queue, int object, hydrogen_event_type_t event, uint64_t data, void *ctx, uint32_t flags) {
+EXPORT int hydrogen_event_queue_add(
+        int queue,
+        int object,
+        hydrogen_event_type_t event,
+        uint64_t data,
+        void *ctx,
+        uint32_t flags
+) {
     return SYSCALL6(SYSCALL_EVENT_QUEUE_ADD, queue, object, event, data, ctx, flags).error;
 }
 

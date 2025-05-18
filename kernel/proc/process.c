@@ -19,7 +19,6 @@
 #include "proc/rcu.h"
 #include "proc/sched.h"
 #include "proc/signal.h"
-#include "sections.h"
 #include "string.h"
 #include "util/eventqueue.h"
 #include "util/list.h"
@@ -1077,8 +1076,8 @@ int sigaction(process_t *process, int signal, const struct __sigaction *action, 
 
         if (new_act.__func.__handler != __SIG_DFL) {
             if ((signal == __SIGKILL || signal == __SIGSTOP) ||
-                (new_act.__func.__handler != __SIG_IGN &&
-                 (uintptr_t)new_act.__func.__handler > arch_pt_max_user_addr())) {
+                (new_act.__func.__handler != __SIG_IGN && (uintptr_t)new_act.__func.__handler > arch_pt_max_user_addr()
+                )) {
                 mutex_rel(&process->sig_lock);
                 return EINVAL;
             }
@@ -1699,9 +1698,8 @@ int seteuid(process_t *process, uint32_t euid) {
 
 int setregid(process_t *process, uint32_t gid, uint32_t egid) {
     update_identity(
-            (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->sgid) &&
-                    (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid ||
-                     egid == old_ident->sgid),
+            (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->sgid
+            ) && (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid || egid == old_ident->sgid),
             ({
                 if (egid != (uint32_t)-1) {
                     new_ident->egid = egid;
@@ -1720,9 +1718,8 @@ int setregid(process_t *process, uint32_t gid, uint32_t egid) {
 
 int setreuid(process_t *process, uint32_t uid, uint32_t euid) {
     update_identity(
-            (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->suid) &&
-                    (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid ||
-                     euid == old_ident->suid),
+            (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->suid
+            ) && (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid || euid == old_ident->suid),
             ({
                 if (euid != (uint32_t)-1) {
                     new_ident->euid = euid;
@@ -1744,8 +1741,8 @@ int setresgid(process_t *process, uint32_t gid, uint32_t egid, uint32_t sgid) {
             (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->egid || gid == old_ident->sgid) &&
                     (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid ||
                      egid == old_ident->sgid) &&
-                    (sgid == (uint32_t)-1 || gid == old_ident->gid || sgid == old_ident->egid ||
-                     sgid == old_ident->sgid),
+                    (sgid == (uint32_t)-1 || gid == old_ident->gid || sgid == old_ident->egid || sgid == old_ident->sgid
+                    ),
             ({
                 if (gid != (uint32_t)-1) new_ident->gid = gid;
                 if (egid != (uint32_t)-1) new_ident->egid = egid;
@@ -1761,8 +1758,8 @@ int setresuid(process_t *process, uint32_t uid, uint32_t euid, uint32_t suid) {
             (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->euid || uid == old_ident->suid) &&
                     (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid ||
                      euid == old_ident->suid) &&
-                    (suid == (uint32_t)-1 || uid == old_ident->uid || suid == old_ident->euid ||
-                     suid == old_ident->suid),
+                    (suid == (uint32_t)-1 || uid == old_ident->uid || suid == old_ident->euid || suid == old_ident->suid
+                    ),
             ({
                 if (uid != (uint32_t)-1) new_ident->uid = uid;
                 if (euid != (uint32_t)-1) new_ident->euid = euid;

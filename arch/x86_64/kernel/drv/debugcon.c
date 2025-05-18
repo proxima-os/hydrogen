@@ -1,6 +1,5 @@
 #include "arch/pio.h"
 #include "init/cmdline.h"
-#include "sections.h"
 #include "util/printk.h"
 #include <stdbool.h>
 #include <stddef.h>

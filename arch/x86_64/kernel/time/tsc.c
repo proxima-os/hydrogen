@@ -6,7 +6,6 @@
 #include "kernel/time.h"
 #include "kernel/vdso.h"
 #include "kernel/x86_64/tsc.h"
-#include "sections.h"
 #include "util/panic.h"
 #include "util/printk.h"
 #include "util/time.h"

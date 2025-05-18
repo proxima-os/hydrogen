@@ -6,7 +6,6 @@
 #include "kernel/arch/vdso.h"
 #include "kernel/compiler.h"
 #include "kernel/vdso.h"
-#include "sections.h"
 #include "util/slist.h"
 #include "x86_64/cpu.h"
 #include "x86_64/ioapic.h" /* IWYU pragma: keep */

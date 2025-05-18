@@ -14,7 +14,6 @@
 #include "proc/mutex.h"
 #include "proc/process.h"
 #include "proc/rcu.h"
-#include "sections.h"
 #include "string.h"
 #include "util/hash.h"
 #include "util/hlist.h"

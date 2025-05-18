@@ -4,7 +4,7 @@
 
 static inline uint64_t x86_64_div(__uint128_t dividend, uint64_t *divisor) {
     uint64_t quot;
-    asm("divq %3" : "=a"(quot), "=d"(*divisor) : "A"(dividend), "rm" (*divisor));
+    asm("divq %3" : "=a"(quot), "=d"(*divisor) : "A"(dividend), "rm"(*divisor));
     return quot;
 }
 

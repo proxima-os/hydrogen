@@ -9,7 +9,6 @@
 #include "proc/process.h"
 #include "proc/sched.h"
 #include "proc/signal.h"
-#include "sections.h"
 #include "sys/transition.h"
 #include "util/panic.h"
 #include "util/printk.h"

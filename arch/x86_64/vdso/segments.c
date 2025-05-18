@@ -35,7 +35,7 @@ __attribute__((target("fsgsbase"))) static int set_fs_base_fsgsbase(uintptr_t va
 }
 
 __attribute__((target("fsgsbase"))) static int set_gs_base_fsgsbase(uintptr_t value) {
-     __builtin_ia32_wrgsbase64(value);
+    __builtin_ia32_wrgsbase64(value);
     return 0;
 }
 
