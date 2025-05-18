@@ -131,6 +131,7 @@ static void handle_esc_esc(fb_sink_t *self, unsigned char c) {
         self->state = ESC_PARAMS;
         self->next_state = ESC_CSI;
         self->nparam = 0;
+        self->params[0] = 0;
         break;
     default: self->state = ESC_INIT; break;
     }
@@ -146,7 +147,10 @@ static void handle_esc_params(fb_sink_t *self, unsigned char c) {
         break;
     case ':': break;
     case ';':
-        if (self->nparam < MAX_PARAMS) self->nparam += 1;
+        if (self->nparam < MAX_PARAMS) {
+            self->nparam += 1;
+            if (self->nparam < MAX_PARAMS) self->params[self->nparam] = 0;
+        }
         break;
     case '<' ... '?': break;
     case ' ' ... '/':
