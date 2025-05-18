@@ -150,7 +150,6 @@ static void run_init_target(const char *target_name, void *id, init_task_t **sta
     ({                                                                               \
         extern init_task_t *__inittask_start_##name[], *__inittask_end_##name[];     \
         run_init_target(pretty, id, __inittask_start_##name, __inittask_end_##name); \
-        printk("init(" pretty "): done\n");                                          \
     })
 
 INIT_TEXT static void kernel_init(void *ctx) {
