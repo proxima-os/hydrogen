@@ -28,3 +28,9 @@ size_t strlen(const char *s) {
     while (*s++) i++;
     return i;
 }
+
+size_t strnlen(const char *s, size_t n) {
+    size_t i = 0;
+    while (i < n && s[i] != 0) i++;
+    return i;
+}

@@ -64,6 +64,11 @@ static void write_uint(uint64_t value, unsigned base, unsigned min_digits, bool 
             if (index < 2) index = 2;
             buf[--index] = 'x';
             buf[--index] = '0';
+        } else if (base == 8) {
+            if (buf[index] != '0') {
+                if (index < 1) index = 1;
+                buf[--index] = '0';
+            }
         } else {
             buf[index ? --index : 0] = '-';
         }
@@ -122,6 +127,8 @@ void printk_raw_formatv(const char *format, va_list args) {
             printk_raw_write(ptr, len);
             break;
         }
+        case 'o': write_uint(va_arg(args, uint32_t), 8, min_digits, true); break;
+        case 'O': write_uint(va_arg(args, uint64_t), 8, min_digits, true); break;
         case 'd': write_int(va_arg(args, int32_t), 10, min_digits); break;
         case 'D': write_int(va_arg(args, int64_t), 10, min_digits); break;
         case 'u': write_uint(va_arg(args, uint32_t), 10, min_digits, false); break;

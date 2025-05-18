@@ -2,6 +2,7 @@
 #include "arch/memmap.h"
 #include "arch/pmap.h"
 #include "cpu/cpudata.h"
+#include "init/initrd.h" /* IWYU pragma: keep */
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -526,10 +527,12 @@ INIT_TEXT static void usable_commit(struct reclaim_ctx *ctx) {
     }
 }
 
-INIT_TEXT void memmap_reclaim_loader(void) {
+INIT_TEXT static void memmap_reclaim_loader(void) {
     ASSERT(loader_map != NULL);
 
     struct reclaim_ctx ctx = {};
+
+    pmem_acquire();
 
     for (uint64_t i = 0; i < loader_map->entry_count; i++) {
         struct limine_memmap_entry *entry = loader_map->entries[i];
@@ -554,9 +557,12 @@ INIT_TEXT void memmap_reclaim_loader(void) {
     reclaim_commit(&ctx);
 
     loader_map = NULL;
+    pmem_release();
 
     printk("mem: reclaimed %zK of bootloader data\n", ctx.reclaimed / 1024);
 }
+
+INIT_DEFINE(reclaim_loader_memory, memmap_reclaim_loader, INIT_REFERENCE(extract_initrd));
 
 #undef ADD_TO_TYPE
 

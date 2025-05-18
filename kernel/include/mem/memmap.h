@@ -41,10 +41,6 @@ extern uint64_t kernel_base;
 
 INIT_DECLARE(memory);
 
-// NOTE: This must be called BEFORE any thread other than the init thread is created!
-// Otherwise, race conditions could cause a UAF.
-void memmap_reclaim_loader(void);
-
 void memmap_reclaim_init(void);
 
 void *early_alloc_page(void);

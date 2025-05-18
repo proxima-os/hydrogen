@@ -156,8 +156,6 @@ static void run_init_target(const char *target_name, void *id, init_task_t **sta
     })
 
 INIT_TEXT static void kernel_init(void *ctx) {
-    memmap_reclaim_loader(); // don't move below anything that can create threads, see memmap.h
-
     RUN_INIT_TARGET(dflt, "default", NULL);
 
     // the idle thread still holds a reference to this thread, but it can't free it itself because that might sleep

@@ -7,6 +7,7 @@ kernel_sources += files(
     'fs/ramfs.c',
     'fs/vfs.c',
     'init/cmdline.c',
+    'init/initrd.c',
     'init/main.c',
     'mem/object/anonymous.c',
     'mem/kmalloc.c',

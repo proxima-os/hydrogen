@@ -223,14 +223,18 @@ INIT_TEXT void pmem_add_area(uint64_t head, uint64_t tail, bool free) {
     ASSERT((tail & PAGE_MASK) == PAGE_MASK);
     size_t count = ((tail - head) >> PAGE_SHIFT) + 1;
 
-    mutex_acq(&pmem_lock, 0, false);
-
     pmem_stats.total += count;
 
     if (free) {
         do_free_multiple(phys_to_page(head), count);
         do_unreserve(count);
     }
+}
 
+void pmem_acquire(void) {
+    mutex_acq(&pmem_lock, 0, false);
+}
+
+void pmem_release(void) {
     mutex_rel(&pmem_lock);
 }
