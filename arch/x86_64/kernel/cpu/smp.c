@@ -1,4 +1,3 @@
-#include "x86_64/smp.h"
 #include "arch/idle.h"
 #include "arch/pmap.h"
 #include "arch/stack.h"
@@ -6,9 +5,11 @@
 #include "cpu/cpudata.h"
 #include "cpu/cpumask.h"
 #include "init/main.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
 #include "mem/memmap.h"
+#include "mem/pmap.h"
 #include "mem/pmem.h"
 #include "mem/vmalloc.h"
 #include "proc/event.h"
@@ -32,10 +33,16 @@
 #include <stddef.h>
 #include <stdint.h>
 
-INIT_TEXT static cpu_t *alloc_cpu(void) {
+INIT_TEXT static int alloc_cpu(cpu_t **out) {
     cpu_t *cpu = vmalloc(sizeof(*cpu));
-    if (unlikely(!cpu)) return NULL;
+    if (unlikely(!cpu)) return ENOMEM;
     memset(cpu, 0, sizeof(*cpu));
+
+    int error = pmap_init_cpu(cpu);
+    if (unlikely(error)) {
+        vfree(cpu, sizeof(*cpu));
+        return error;
+    }
 
     for (int i = 0; i < X86_64_IST_MAX; i++) {
         void *stack = alloc_kernel_stack();
@@ -46,13 +53,14 @@ INIT_TEXT static cpu_t *alloc_cpu(void) {
             }
 
             vfree(cpu, sizeof(*cpu));
-            return NULL;
+            return ENOMEM;
         }
 
         cpu->arch.tss.ist[i] = (uintptr_t)stack + KERNEL_STACK_SIZE;
     }
 
-    return cpu;
+    *out = cpu;
+    return 0;
 }
 
 INIT_TEXT static void free_cpu(cpu_t *cpu) {
@@ -60,6 +68,7 @@ INIT_TEXT static void free_cpu(cpu_t *cpu) {
         free_kernel_stack((void *)(cpu->arch.tss.ist[i] - KERNEL_STACK_SIZE));
     }
 
+    pmap_free_cpu(cpu);
     vfree(cpu, sizeof(*cpu));
 }
 
@@ -437,9 +446,10 @@ INIT_TEXT static void launch_cpu(
         return;
     }
 
-    cpu_t *cpu = alloc_cpu();
-    if (unlikely(!cpu)) {
-        printk("smp: failed to allocate cpu data\n");
+    cpu_t *cpu;
+    int error = alloc_cpu(&cpu);
+    if (unlikely(error)) {
+        printk("smp: failed to allocate cpu data (%e)\n", error);
         return;
     }
 
@@ -449,7 +459,7 @@ INIT_TEXT static void launch_cpu(
 
     event_clear(&smp_current_online);
 
-    int error = func(cpu, madt, ctx);
+    error = func(cpu, madt, ctx);
     if (unlikely(error)) {
         printk("smp: failed to launch cpu with apic id %u (%e)\n", apic_id, error);
         free_cpu(cpu);
@@ -464,7 +474,7 @@ INIT_TEXT static void launch_cpu(
     smp_init_current_late();
 }
 
-INIT_TEXT void x86_64_smp_init(void) {
+INIT_TEXT static void smp_init(void) {
     uacpi_table table;
     uacpi_status status = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &table);
     if (uacpi_unlikely_error(status)) {
@@ -537,6 +547,7 @@ INIT_TEXT void x86_64_smp_init(void) {
         cur = (void *)cur + cur->length;
     }
 
+    sched_migrate(&boot_cpu);
     migrate_unlock(state);
 
     launch_cleanup(launch_ctx);
@@ -550,7 +561,10 @@ done:
     uacpi_table_unref(&table);
 }
 
+INIT_DEFINE(x86_64_smp, smp_init);
+
 INIT_TEXT _Noreturn void x86_64_smp_init_current(cpu_t *cpu, void *ctx) {
     x86_64_cpu_init(cpu);
-    smp_init_current(&smp_current_online, ctx);
+    x86_64_lapic_init_local(ctx);
+    smp_init_current(&smp_current_online);
 }

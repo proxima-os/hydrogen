@@ -1,14 +1,17 @@
 #include "arch/time.h"
 #include "cpu/cpudata.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/time.h"
 #include "kernel/vdso.h"
+#include "mem/memmap.h" /* IWYU pragma: keep */
 #include "proc/sched.h"
 #include "sections.h"
 #include "util/panic.h"
 #include "util/time.h"
 #include "x86_64/cpu.h"
 #include "x86_64/hpet.h"
+#include "x86_64/init.h" /* IWYU pragma: keep */
 #include "x86_64/kvmclock.h"
 #include "x86_64/lapic.h"
 #include "x86_64/msr.h"
@@ -30,17 +33,7 @@ INIT_DATA void (*x86_64_timer_cleanup)(void);
 INIT_DATA void (*x86_64_timer_confirm)(bool) = no_time_confirm;
 timeconv_t x86_64_ns2lapic_conv;
 
-INIT_TEXT void x86_64_time_init(void) {
-    x86_64_hpet_init();
-    x86_64_kvmclock_init();
-    x86_64_tsc_init();
-    if (x86_64_timer_confirm) x86_64_timer_confirm(true);
-
-    vdso_info.arch.time_offset = x86_64_read_time();
-    x86_64_time_init_local();
-}
-
-INIT_TEXT void x86_64_time_init_local(void) {
+INIT_TEXT static void init_events(void) {
     if (x86_64_cpu_features.tsc_deadline) {
         ASSERT(x86_64_timer_get_tsc != NULL);
         x86_64_lapic_timer_setup(X86_64_LAPIC_TIMER_TSC_DEADLINE, true);
@@ -48,6 +41,20 @@ INIT_TEXT void x86_64_time_init_local(void) {
         x86_64_lapic_timer_setup(X86_64_LAPIC_TIMER_ONESHOT, true);
     }
 }
+
+INIT_DEFINE_EARLY_AP(x86_64_time_ap, init_events, INIT_REFERENCE(x86_64_interrupts_ap));
+
+INIT_TEXT static void init_timers(void) {
+    x86_64_hpet_init();
+    x86_64_kvmclock_init();
+    x86_64_tsc_init();
+    if (x86_64_timer_confirm) x86_64_timer_confirm(true);
+
+    vdso_info.arch.time_offset = x86_64_read_time();
+    init_events();
+}
+
+INIT_DEFINE_EARLY(arch_time, init_timers, INIT_REFERENCE(memory), INIT_REFERENCE(x86_64_interrupts));
 
 INIT_TEXT void x86_64_switch_timer(
         uint64_t (*read)(void),

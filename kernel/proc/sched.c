@@ -7,6 +7,7 @@
 #include "cpu/cpudata.h"
 #include "cpu/smp.h"
 #include "errno.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "mem/kvmm.h" /* IWYU pragma: keep */
@@ -87,7 +88,7 @@ static const object_ops_t thread_ops = {
         .free = thread_free,
 };
 
-INIT_TEXT void sched_init(void) {
+INIT_TEXT static void sched_init(void) {
     cpu_t *cpu = get_current_cpu();
     sched_t *sched = &cpu->sched;
     sched->current = &sched->idle_thread;
@@ -98,6 +99,9 @@ INIT_TEXT void sched_init(void) {
     sched->current->state = THREAD_RUNNING;
     sched->current->process = &kernel_process;
 }
+
+INIT_DEFINE_EARLY(scheduler_early, sched_init);
+INIT_DEFINE_EARLY_AP(scheduler_early_ap, sched_init);
 
 static void reaper_func(void *ctx) {
     cpu_t *cpu = get_current_cpu();
@@ -120,7 +124,7 @@ static void reaper_func(void *ctx) {
     }
 }
 
-INIT_TEXT void sched_init_late(void) {
+INIT_TEXT static void sched_init_late(void) {
     cpu_t *cpu = get_current_cpu();
 
     cpu->sched.idle_thread.process = &kernel_process;
@@ -130,6 +134,9 @@ INIT_TEXT void sched_init_late(void) {
     int error = sched_create_thread(&cpu->sched.reaper, reaper_func, NULL, cpu, &kernel_process, 0);
     if (unlikely(error)) panic("sched: failed to create reaper thread (%e)", error);
 }
+
+INIT_DEFINE(scheduler, sched_init_late);
+INIT_DEFINE_AP(scheduler_ap, sched_init_late);
 
 int sched_create_thread(
         thread_t **out,

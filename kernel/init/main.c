@@ -1,23 +1,21 @@
 #include "init/main.h"
 #include "arch/irq.h"
 #include "cpu/cpudata.h"
-#include "drv/framebuffer.h"
+#include "drv/framebuffer.h" /* IWYU pragma: keep */
 #include "hydrogen/memory.h"
 #include "hydrogen/types.h"
 #include "init/cmdline.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "limine.h"
 #include "mem/memmap.h"
-#include "mem/pmap.h"
 #include "mem/pmem.h"
 #include "mem/vmm.h"
 #include "proc/event.h"
 #include "proc/process.h"
-#include "proc/rcu.h"
 #include "proc/sched.h"
 #include "sections.h"
-#include "sys/hydrogen.h"
 #include "sys/transition.h"
 #include "sys/vdso.h"
 #include "util/handle.h"
@@ -100,12 +98,44 @@ __attribute__((noinline)) static _Noreturn void finalize_init(void) {
     }
 }
 
+static void run_init_task(const char *target_name, void *id, init_task_t *task, init_task_t **target) {
+    if (task->run_id == id) return;
+
+    if (task->target == id) panic("init(%s): recursive dependencies in %s", target_name, task->name);
+    if (target != task->target) panic("init(%s): dependency to %s crosses target barrier", target_name, task->name);
+    task->target = id;
+
+    for (size_t i = 0; i < task->num_dependencies; i++) {
+        run_init_task(target_name, id, task->dependencies[i], target);
+    }
+
+    printk("init(%s): running task %s\n", target_name, task->name);
+    task->func();
+    task->run_id = id;
+    task->target = target;
+}
+
+static void run_init_target(const char *target_name, void *id, init_task_t **start, init_task_t **end) {
+    init_task_t **target = start;
+
+    while (start < end) {
+        run_init_task(target_name, id, *start, target);
+        start++;
+    }
+}
+
+#define RUN_INIT_TARGET(name, pretty, id)                                            \
+    ({                                                                               \
+        extern init_task_t *__inittask_start_##name[], *__inittask_end_##name[];     \
+        run_init_target(pretty, id, __inittask_start_##name, __inittask_end_##name); \
+        printk("init(" pretty "): done\n");                                          \
+    })
+
 INIT_TEXT static void kernel_init(void *ctx) {
     memmap_reclaim_loader(); // don't move below anything that can create threads, see memmap.h
-    sched_init_late();
-    arch_init_late();
-    vdso_init();
-    host_name_init();
+
+    RUN_INIT_TARGET(dflt, "default", NULL);
+
     // the idle thread still holds a reference to this thread, but it can't free it itself because that might sleep
     obj_deref(&current_thread->base);
     finalize_init();
@@ -118,22 +148,16 @@ __attribute__((noinline)) static _Noreturn void wake_init_thread_and_idle(thread
 }
 
 INIT_TEXT USED _Noreturn void kernel_main(void) {
+    extern init_task_t *__inittask_start_early[];
+
     parse_command_line();
-    sched_init();
-    rcu_init();
-    memmap_init();
-    fb_init();
 
-    if (!LIMINE_BASE_REVISION_SUPPORTED) {
-        panic("loader does not support requested base revision");
-    }
-
-    arch_init_early();
-    time_init();
-    proc_init();
+    // run framebuffer task explicitly to get output as early as possible
+    run_init_task("early", NULL, INIT_REFERENCE(framebuffer_printk), __inittask_start_early);
+    RUN_INIT_TARGET(early, "early", NULL);
 
     thread_t *init_thread;
-    int error = sched_create_thread(&init_thread, kernel_init, NULL, NULL, &kernel_process, 0);
+    int error = sched_create_thread(&init_thread, kernel_init, NULL, &boot_cpu, &kernel_process, 0);
     if (unlikely(error)) panic("failed to create init thread (%e)", error);
     wake_init_thread_and_idle(init_thread);
 }
@@ -144,16 +168,13 @@ __attribute__((noinline)) static _Noreturn void signal_and_idle(event_t *event) 
     sched_idle();
 }
 
-INIT_TEXT _Noreturn void smp_init_current(event_t *event, void *ctx) {
-    sched_init();
-    rcu_init();
-    pmap_init_switch();
-    arch_init_current(ctx);
+INIT_TEXT _Noreturn void smp_init_current(event_t *event) {
+    RUN_INIT_TARGET(earlyap, "early-ap", get_current_cpu());
     signal_and_idle(event);
 }
 
 INIT_TEXT void smp_init_current_late(void) {
-    sched_init_late();
+    RUN_INIT_TARGET(dfltap, "default-ap", get_current_cpu());
 }
 
 void schedule_kernel_task(task_t *task) {
@@ -161,3 +182,11 @@ void schedule_kernel_task(task_t *task) {
     slist_insert_tail(&kernel_tasks, &task->node);
     spin_rel(&kernel_tasks_lock, state);
 }
+
+INIT_TEXT static void verify_loader_revision(void) {
+    if (!LIMINE_BASE_REVISION_SUPPORTED) {
+        panic("loader does not support requested base revision");
+    }
+}
+
+INIT_DEFINE_EARLY(verify_loader_revision, verify_loader_revision);

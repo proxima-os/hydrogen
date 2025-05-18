@@ -1,5 +1,6 @@
 #pragma once
 
+#include "init/task.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -11,7 +12,8 @@ typedef enum {
 
 struct acpi_madt;
 
-void x86_64_lapic_init(void);
+INIT_DECLARE(x86_64_lapic);
+
 void x86_64_lapic_init_local(struct acpi_madt *madt);
 void x86_64_lapic_eoi(void);
 

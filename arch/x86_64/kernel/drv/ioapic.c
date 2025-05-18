@@ -1,8 +1,10 @@
 #include "x86_64/ioapic.h"
+#include "acpi/acpi.h" /* IWYU pragma: keep */
 #include "arch/mmio.h"
 #include "arch/pio.h"
 #include "arch/pmap.h"
 #include "cpu/cpudata.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
 #include "mem/vmalloc.h"
@@ -15,6 +17,7 @@
 #include "util/printk.h"
 #include "util/slist.h"
 #include "x86_64/idtvec.h"
+#include "x86_64/lapic.h"
 #include <stdint.h>
 
 #define IOAPICID 0
@@ -69,7 +72,7 @@ static ioapic_t *gsi_to_apic(uint32_t *irq) {
     return NULL;
 }
 
-INIT_TEXT void x86_64_ioapic_init(void) {
+INIT_TEXT static void x86_64_ioapic_init(void) {
     uacpi_table table;
     uacpi_status status = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &table);
     if (uacpi_unlikely_error(status)) panic("ioapic: failed to find madt table: %s", uacpi_status_to_string(status));
@@ -163,3 +166,11 @@ INIT_TEXT void x86_64_ioapic_init(void) {
 
     uacpi_table_unref(&table);
 }
+
+INIT_DEFINE_EARLY(
+        x86_64_ioapic,
+        x86_64_ioapic_init,
+        INIT_REFERENCE(memory),
+        INIT_REFERENCE(acpi_tables),
+        INIT_REFERENCE(x86_64_lapic)
+);

@@ -113,8 +113,6 @@ struct session {
 extern process_t kernel_process;
 extern process_t *init_process;
 
-void proc_init(void);
-
 int resolve_thread(struct thread **out, int tid);
 int resolve_process(process_t **out, int pid);
 int resolve_pgroup(pgroup_t **out, int pgid);

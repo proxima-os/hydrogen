@@ -1,6 +1,7 @@
 #include "drv/framebuffer.h"
 #include "arch/pmap.h"
 #include "errno.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "limine.h"
 #include "mem/kvmm.h"
@@ -228,7 +229,7 @@ INIT_TEXT static int create_sink(struct limine_framebuffer *fb, uint32_t width, 
     return 0;
 }
 
-INIT_TEXT void fb_init(void) {
+INIT_TEXT static void fb_init(void) {
     static LIMINE_REQ struct limine_framebuffer_request fb_req = {.id = LIMINE_FRAMEBUFFER_REQUEST};
     if (!fb_req.response) return;
 
@@ -245,6 +246,8 @@ INIT_TEXT void fb_init(void) {
         }
     }
 }
+
+INIT_DEFINE_EARLY(framebuffer_printk, fb_init, INIT_REFERENCE(memory));
 
 // https://github.com/viler-int10h/vga-text-mode-fonts/blob/f6a9b77d850ccf3d642331da54442d89f79ef9e3/FONTS/PC-OTHER/TOSH-SAT.F16
 static const glyph_t font[MAX_CHAR - MIN_CHAR + 1] = {

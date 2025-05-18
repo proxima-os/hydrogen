@@ -10,6 +10,7 @@
 #include "hydrogen/memory.h"
 #include "hydrogen/signal.h"
 #include "hydrogen/types.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/types.h"
@@ -198,16 +199,24 @@ INIT_TEXT void pmap_init_switch(void) {
     __atomic_store_n(&kernel_pt_switched, true, __ATOMIC_RELAXED);
 }
 
-INIT_TEXT void pmap_init_cpu(cpu_t *cpu) {
+INIT_DEFINE_EARLY_AP(memory_ap, pmap_init_switch, INIT_REFERENCE(scheduler_early_ap));
+
+INIT_TEXT int pmap_init_cpu(cpu_t *cpu) {
     size_t num = arch_pt_max_asid() + 1;
     size_t size = num * sizeof(*cpu->pmap.asids);
     cpu->pmap.asids = vmalloc(size);
-    if (unlikely(!cpu->pmap.asids)) panic("pmap: failed to initialize cpu asid map");
+    if (unlikely(!cpu->pmap.asids)) return ENOMEM;
     memset(cpu->pmap.asids, 0, size);
 
     for (size_t i = 0; i < num; i++) {
         cpu->pmap.asids[i].cpu = cpu;
     }
+
+    return 0;
+}
+
+void pmap_free_cpu(struct cpu *cpu) {
+    vfree(cpu->pmap.asids, (arch_pt_max_asid() + 1) * sizeof(*cpu->pmap.asids));
 }
 
 static void *alloc_table(vmm_t *vmm, unsigned level) {

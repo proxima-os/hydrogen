@@ -1,18 +1,12 @@
 #pragma once
 
+#include "init/task.h"
 #include "proc/event.h"
 #include "proc/sched.h"
 
-// called during early initialization, i.e. right before the init thread is started
-void arch_init_early(void);
+INIT_DECLARE(verify_loader_revision);
 
-// called in the init thread after loader memory is reclaimed
-void arch_init_late(void);
-
-// the equivalent of arch_init_early for cpus other than the boot cpu
-void arch_init_current(void *ctx);
-
-_Noreturn void smp_init_current(event_t *event, void *ctx);
+_Noreturn void smp_init_current(event_t *event);
 void smp_init_current_late(void);
 
 void schedule_kernel_task(task_t *task);

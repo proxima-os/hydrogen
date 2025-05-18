@@ -1,5 +1,5 @@
 #include "sys/vdso.h"
-#include "errno.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "mem/memmap.h"
@@ -38,10 +38,12 @@ mem_object_t vdso_object = {
         .base.ops = &vdso_object_ops.base,
 };
 
-INIT_TEXT void vdso_init(void) {
+INIT_TEXT static void vdso_init(void) {
     vdso_image_offset = (const void *)&vdso_image - &__vdso_start;
     vdso_size = &__vdso_end - &__vdso_start;
     ASSERT((vdso_size & PAGE_MASK) == 0);
 
     mem_object_init(&vdso_object);
 }
+
+INIT_DEFINE(vdso, vdso_init);

@@ -9,10 +9,6 @@ extern void (*x86_64_timer_cleanup)(void);
 extern void (*x86_64_timer_confirm)(bool final);
 extern timeconv_t x86_64_ns2lapic_conv;
 
-void x86_64_time_init(void);
-
-void x86_64_time_init_local(void);
-
 void x86_64_switch_timer(
         uint64_t (*read)(void),
         uint64_t (*get_tsc)(uint64_t),

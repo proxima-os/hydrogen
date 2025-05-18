@@ -1,5 +1,6 @@
 #pragma once
 
+#include "init/task.h"
 #include "proc/sched.h"
 #include "util/slist.h"
 #include <stddef.h>
@@ -21,7 +22,7 @@ typedef preempt_state_t rcu_state_t;
 
 #define rcu_write(location, value) __atomic_store_n(&(location), (value), __ATOMIC_RELEASE)
 
-void rcu_init(void);
+INIT_DECLARE(rcu);
 
 void rcu_quiet(struct cpu *cpu);
 void rcu_call(task_t *task);

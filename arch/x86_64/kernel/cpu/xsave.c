@@ -1,4 +1,5 @@
 #include "x86_64/xsave.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "mem/vmalloc.h"
 #include "sections.h"
@@ -54,15 +55,19 @@ INIT_TEXT static void determine_mode(void) {
     }
 }
 
-INIT_TEXT void x86_64_xsave_init(void) {
+INIT_TEXT static void xsave_init(void) {
     determine_mode();
     printk("xsave: context is %z bytes (style %d)\n", x86_64_xsave_size, ctx_style);
 }
 
-INIT_TEXT void x86_64_xsave_init_local(void) {
+INIT_DEFINE_EARLY(x86_64_xsave, xsave_init);
+
+INIT_TEXT static void xsave_init_local(void) {
     if (ctx_style == CTX_FXSAVE) return;
     x86_64_write_xcr(0, xcr0_value);
 }
+
+INIT_DEFINE_EARLY_AP(x86_64_xsave_ap, xsave_init_local);
 
 void *x86_64_xsave_alloc(void) {
     void *ptr = vmalloc_aligned(x86_64_xsave_size);

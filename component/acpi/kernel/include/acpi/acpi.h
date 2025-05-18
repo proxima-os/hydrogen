@@ -1,3 +1,5 @@
 #pragma once
 
-void acpi_init(void);
+#include "init/task.h"
+
+INIT_DECLARE(acpi_tables);

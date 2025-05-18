@@ -3,6 +3,7 @@
 #include "arch/context.h"
 #include "arch/sched.h"
 #include "hydrogen/signal.h"
+#include "init/task.h"
 #include "proc/signal.h"
 #include "util/list.h"
 #include "util/object.h"
@@ -78,8 +79,10 @@ typedef struct {
     slist_t tasks;
 } sched_t;
 
-void sched_init(void);
-void sched_init_late(void);
+INIT_DECLARE(scheduler_early);
+INIT_DECLARE(scheduler_early_ap);
+INIT_DECLARE(scheduler);
+INIT_DECLARE(scheduler_ap);
 
 #define THREAD_USER (1u << 0)
 

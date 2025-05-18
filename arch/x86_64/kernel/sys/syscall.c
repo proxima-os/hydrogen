@@ -1,10 +1,10 @@
-#include "x86_64/syscall.h"
 #include "arch/context.h"
 #include "arch/irq.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "hydrogen/types.h"
 #include "hydrogen/x86_64/segments.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "kernel/types.h"
@@ -24,11 +24,14 @@ _Static_assert((X86_64_USER_DS & 3) == 3, "User segment selectors do not have RP
 
 extern const void x86_64_syscall_entry;
 
-INIT_TEXT void x86_64_syscall_init_local(void) {
+INIT_TEXT static void syscall_init_local(void) {
     x86_64_wrmsr(X86_64_MSR_STAR, ((uint64_t)(X86_64_USER_DS - 8) << 48) | ((uint64_t)X86_64_KERN_CS << 32));
     x86_64_wrmsr(X86_64_MSR_LSTAR, (uintptr_t)&x86_64_syscall_entry);
     x86_64_wrmsr(X86_64_MSR_FMASK, 0x40600); // Clear AC, DF, and IF on entry
 }
+
+INIT_DEFINE_EARLY(x86_64_syscall, syscall_init_local);
+INIT_DEFINE_EARLY_AP(x86_64_syscall_ap, syscall_init_local);
 
 static hydrogen_ret_t dispatch_arch_syscall(
         ssize_t id,

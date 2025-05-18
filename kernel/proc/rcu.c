@@ -1,6 +1,7 @@
 #include "proc/rcu.h"
 #include "cpu/cpudata.h"
 #include "cpu/cpumask.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "proc/event.h"
 #include "proc/sched.h"
@@ -24,9 +25,12 @@ static void run_callbacks(task_t *task) {
     }
 }
 
-INIT_TEXT void rcu_init(void) {
+INIT_TEXT static void rcu_init(void) {
     this_cpu_write(rcu.run_callbacks_task.func, run_callbacks);
 }
+
+INIT_DEFINE_EARLY(rcu, rcu_init, INIT_REFERENCE(scheduler_early));
+INIT_DEFINE_EARLY_AP(rcu_ap, rcu_init, INIT_REFERENCE(scheduler_early_ap));
 
 static void start_generation(size_t cur_gen) {
     cpu_mask_fill(&rcu_cpu_states);

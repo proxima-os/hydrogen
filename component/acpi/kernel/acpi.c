@@ -1,6 +1,7 @@
 #include "acpi/acpi.h"
 #include "arch/pmap.h"
-#include "errno.h"
+#include "init/main.h" /* IWYU pragma: keep */
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "limine.h"
@@ -25,7 +26,7 @@ static uint64_t rsdp_phys;
 
 static LIMINE_REQ struct limine_rsdp_request rsdp_req = {.id = LIMINE_RSDP_REQUEST};
 
-INIT_TEXT void acpi_init(void) {
+INIT_TEXT static void acpi_tables_init(void) {
     if (!rsdp_req.response) {
         printk("acpi: no response to rsdp request\n");
         return;
@@ -46,6 +47,8 @@ INIT_TEXT void acpi_init(void) {
         return;
     }
 }
+
+INIT_DEFINE_EARLY(acpi_tables, acpi_tables_init, INIT_REFERENCE(memory), INIT_REFERENCE(verify_loader_revision));
 
 uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
     *out_rsdp_address = rsdp_phys;

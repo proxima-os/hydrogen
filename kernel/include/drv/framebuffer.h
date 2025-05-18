@@ -1,3 +1,5 @@
 #pragma once
 
-void fb_init(void);
+#include "init/task.h"
+
+INIT_DECLARE(framebuffer_printk);

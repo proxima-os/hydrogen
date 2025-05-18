@@ -1,6 +1,7 @@
 #pragma once
 
 #include "arch/memmap.h"
+#include "init/task.h"
 #include "kernel/pgsize.h"
 #include "proc/mutex.h"
 #include "util/list.h"
@@ -38,7 +39,7 @@ extern uintptr_t hhdm_base;
 extern uintptr_t page_array_base;
 extern uint64_t kernel_base;
 
-void memmap_init(void);
+INIT_DECLARE(memory);
 
 // NOTE: This must be called BEFORE any thread other than the init thread is created!
 // Otherwise, race conditions could cause a UAF.

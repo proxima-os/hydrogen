@@ -2,6 +2,7 @@
 #include "arch/memmap.h"
 #include "arch/pmap.h"
 #include "cpu/cpudata.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "limine.h"
@@ -388,7 +389,7 @@ INIT_TEXT static void build_ram_list(void) {
     ram_list_commit(&ctx);
 }
 
-INIT_TEXT void memmap_init(void) {
+INIT_TEXT static void memmap_init(void) {
     extern const void _start, _erodata, _etext, _end;
 
     static LIMINE_REQ struct limine_hhdm_request hhdm_req = {.id = LIMINE_HHDM_REQUEST};
@@ -472,9 +473,12 @@ INIT_TEXT void memmap_init(void) {
     struct add_hhdm_gaps_ctx ctx2 = {.next_head = min_page_head};
     iter_ram_areas(add_hhdm_gaps, &ctx2);
 
-    pmap_init_cpu(get_current_cpu());
+    int error = pmap_init_cpu(get_current_cpu());
+    if (unlikely(error)) panic("failed to initialize pmap for boot cpu");
     build_ram_list();
 }
+
+INIT_DEFINE_EARLY(memory, memmap_init, INIT_REFERENCE(scheduler_early));
 
 struct reclaim_ctx {
     uint64_t reclaim_head;

@@ -3,6 +3,7 @@
 #include "arch/irq.h"
 #include "arch/time.h"
 #include "cpu/cpudata.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/vdso.h"
 #include "limine.h"
@@ -11,13 +12,15 @@
 #include "util/spinlock.h"
 #include <stdint.h>
 
-INIT_TEXT void time_init(void) {
+INIT_TEXT static void time_init(void) {
     static LIMINE_REQ struct limine_date_at_boot_request time_req = {.id = LIMINE_DATE_AT_BOOT_REQUEST};
 
     if (time_req.response) {
         set_current_timestamp((__int128_t)time_req.response->timestamp * NS_PER_SEC);
     }
 }
+
+INIT_DEFINE_EARLY(time, time_init, INIT_REFERENCE(arch_time));
 
 __int128_t get_current_timestamp(void) {
     return real_time_from_boot_time(arch_read_time());

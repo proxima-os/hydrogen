@@ -1,6 +1,7 @@
 #pragma once
 
 #include "arch/time.h"
+#include "init/task.h"
 #include "kernel/time.h"
 #include <stdint.h>
 
@@ -22,7 +23,9 @@ typedef struct timer_event {
     bool running;
 } timer_event_t;
 
-void time_init(void);
+INIT_DECLARE(arch_time);
+INIT_DECLARE(time);
+
 __int128_t get_current_timestamp(void);
 void set_current_timestamp(__int128_t time);
 

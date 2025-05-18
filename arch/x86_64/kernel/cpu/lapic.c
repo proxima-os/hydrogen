@@ -1,8 +1,10 @@
 #include "x86_64/lapic.h"
+#include "acpi/acpi.h" /* IWYU pragma: keep */
 #include "arch/idle.h"
 #include "arch/mmio.h"
 #include "arch/pmap.h"
 #include "cpu/cpudata.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
 #include "sections.h"
@@ -97,7 +99,7 @@ static inline void lapic_fence(void) {
     }
 }
 
-INIT_TEXT void x86_64_lapic_init(void) {
+INIT_TEXT static void x86_64_lapic_init(void) {
     if (!x86_64_cpu_features.apic) panic("cpu does not have an integrated local apic");
     setup_reg_access();
 
@@ -107,6 +109,8 @@ INIT_TEXT void x86_64_lapic_init(void) {
     x86_64_lapic_init_local(madt_table.ptr);
     uacpi_table_unref(&madt_table);
 }
+
+INIT_DEFINE_EARLY(x86_64_lapic, x86_64_lapic_init, INIT_REFERENCE(memory), INIT_REFERENCE(acpi_tables));
 
 INIT_TEXT static void setup_lint_nmi(uint8_t lint, uint16_t flags) {
     if (lint >= 2) {

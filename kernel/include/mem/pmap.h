@@ -31,7 +31,8 @@ typedef struct {
 
 void pmap_init(void);
 void pmap_init_switch(void);
-void pmap_init_cpu(struct cpu *cpu);
+int pmap_init_cpu(struct cpu *cpu);
+void pmap_free_cpu(struct cpu *cpu);
 
 int pmap_create(struct vmm *vmm);
 void pmap_switch(pmap_t *target); // must be called with preemption disabled, must not be called in irq context

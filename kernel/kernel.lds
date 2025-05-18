@@ -8,17 +8,18 @@ PHDRS {
 
 NOCROSSREFS_TO(.init.text .rodata .text .data .vdso .bss)
 NOCROSSREFS_TO(.init.data .rodata .text .data .vdso .bss)
+NOCROSSREFS_TO(.cmdline .rodata .text .data .vdso .bss)
+NOCROSSREFS_TO(.inittask.early .rodata .text .data .vdso .bss)
+NOCROSSREFS_TO(.inittask.earlyap .rodata .text .data .vdso .bss)
+NOCROSSREFS_TO(.inittask.dflt .rodata .text .data .vdso .bss)
+NOCROSSREFS_TO(.inittask.deftap .rodata .text .data .vdso .bss)
 
 SECTIONS {
     . = 0xffffffff80000000;
     _start = .;
 
-    .rodata : {
-        KEEP(*(SORT_BY_NAME(.requests*)))
-        *(.rodata .rodata.*)
-    } :rodata
-
-    .cmdline : { __cmdline_start = .; KEEP(*(SORT_BY_NAME(.cmdline.*))) __cmdline_end = .; }
+    .requests : { KEEP(*(SORT_BY_NAME(.requests*))) } :rodata
+    .rodata : { *(.rodata .rodata.*) } :rodata
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
     _erodata = .;
@@ -31,7 +32,7 @@ SECTIONS {
         *(.init.text)
         . = ALIGN(CONSTANT(MAXPAGESIZE));
         __init_text_end = .;
-    }
+    } :text
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
     _etext = .;
@@ -41,9 +42,16 @@ SECTIONS {
     .init.data : {
         __init_data_start = .;
         *(.init.data)
-        . = ALIGN(CONSTANT(MAXPAGESIZE));
-        __init_data_end = .;
-    }
+    } :data
+
+    .cmdline : { __cmdline_start = .; KEEP(*(SORT_BY_NAME(.cmdline.*))) __cmdline_end = .; } :data
+    .inittask.early : { __inittask_start_early = .; KEEP(*(.inittask.early)) __inittask_end_early = .; } :data
+    .inittask.earlyap : { __inittask_start_earlyap = .; KEEP(*(.inittask.earlyap)) __inittask_end_earlyap = .; } :data
+    .inittask.dflt : { __inittask_start_dflt = .; KEEP(*(.inittask.dflt)) __inittask_end_dflt = .; } :data
+    .inittask.dfltap : { __inittask_start_dfltap = .; KEEP(*(.inittask.dfltap)) __inittask_end_dfltap = .; } :data
+
+    . = ALIGN(CONSTANT(MAXPAGESIZE));
+    __init_data_end = .;
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
     .vdso : {

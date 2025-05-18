@@ -10,6 +10,7 @@
 #include "hydrogen/signal.h"
 #include "hydrogen/types.h"
 #include "init/main.h"
+#include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
@@ -265,7 +266,7 @@ static void alarm_send(task_t *task) {
     spin_rel(&process->alarm_lock, state);
 }
 
-INIT_TEXT void proc_init(void) {
+INIT_TEXT static void proc_init(void) {
     init_pids();
 
     kernel_process.base.ops = &process_ops;
@@ -299,6 +300,8 @@ INIT_TEXT void proc_init(void) {
     kernel_group.session = &kernel_session;
     session_ref(&kernel_session);
 }
+
+INIT_DEFINE_EARLY(processes, proc_init, INIT_REFERENCE(memory), INIT_REFERENCE(rcu));
 
 static inline bool is_resolved_pid_valid(pid_t *pid) {
     return (uintptr_t)pid & (1ul << (sizeof(pid_t *) * 8 - 1));
