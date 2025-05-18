@@ -113,9 +113,9 @@ static void run_init_task(const char *target_name, void *id, init_task_t *task, 
     // use raw printk calls to set up the terminal in such a way that the running text is shown
     // on consoles but as soon as something else gets printed it disappears and gets overwritten
     irq_state_t state = printk_lock();
-    printk_raw_format("init(%s): running task %s...\r", target_name, task->name);
+    printk_raw_format("init(%s): running task %s...", target_name, task->name);
     printk_raw_flush();
-    printk_raw_format("\e[2K");
+    printk_raw_format("\r\e[2K");
     printk_unlock(state);
 
     uint64_t start = arch_read_time();
@@ -123,7 +123,7 @@ static void run_init_task(const char *target_name, void *id, init_task_t *task, 
     uint64_t delta = arch_read_time() - start;
 
     state = printk_lock();
-    printk_raw_format("init(%s): running task %s... ", target_name, task->name);
+    printk_raw_format("init(%s): task %s took ", target_name, task->name);
 
     if (delta < NS_PER_US) printk_raw_format("%U ns\n", delta);
     else if (delta < NS_PER_MS) printk_raw_format("%U.%U us\n", delta / 1000, delta % 1000 / 100);
