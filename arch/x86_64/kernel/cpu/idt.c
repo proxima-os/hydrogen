@@ -29,11 +29,11 @@ static struct {
 
 extern uintptr_t x86_64_idt_thunks[256];
 
-INIT_TEXT static void set_ist_idx(int vector, x86_64_ist_index_t index) {
+static void set_ist_idx(int vector, x86_64_ist_index_t index) {
     idt[vector].low |= ((uint64_t)(index + 1) << 32);
 }
 
-INIT_TEXT void x86_64_idt_init(void) {
+void x86_64_idt_init(void) {
     struct {
         uint16_t limit;
         void *base;

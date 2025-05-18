@@ -12,7 +12,7 @@
 #include "util/spinlock.h"
 #include <stdint.h>
 
-INIT_TEXT static void time_init(void) {
+static void time_init(void) {
     static LIMINE_REQ struct limine_date_at_boot_request time_req = {.id = LIMINE_DATE_AT_BOOT_REQUEST};
 
     if (time_req.response) {

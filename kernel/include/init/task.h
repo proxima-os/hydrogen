@@ -16,10 +16,10 @@ typedef struct init_task {
 #define INIT_DECLARE(name) extern init_task_t __init_task_##name
 #define INIT_REFERENCE(name) &__init_task_##name
 #define INIT_DEFINE_TARGET(name, func, target, ...)                     \
-    INIT_DATA static char __init_name_##name[] = #name;                 \
-    INIT_DATA static init_task_t *__init_deps_##name[] = {__VA_ARGS__}; \
+    static char __init_name_##name[] = #name;                 \
+    static init_task_t *__init_deps_##name[] = {__VA_ARGS__}; \
     extern init_task_t *__inittask_start_##target[];                    \
-    INIT_DATA init_task_t __init_task_##name = {                        \
+    init_task_t __init_task_##name = {                        \
             __init_name_##name,                                         \
             (func),                                                     \
             __inittask_start_##target,                                  \

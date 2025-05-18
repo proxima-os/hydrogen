@@ -24,7 +24,7 @@ _Static_assert((X86_64_USER_DS & 3) == 3, "User segment selectors do not have RP
 
 extern const void x86_64_syscall_entry;
 
-INIT_TEXT static void syscall_init_local(void) {
+static void syscall_init_local(void) {
     x86_64_wrmsr(X86_64_MSR_STAR, ((uint64_t)(X86_64_USER_DS - 8) << 48) | ((uint64_t)X86_64_KERN_CS << 32));
     x86_64_wrmsr(X86_64_MSR_LSTAR, (uintptr_t)&x86_64_syscall_entry);
     x86_64_wrmsr(X86_64_MSR_FMASK, 0x40600); // Clear AC, DF, and IF on entry

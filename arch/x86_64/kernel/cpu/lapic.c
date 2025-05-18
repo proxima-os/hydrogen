@@ -47,7 +47,7 @@ static uintptr_t lapic_regs;
 static uint64_t lapic_regs_phys;
 static bool have_lapic;
 
-INIT_TEXT static void setup_reg_access(void) {
+static void setup_reg_access(void) {
     if (x86_64_cpu_features.x2apic) return;
 
     lapic_regs_phys = (x86_64_rdmsr(X86_64_MSR_APIC_BASE) & ~0xfff) & x86_64_cpu_features.paddr_mask;
@@ -55,7 +55,7 @@ INIT_TEXT static void setup_reg_access(void) {
     if (unlikely(error)) panic("lapic: failed to map registers (%e)", error);
 }
 
-INIT_TEXT static void setup_reg_access_local(void) {
+static void setup_reg_access_local(void) {
     uint64_t msr = x86_64_rdmsr(X86_64_MSR_APIC_BASE);
     uint64_t nmsr = msr | X86_64_MSR_APIC_BASE_ENABLE;
 
@@ -99,7 +99,7 @@ static inline void lapic_fence(void) {
     }
 }
 
-INIT_TEXT static void x86_64_lapic_init(void) {
+static void x86_64_lapic_init(void) {
     if (!x86_64_cpu_features.apic) panic("cpu does not have an integrated local apic");
     setup_reg_access();
 
@@ -112,7 +112,7 @@ INIT_TEXT static void x86_64_lapic_init(void) {
 
 INIT_DEFINE_EARLY(x86_64_lapic, x86_64_lapic_init, INIT_REFERENCE(memory), INIT_REFERENCE(acpi_tables));
 
-INIT_TEXT static void setup_lint_nmi(uint8_t lint, uint16_t flags) {
+static void setup_lint_nmi(uint8_t lint, uint16_t flags) {
     if (lint >= 2) {
         printk("lapic: firmware requested local nmi on non-existed input lint%u\n", lint);
         return;
@@ -131,7 +131,7 @@ INIT_TEXT static void setup_lint_nmi(uint8_t lint, uint16_t flags) {
     lapic_write(lint ? LAPIC_LVT_LINT1 : LAPIC_LVT_LINT0, lvt);
 }
 
-INIT_TEXT void x86_64_lapic_init_local(struct acpi_madt *madt) {
+void x86_64_lapic_init_local(struct acpi_madt *madt) {
     setup_reg_access_local();
     lapic_write(LAPIC_SVR, X86_64_IDT_LAPIC_SPURIOUS); // disable local apic during init
     lapic_write(LAPIC_ERR, 0);                         // clear stale errors
@@ -239,7 +239,7 @@ void x86_64_lapic_ipi(uint32_t target_id, uint8_t vector, uint32_t flags) {
     }
 }
 
-INIT_TEXT void x86_64_lapic_timer_setup(x86_64_lapic_timer_mode_t mode, bool interrupt) {
+void x86_64_lapic_timer_setup(x86_64_lapic_timer_mode_t mode, bool interrupt) {
     x86_64_lapic_timer_stop();
 
     uint32_t lvt = mode | X86_64_IDT_LAPIC_TIMER;
@@ -251,7 +251,7 @@ void x86_64_lapic_timer_start(uint32_t count) {
     lapic_write(LAPIC_TIMER_ICR, count);
 }
 
-INIT_TEXT uint32_t x86_64_lapic_timer_remaining(void) {
+uint32_t x86_64_lapic_timer_remaining(void) {
     return lapic_read(LAPIC_TIMER_CCR);
 }
 

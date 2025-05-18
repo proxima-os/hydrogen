@@ -21,8 +21,8 @@
 
 #define CALIBRATION_TIME_NS 500000000 /* 500ms */
 
-INIT_DATA static uint64_t tsc_freq;
-INIT_DATA static uint64_t lapic_freq;
+static uint64_t tsc_freq;
+static uint64_t lapic_freq;
 static timeconv_t time2tsc_conv;
 
 typedef struct {
@@ -31,13 +31,13 @@ typedef struct {
     uint32_t lapic;
 } timer_data_t;
 
-INIT_TEXT static uint64_t ref_elapsed(uint64_t start, uint64_t end) {
+static uint64_t ref_elapsed(uint64_t start, uint64_t end) {
     if (end < start) end += UINT32_MAX;
     ASSERT(start <= end);
     return end - start;
 }
 
-INIT_TEXT static bool read_time_stable(timer_data_t *data) {
+static bool read_time_stable(timer_data_t *data) {
     irq_state_t state = save_disable_irq();
 
     for (int i = 0; i < STABLE_READ_TRIES; i++) {
@@ -58,13 +58,13 @@ INIT_TEXT static bool read_time_stable(timer_data_t *data) {
     return false;
 }
 
-INIT_TEXT static uint64_t get_freq(uint64_t ticks, uint64_t elapsed) {
+static uint64_t get_freq(uint64_t ticks, uint64_t elapsed) {
     __uint128_t temp = (__uint128_t)NS_PER_SEC * ticks + (elapsed / 2);
     udiv128(&temp, elapsed);
     return temp;
 }
 
-INIT_TEXT static bool determine_frequency(void) {
+static bool determine_frequency(void) {
     if (x86_64_cpu_features.cpuid_low >= 0x15) {
         unsigned eax, ebx, ecx, edx;
         cpuid(0x15, &eax, &ebx, &ecx, &edx);
@@ -144,13 +144,13 @@ static uint64_t time_to_tsc(uint64_t time) {
     return tsc ? tsc : 1;
 }
 
-INIT_TEXT static void tsc_confirm(bool final) {
+static void tsc_confirm(bool final) {
     if (final) {
         vdso_info.arch.time_source = X86_64_TIME_TSC;
     }
 }
 
-INIT_TEXT void x86_64_tsc_init(void) {
+void x86_64_tsc_init(void) {
     if (!x86_64_cpu_features.tsc_invariant) x86_64_cpu_features.tsc_deadline = false;
 
     // do this even if tsc isn't invariant, since it determins lapic frequency too

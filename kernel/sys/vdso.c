@@ -38,7 +38,7 @@ mem_object_t vdso_object = {
         .base.ops = &vdso_object_ops.base,
 };
 
-INIT_TEXT static void vdso_init(void) {
+static void vdso_init(void) {
     vdso_image_offset = (const void *)&vdso_image - &__vdso_start;
     vdso_size = &__vdso_end - &__vdso_start;
     ASSERT((vdso_size & PAGE_MASK) == 0);

@@ -12,7 +12,6 @@
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "limine.h"
-#include "mem/memmap.h"
 #include "mem/pmem.h"
 #include "mem/vmm.h"
 #include "proc/event.h"
@@ -65,41 +64,6 @@ static void launch_init_process(void *ctx) {
 
     vfs_umask(current_thread->process, 022);
     arch_enter_user_mode_init(vdso_base + vdso_image.entry, stack_base, USER_STACK_SIZE);
-}
-
-// this is in a separate function so that kernel_init can be INIT_TEXT
-__attribute__((noinline)) static _Noreturn void finalize_init(void) {
-    memmap_reclaim_init();
-
-    pmem_stats_t stats = pmem_get_stats();
-    printk("mem: %zK total, %zK available, %zK free\n",
-           stats.total * (PAGE_SIZE / 1024),
-           stats.available * (PAGE_SIZE / 1024),
-           stats.free * (PAGE_SIZE / 1024));
-
-    int error = proc_clone(&init_process);
-    if (unlikely(error)) panic("failed to create init process (%e)", error);
-
-    thread_t *thread;
-    error = sched_create_thread(&thread, launch_init_process, NULL, NULL, init_process, THREAD_USER);
-    if (unlikely(error)) panic("failed to create init process main thread (%d)", error);
-
-    task_thread = current_thread;
-    sched_wake(thread);
-    obj_deref(&thread->base);
-
-    for (;;) {
-        irq_state_t state = spin_acq(&kernel_tasks_lock);
-        task_t *task = SLIST_REMOVE_HEAD(kernel_tasks, task_t, node);
-        if (!task) sched_prepare_wait(false);
-        spin_rel(&kernel_tasks_lock, state);
-        if (!task) {
-            sched_perform_wait(0);
-            continue;
-        }
-
-        task->func(task);
-    }
 }
 
 static void run_init_task(const char *target_name, void *id, init_task_t *task, init_task_t **target) {
@@ -155,21 +119,44 @@ static void run_init_target(const char *target_name, void *id, init_task_t **sta
         run_init_target(pretty, id, __inittask_start_##name, __inittask_end_##name); \
     })
 
-INIT_TEXT static void kernel_init(void *ctx) {
+static void kernel_init(void *ctx) {
     RUN_INIT_TARGET(dflt, "default", NULL);
 
     // the idle thread still holds a reference to this thread, but it can't free it itself because that might sleep
     obj_deref(&current_thread->base);
-    finalize_init();
-}
 
-// this is in a separate function so that kernel_main can be INIT_TEXT
-__attribute__((noinline)) static _Noreturn void wake_init_thread_and_idle(thread_t *thread) {
+    pmem_stats_t stats = pmem_get_stats();
+    printk("mem: %zK total, %zK available, %zK free\n",
+           stats.total * (PAGE_SIZE / 1024),
+           stats.available * (PAGE_SIZE / 1024),
+           stats.free * (PAGE_SIZE / 1024));
+
+    int error = proc_clone(&init_process);
+    if (unlikely(error)) panic("failed to create init process (%e)", error);
+
+    thread_t *thread;
+    error = sched_create_thread(&thread, launch_init_process, NULL, NULL, init_process, THREAD_USER);
+    if (unlikely(error)) panic("failed to create init process main thread (%d)", error);
+
+    task_thread = current_thread;
     sched_wake(thread);
-    sched_idle();
+    obj_deref(&thread->base);
+
+    for (;;) {
+        irq_state_t state = spin_acq(&kernel_tasks_lock);
+        task_t *task = SLIST_REMOVE_HEAD(kernel_tasks, task_t, node);
+        if (!task) sched_prepare_wait(false);
+        spin_rel(&kernel_tasks_lock, state);
+        if (!task) {
+            sched_perform_wait(0);
+            continue;
+        }
+
+        task->func(task);
+    }
 }
 
-INIT_TEXT USED _Noreturn void kernel_main(void) {
+USED _Noreturn void kernel_main(void) {
     extern init_task_t *__inittask_start_early[];
 
     parse_command_line();
@@ -181,21 +168,17 @@ INIT_TEXT USED _Noreturn void kernel_main(void) {
     thread_t *init_thread;
     int error = sched_create_thread(&init_thread, kernel_init, NULL, &boot_cpu, &kernel_process, 0);
     if (unlikely(error)) panic("failed to create init thread (%e)", error);
-    wake_init_thread_and_idle(init_thread);
+    sched_wake(init_thread);
+    sched_idle();
 }
 
-// this is in a separate function so that smp_init_current can be INIT_TEXT
-__attribute__((noinline)) static _Noreturn void signal_and_idle(event_t *event) {
+_Noreturn void smp_init_current(event_t *event) {
+    RUN_INIT_TARGET(earlyap, "early-ap", get_current_cpu());
     if (event != NULL) event_signal(event);
     sched_idle();
 }
 
-INIT_TEXT _Noreturn void smp_init_current(event_t *event) {
-    RUN_INIT_TARGET(earlyap, "early-ap", get_current_cpu());
-    signal_and_idle(event);
-}
-
-INIT_TEXT void smp_init_current_late(void) {
+void smp_init_current_late(void) {
     RUN_INIT_TARGET(dfltap, "default-ap", get_current_cpu());
 }
 
@@ -205,7 +188,7 @@ void schedule_kernel_task(task_t *task) {
     spin_rel(&kernel_tasks_lock, state);
 }
 
-INIT_TEXT static void mount_rootfs(void) {
+static void mount_rootfs(void) {
     filesystem_t *fs;
     int error = ramfs_create(&fs, 0755);
     if (unlikely(error)) panic("failed to create rootfs (%e)", error);
@@ -219,7 +202,7 @@ INIT_TEXT static void mount_rootfs(void) {
 
 INIT_DEFINE(mount_rootfs, mount_rootfs, INIT_REFERENCE(vfs));
 
-INIT_TEXT static void verify_loader_revision(void) {
+static void verify_loader_revision(void) {
     if (!LIMINE_BASE_REVISION_SUPPORTED) {
         panic("loader does not support requested base revision");
     }

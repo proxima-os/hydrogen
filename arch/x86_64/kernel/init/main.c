@@ -16,7 +16,7 @@
 
 _Alignas(KERNEL_STACK_ALIGN) static unsigned char bsp_ist_stacks[X86_64_IST_MAX][KERNEL_STACK_SIZE];
 
-INIT_TEXT USED void x86_64_prepare_main(void) {
+USED void x86_64_prepare_main(void) {
     x86_64_cpu_detect();
 
     for (int i = 0; i < X86_64_IST_MAX; i++) {
@@ -27,7 +27,7 @@ INIT_TEXT USED void x86_64_prepare_main(void) {
     x86_64_cpu_init(&boot_cpu);
 }
 
-INIT_TEXT static void init_arch_vdso_info(void) {
+static void init_arch_vdso_info(void) {
     vdso_info.arch.time_source = X86_64_TIME_SYSCALL;
     vdso_info.arch.fsgsbase = x86_64_cpu_features.fsgsbase;
 }

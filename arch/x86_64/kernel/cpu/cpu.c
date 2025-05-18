@@ -22,7 +22,7 @@ static LIMINE_REQ struct limine_paging_mode_request pmode_req = {
         .max_mode = LIMINE_PAGING_MODE_X86_64_5LVL,
 };
 
-INIT_TEXT void x86_64_cpu_detect(void) {
+void x86_64_cpu_detect(void) {
     size_t cr4_value = X86_64_CR4_OSXMMEXCEPT | X86_64_CR4_OSFXSR | X86_64_CR4_PAE;
     uint64_t efer_value = X86_64_MSR_EFER_LMA | X86_64_MSR_EFER_LME | X86_64_MSR_EFER_SCE;
 
@@ -114,9 +114,9 @@ static uint64_t gdt[7] = {
         0,                // tss low
         0,                // tss high
 };
-INIT_DATA static spinlock_t gdt_lock;
+static spinlock_t gdt_lock;
 
-INIT_TEXT static void init_gdt(cpu_t *self) {
+static void init_gdt(cpu_t *self) {
     struct {
         uint16_t limit;
         void *base;
@@ -161,7 +161,7 @@ INIT_TEXT static void init_gdt(cpu_t *self) {
     spin_rel(&gdt_lock, state);
 }
 
-INIT_TEXT void x86_64_cpu_init(cpu_t *self) {
+void x86_64_cpu_init(cpu_t *self) {
     self->arch.self = self;
     init_gdt(self);
     x86_64_idt_init();

@@ -7,7 +7,7 @@
 extern const cmdline_opt_t __cmdline_start[];
 extern const cmdline_opt_t __cmdline_end[];
 
-INIT_TEXT static const cmdline_opt_t *find_option(const char *name) {
+static const cmdline_opt_t *find_option(const char *name) {
     // the linker script sorts this array by name, so we can do a binary search
 
     const cmdline_opt_t *start = __cmdline_start;
@@ -29,7 +29,7 @@ INIT_TEXT static const cmdline_opt_t *find_option(const char *name) {
     return NULL;
 }
 
-INIT_TEXT void parse_command_line(void) {
+void parse_command_line(void) {
     static LIMINE_REQ struct limine_executable_cmdline_request cmdline_req = {.id = LIMINE_EXECUTABLE_CMDLINE_REQUEST};
     if (!cmdline_req.response) return;
     char *text = cmdline_req.response->cmdline;

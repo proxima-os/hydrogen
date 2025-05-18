@@ -19,7 +19,7 @@ static void *host_name;
 static size_t host_name_size;
 static mutex_t host_name_lock;
 
-INIT_TEXT static void host_name_init(void) {
+static void host_name_init(void) {
     static const char default_hostname[] = "hydrogen";
     host_name_size = sizeof(default_hostname) - 1;
     host_name = vmalloc(host_name_size);

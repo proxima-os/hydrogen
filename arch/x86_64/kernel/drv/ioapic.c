@@ -72,7 +72,7 @@ static ioapic_t *gsi_to_apic(uint32_t *irq) {
     return NULL;
 }
 
-INIT_TEXT static void x86_64_ioapic_init(void) {
+static void x86_64_ioapic_init(void) {
     uacpi_table table;
     uacpi_status status = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &table);
     if (uacpi_unlikely_error(status)) panic("ioapic: failed to find madt table: %s", uacpi_status_to_string(status));

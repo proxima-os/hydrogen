@@ -36,7 +36,7 @@ typedef struct {
     char prefix[155];
 } __attribute__((packed)) ustar_header_t;
 
-INIT_TEXT static uint64_t parse_oct_field(unsigned char *buf, size_t size) {
+static uint64_t parse_oct_field(unsigned char *buf, size_t size) {
     uint64_t value = 0;
 
     for (size_t i = 0; i < size; i++) {
@@ -48,7 +48,7 @@ INIT_TEXT static uint64_t parse_oct_field(unsigned char *buf, size_t size) {
     return value;
 }
 
-INIT_TEXT static file_t *open_directory(file_t *dest, void **name_buf, size_t *name_len) {
+static file_t *open_directory(file_t *dest, void **name_buf, size_t *name_len) {
     char *name_start = *name_buf;
     char *name = name_start;
     size_t len = *name_len;
@@ -104,9 +104,9 @@ INIT_TEXT static file_t *open_directory(file_t *dest, void **name_buf, size_t *n
     return dest;
 }
 
-INIT_TEXT static bool extract_single(file_t *dest, void *data, size_t size) {
-    static const char magic[] = "ustar";
-    NONSTRING static const char version[2] = "00";
+static bool extract_single(file_t *dest, void *data, size_t size) {
+    static char magic[] = "ustar";
+    NONSTRING static char version[2] = "00";
 
     unsigned char path_buf[256];
 
@@ -351,7 +351,7 @@ INIT_TEXT static bool extract_single(file_t *dest, void *data, size_t size) {
     return !errored;
 }
 
-INIT_TEXT static void extract_initrd(void) {
+static void extract_initrd(void) {
     static LIMINE_REQ struct limine_module_request module_req = {.id = LIMINE_MODULE_REQUEST};
     if (unlikely(!module_req.response)) return;
 

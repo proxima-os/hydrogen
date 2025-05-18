@@ -27,7 +27,7 @@
 
 static dentry_t root_dentry = {.references = 1};
 
-INIT_TEXT static void vfs_init(void) {
+static void vfs_init(void) {
     root_dentry.references += 2;
     rcu_write(current_thread->process->work_dir, &root_dentry);
     rcu_write(current_thread->process->root_dir, &root_dentry);

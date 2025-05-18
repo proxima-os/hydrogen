@@ -59,7 +59,7 @@ static mutex_t pids_update_lock;
 static pgroup_t kernel_group = {.references = REF_INIT(1)};
 static session_t kernel_session = {.references = REF_INIT(1)};
 
-INIT_TEXT static void init_pids(void) {
+static void init_pids(void) {
     pids_capacity = 8;
     pid_table = vmalloc(pids_capacity * sizeof(*pid_table));
     if (unlikely(!pid_table)) panic("failed to allocate pid table");
@@ -267,7 +267,7 @@ static void alarm_send(task_t *task) {
     spin_rel(&process->alarm_lock, state);
 }
 
-INIT_TEXT static void proc_init(void) {
+static void proc_init(void) {
     init_pids();
 
     kernel_process.base.ops = &process_ops;

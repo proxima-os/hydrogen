@@ -88,7 +88,7 @@ static const object_ops_t thread_ops = {
         .free = thread_free,
 };
 
-INIT_TEXT static void sched_init(void) {
+static void sched_init(void) {
     cpu_t *cpu = get_current_cpu();
     sched_t *sched = &cpu->sched;
     sched->current = &sched->idle_thread;
@@ -124,7 +124,7 @@ static void reaper_func(void *ctx) {
     }
 }
 
-INIT_TEXT static void sched_init_late(void) {
+static void sched_init_late(void) {
     cpu_t *cpu = get_current_cpu();
 
     cpu->sched.idle_thread.process = &kernel_process;

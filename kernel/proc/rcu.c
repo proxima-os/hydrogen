@@ -25,7 +25,7 @@ static void run_callbacks(task_t *task) {
     }
 }
 
-INIT_TEXT static void rcu_init(void) {
+static void rcu_init(void) {
     this_cpu_write(rcu.run_callbacks_task.func, run_callbacks);
 }
 

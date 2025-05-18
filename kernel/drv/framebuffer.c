@@ -305,14 +305,14 @@ static void fb_flush(printk_sink_t *ptr) {
 
 #define TEXT_COLOR_COMPONENT 0xaaaaaaaa
 
-INIT_TEXT static uint32_t component(uint32_t mask, unsigned size, unsigned shift) {
+static uint32_t component(uint32_t mask, unsigned size, unsigned shift) {
     if (size == 0) return 0;
     if (shift >= 32) return 0;
 
     return (mask >> (32 - size)) << shift;
 }
 
-INIT_TEXT static int create_sink(struct limine_framebuffer *fb, uint32_t width, uint32_t height) {
+static int create_sink(struct limine_framebuffer *fb, uint32_t width, uint32_t height) {
     fb_sink_t *sink = vmalloc(sizeof(*sink));
     if (unlikely(!sink)) return ENOMEM;
     memset(sink, 0, sizeof(*sink));
@@ -361,7 +361,7 @@ INIT_TEXT static int create_sink(struct limine_framebuffer *fb, uint32_t width, 
     return 0;
 }
 
-INIT_TEXT static void fb_init(void) {
+static void fb_init(void) {
     static LIMINE_REQ struct limine_framebuffer_request fb_req = {.id = LIMINE_FRAMEBUFFER_REQUEST};
     if (!fb_req.response) return;
 

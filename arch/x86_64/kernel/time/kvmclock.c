@@ -21,17 +21,17 @@ static uint64_t kvmclock_read(void) {
     return x86_64_read_kvmclock(&vdso_info.arch.kvmclock);
 }
 
-INIT_TEXT static void kvmclock_cleanup(void) {
+static void kvmclock_cleanup(void) {
     x86_64_wrmsr(kvmclock_msr, 0);
 }
 
-INIT_TEXT static void kvmclock_confirm(bool final) {
+static void kvmclock_confirm(bool final) {
     if (final) {
         vdso_info.arch.time_source = X86_64_TIME_KVMCLOCK;
     }
 }
 
-INIT_TEXT void x86_64_kvmclock_init(void) {
+void x86_64_kvmclock_init(void) {
     if (!x86_64_cpu_features.hypervisor) {
         printk("kvmclock: not running in hypervisor\n");
         return;

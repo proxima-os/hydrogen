@@ -27,7 +27,7 @@ static ctx_style_t ctx_style;
 size_t x86_64_xsave_size;
 static uint64_t xcr0_value;
 
-INIT_TEXT static void determine_mode(void) {
+static void determine_mode(void) {
     if (!x86_64_cpu_features.xsave) {
         ctx_style = CTX_FXSAVE;
         x86_64_xsave_size = 512;
@@ -55,14 +55,14 @@ INIT_TEXT static void determine_mode(void) {
     }
 }
 
-INIT_TEXT static void xsave_init(void) {
+static void xsave_init(void) {
     determine_mode();
     printk("xsave: context is %z bytes (style %d)\n", x86_64_xsave_size, ctx_style);
 }
 
 INIT_DEFINE_EARLY(x86_64_xsave, xsave_init);
 
-INIT_TEXT static void xsave_init_local(void) {
+static void xsave_init_local(void) {
     if (ctx_style == CTX_FXSAVE) return;
     x86_64_write_xcr(0, xcr0_value);
 }

@@ -23,17 +23,17 @@ static uint64_t no_time_read(void) {
     return 0;
 }
 
-INIT_TEXT static void no_time_confirm(bool final) {
+static void no_time_confirm(bool final) {
     panic("no time source available");
 }
 
 uint64_t (*x86_64_read_time)(void) = no_time_read;
 uint64_t (*x86_64_timer_get_tsc)(uint64_t);
-INIT_DATA void (*x86_64_timer_cleanup)(void);
-INIT_DATA void (*x86_64_timer_confirm)(bool) = no_time_confirm;
+void (*x86_64_timer_cleanup)(void);
+void (*x86_64_timer_confirm)(bool) = no_time_confirm;
 timeconv_t x86_64_ns2lapic_conv;
 
-INIT_TEXT static void init_events(void) {
+static void init_events(void) {
     if (x86_64_cpu_features.tsc_deadline) {
         ASSERT(x86_64_timer_get_tsc != NULL);
         x86_64_lapic_timer_setup(X86_64_LAPIC_TIMER_TSC_DEADLINE, true);
@@ -44,7 +44,7 @@ INIT_TEXT static void init_events(void) {
 
 INIT_DEFINE_EARLY_AP(x86_64_time_ap, init_events, INIT_REFERENCE(x86_64_interrupts_ap));
 
-INIT_TEXT static void init_timers(void) {
+static void init_timers(void) {
     x86_64_hpet_init();
     x86_64_kvmclock_init();
     x86_64_tsc_init();
@@ -56,7 +56,7 @@ INIT_TEXT static void init_timers(void) {
 
 INIT_DEFINE_EARLY(arch_time, init_timers, INIT_REFERENCE(memory), INIT_REFERENCE(x86_64_interrupts));
 
-INIT_TEXT void x86_64_switch_timer(
+void x86_64_switch_timer(
         uint64_t (*read)(void),
         uint64_t (*get_tsc)(uint64_t),
         void (*cleanup)(void),

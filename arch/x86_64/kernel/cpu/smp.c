@@ -33,7 +33,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-INIT_TEXT static int alloc_cpu(cpu_t **out) {
+static int alloc_cpu(cpu_t **out) {
     cpu_t *cpu = vmalloc(sizeof(*cpu));
     if (unlikely(!cpu)) return ENOMEM;
     memset(cpu, 0, sizeof(*cpu));
@@ -63,7 +63,7 @@ INIT_TEXT static int alloc_cpu(cpu_t **out) {
     return 0;
 }
 
-INIT_TEXT static void free_cpu(cpu_t *cpu) {
+static void free_cpu(cpu_t *cpu) {
     for (int i = 0; i < X86_64_IST_MAX; i++) {
         free_kernel_stack((void *)(cpu->arch.tss.ist[i] - KERNEL_STACK_SIZE));
     }
@@ -106,7 +106,7 @@ typedef struct {
 
 extern const void x86_64_smp_trampoline, x86_64_smp_trampoline_wakeup_entry, x86_64_smp_trampoline_end;
 
-INIT_TEXT static void free_mapping(void *table, uintptr_t virt) {
+static void free_mapping(void *table, uintptr_t virt) {
     for (unsigned level = arch_pt_levels() - 1; level > 0; level--) {
         pte_t pte = arch_pt_read(table, level, arch_pt_get_index(virt, level));
         pmem_free_now(virt_to_page(table));
@@ -115,7 +115,7 @@ INIT_TEXT static void free_mapping(void *table, uintptr_t virt) {
     }
 }
 
-INIT_TEXT static void free_temp_page_tables(uint32_t cr3, uint64_t phys) {
+static void free_temp_page_tables(uint32_t cr3, uint64_t phys) {
     void *table = phys_to_virt(cr3);
 
     free_mapping(table, phys);
@@ -124,7 +124,7 @@ INIT_TEXT static void free_temp_page_tables(uint32_t cr3, uint64_t phys) {
     pmem_free_now(virt_to_page(table));
 }
 
-INIT_TEXT static bool add_mapping(void *table, uintptr_t virt, uint64_t phys, int flags) {
+static bool add_mapping(void *table, uintptr_t virt, uint64_t phys, int flags) {
     for (unsigned level = arch_pt_levels() - 1; level > 0; level--) {
         page_t *page = pmem_alloc_now();
         if (unlikely(!page)) return false;
@@ -139,7 +139,7 @@ INIT_TEXT static bool add_mapping(void *table, uintptr_t virt, uint64_t phys, in
     return true;
 }
 
-INIT_TEXT static bool create_temp_page_tables(mp_data_t *data, uint64_t phys) {
+static bool create_temp_page_tables(mp_data_t *data, uint64_t phys) {
     page_t *page = pmem_alloc_slow_and_unreliable_now(0, UINT32_MAX, 0x1000, 1);
     if (unlikely(!page)) return false;
 
@@ -164,7 +164,7 @@ err:
     return false;
 }
 
-INIT_TEXT static int save_mtrr(mp_data_t *data) {
+static int save_mtrr(mp_data_t *data) {
     if (x86_64_cpu_features.cpuid_low < 1) return 0;
 
     unsigned eax, ebx, ecx, edx;
@@ -198,14 +198,14 @@ INIT_TEXT static int save_mtrr(mp_data_t *data) {
     return 0;
 }
 
-INIT_TEXT static void save_pat(mp_data_t *data) {
+static void save_pat(mp_data_t *data) {
     if (!x86_64_cpu_features.pat) return;
 
     data->pat = x86_64_rdmsr(X86_64_MSR_PAT);
     data->flags |= SMP_PAT_SAVED;
 }
 
-INIT_TEXT static int init_mp_data(mp_data_t *data, uint64_t phys) {
+static int init_mp_data(mp_data_t *data, uint64_t phys) {
     size_t size = &x86_64_smp_trampoline_end - &x86_64_smp_trampoline;
     ASSERT(size <= SMP_MAX_TRAMPOLINE_SIZE);
     memcpy(data, &x86_64_smp_trampoline, size);
@@ -233,7 +233,7 @@ INIT_TEXT static int init_mp_data(mp_data_t *data, uint64_t phys) {
     return 0;
 }
 
-INIT_TEXT static int init_mp_data_for_cpu(mp_data_t *data, cpu_t *cpu, void *init_ctx) {
+static int init_mp_data_for_cpu(mp_data_t *data, cpu_t *cpu, void *init_ctx) {
     data->cpu = cpu;
     data->ctx = init_ctx;
 
@@ -246,7 +246,7 @@ INIT_TEXT static int init_mp_data_for_cpu(mp_data_t *data, cpu_t *cpu, void *ini
     return 0;
 }
 
-INIT_TEXT static int mp_data_wait(mp_data_t *data, uint64_t responsive_timeout) {
+static int mp_data_wait(mp_data_t *data, uint64_t responsive_timeout) {
     uint64_t start = arch_read_time();
 
     while (__atomic_load_n(&data->rsp, __ATOMIC_ACQUIRE) != 0) {
@@ -257,7 +257,7 @@ INIT_TEXT static int mp_data_wait(mp_data_t *data, uint64_t responsive_timeout) 
     return 0;
 }
 
-INIT_TEXT static void cleanup_mp_data(mp_data_t *data, uint64_t phys) {
+static void cleanup_mp_data(mp_data_t *data, uint64_t phys) {
     if (data->rsp != 0) {
         free_kernel_stack((void *)(data->rsp - KERNEL_STACK_SIZE));
     }
@@ -269,7 +269,7 @@ typedef struct {
     mp_data_t *data;
 } sipi_ctx_t;
 
-INIT_TEXT static int try_sipi_wakeup(cpu_t *cpu, sipi_ctx_t *ctx) {
+static int try_sipi_wakeup(cpu_t *cpu, sipi_ctx_t *ctx) {
     x86_64_lapic_ipi(cpu->arch.apic_id, 0, X86_64_LAPIC_IPI_INIT);
     sched_prepare_wait(false);
     sched_perform_wait(10 * NS_PER_MS);
@@ -287,7 +287,7 @@ INIT_TEXT static int try_sipi_wakeup(cpu_t *cpu, sipi_ctx_t *ctx) {
 
 typedef int (*launch_func_t)(cpu_t *, void *, void *);
 
-INIT_TEXT static int launch_func_sipi(cpu_t *cpu, void *init_ctx, void *ptr) {
+static int launch_func_sipi(cpu_t *cpu, void *init_ctx, void *ptr) {
     sipi_ctx_t *ctx = ptr;
     mp_data_t *data = ctx->data;
 
@@ -317,7 +317,7 @@ INIT_TEXT static int launch_func_sipi(cpu_t *cpu, void *init_ctx, void *ptr) {
     return ETIMEDOUT;
 }
 
-INIT_TEXT static void sipi_cleanup(void *ptr) {
+static void sipi_cleanup(void *ptr) {
     sipi_ctx_t *ctx = ptr;
 
     if (ctx->data != NULL) {
@@ -349,7 +349,7 @@ struct mp_wakeup_ctx {
     uint32_t version;
 };
 
-INIT_TEXT static bool wakeup_wait_for_command(mp_wakeup_mailbox_t *mailbox, uint64_t timeout) {
+static bool wakeup_wait_for_command(mp_wakeup_mailbox_t *mailbox, uint64_t timeout) {
     uint64_t start = arch_read_time();
 
     while (__atomic_load_n(&mailbox->command, __ATOMIC_ACQUIRE) != MP_WAKEUP_NOOP) {
@@ -360,7 +360,7 @@ INIT_TEXT static bool wakeup_wait_for_command(mp_wakeup_mailbox_t *mailbox, uint
     return true;
 }
 
-INIT_TEXT static int launch_func_mp_wakeup(cpu_t *cpu, void *init_ctx, void *ptr) {
+static int launch_func_mp_wakeup(cpu_t *cpu, void *init_ctx, void *ptr) {
     struct mp_wakeup_ctx *ctx = ptr;
     mp_wakeup_mailbox_t *mailbox = ctx->mailbox;
 
@@ -402,7 +402,7 @@ INIT_TEXT static int launch_func_mp_wakeup(cpu_t *cpu, void *init_ctx, void *ptr
     return 0;
 }
 
-INIT_TEXT static void mp_wakeup_cleanup(void *ptr) {
+static void mp_wakeup_cleanup(void *ptr) {
     struct mp_wakeup_ctx *ctx = ptr;
 
     if (ctx->mailbox != NULL) {
@@ -419,7 +419,7 @@ INIT_TEXT static void mp_wakeup_cleanup(void *ptr) {
 
 static event_t smp_current_online;
 
-INIT_TEXT static void launch_cpu(
+static void launch_cpu(
         uint32_t acpi_id,
         uint32_t apic_id,
         uint32_t flags,
@@ -474,7 +474,7 @@ INIT_TEXT static void launch_cpu(
     smp_init_current_late();
 }
 
-INIT_TEXT static void smp_init(void) {
+static void smp_init(void) {
     uacpi_table table;
     uacpi_status status = uacpi_table_find_by_signature(ACPI_MADT_SIGNATURE, &table);
     if (uacpi_unlikely_error(status)) {
@@ -563,7 +563,7 @@ done:
 
 INIT_DEFINE(x86_64_smp, smp_init);
 
-INIT_TEXT _Noreturn void x86_64_smp_init_current(cpu_t *cpu, void *ctx) {
+_Noreturn void x86_64_smp_init_current(cpu_t *cpu, void *ctx) {
     x86_64_cpu_init(cpu);
     x86_64_lapic_init_local(ctx);
     smp_init_current(&smp_current_online);

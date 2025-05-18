@@ -184,24 +184,24 @@ static void tlb_commit(tlb_ctx_t *tlb, vmm_t *vmm) {
     }
 }
 
-INIT_TEXT static void *early_alloc_table(unsigned level) {
+static void *early_alloc_table(unsigned level) {
     void *table = early_alloc_page();
     memset(table, 0, PAGE_SIZE);
     return table;
 }
 
-INIT_TEXT void pmap_init(void) {
+void pmap_init(void) {
     kernel_page_table = early_alloc_table(arch_pt_levels() - 1);
 }
 
-INIT_TEXT void pmap_init_switch(void) {
+void pmap_init_switch(void) {
     arch_pt_switch_init(kernel_page_table, -1, false);
     __atomic_store_n(&kernel_pt_switched, true, __ATOMIC_RELAXED);
 }
 
 INIT_DEFINE_EARLY_AP(memory_ap, pmap_init_switch, INIT_REFERENCE(scheduler_early_ap));
 
-INIT_TEXT int pmap_init_cpu(cpu_t *cpu) {
+int pmap_init_cpu(cpu_t *cpu) {
     size_t num = arch_pt_max_asid() + 1;
     size_t size = num * sizeof(*cpu->pmap.asids);
     cpu->pmap.asids = vmalloc(size);
@@ -1092,7 +1092,7 @@ struct page *pmap_get_mapping(struct vmm *vmm, uintptr_t virt) {
     return phys_to_page(arch_pt_leaf_target(result.level, result.pte));
 }
 
-INIT_TEXT static void do_early_map(
+static void do_early_map(
         void *table,
         unsigned level,
         uintptr_t virt,
@@ -1148,7 +1148,7 @@ INIT_TEXT static void do_early_map(
     } while (size != 0);
 }
 
-INIT_TEXT void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags) {
+void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int flags) {
     ASSERT(arch_pt_get_offset(virt | phys | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
@@ -1170,7 +1170,7 @@ INIT_TEXT void pmap_early_map(uintptr_t virt, uint64_t phys, size_t size, int fl
     mutex_rel(&kernel_pt_lock);
 }
 
-INIT_TEXT static void do_early_alloc(
+static void do_early_alloc(
         void *table,
         unsigned level,
         uintptr_t virt,
@@ -1224,7 +1224,7 @@ INIT_TEXT static void do_early_alloc(
     } while (size != 0);
 }
 
-INIT_TEXT void pmap_early_alloc(uintptr_t virt, size_t size, int flags) {
+void pmap_early_alloc(uintptr_t virt, size_t size, int flags) {
     ASSERT(arch_pt_get_offset(virt | size) == 0);
     ASSERT(size > 0);
     ASSERT(virt < virt + (size - 1));
@@ -1244,7 +1244,7 @@ INIT_TEXT void pmap_early_alloc(uintptr_t virt, size_t size, int flags) {
     mutex_rel(&kernel_pt_lock);
 }
 
-INIT_TEXT static size_t build_leaf_counts(void *table, unsigned level) {
+static size_t build_leaf_counts(void *table, unsigned level) {
     size_t leaves = 0;
     size_t max_idx = arch_pt_max_index(level);
 
@@ -1263,7 +1263,7 @@ INIT_TEXT static size_t build_leaf_counts(void *table, unsigned level) {
     return leaves;
 }
 
-INIT_TEXT void pmap_early_cleanup(void) {
+void pmap_early_cleanup(void) {
     mutex_acq(&kernel_pt_lock, 0, false);
     build_leaf_counts(kernel_page_table, arch_pt_levels() - 1);
     mutex_rel(&kernel_pt_lock);

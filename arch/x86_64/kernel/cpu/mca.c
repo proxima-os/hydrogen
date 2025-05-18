@@ -5,7 +5,7 @@
 #include "x86_64/msr.h"
 #include <stdint.h>
 
-INIT_TEXT void x86_64_mca_init(void) {
+void x86_64_mca_init(void) {
     if (!x86_64_cpu_features.mce) return;
 
     if (x86_64_cpu_features.mca) {
