@@ -39,6 +39,16 @@ typedef struct {
     size_t buffer_index;
 } queue_char_t;
 
+typedef enum {
+    ESC_INIT,
+    ESC_ESC,
+    ESC_PARAMS,
+    ESC_PARAM_IGNORE,
+    ESC_CSI,
+} escape_state_t;
+
+#define MAX_PARAMS 16
+
 typedef struct {
     printk_sink_t base;
     volatile void *framebuffer;
@@ -51,6 +61,10 @@ typedef struct {
     uint32_t fg_color;
     uint32_t x;
     uint32_t y;
+    escape_state_t state;
+    escape_state_t next_state;
+    unsigned params[MAX_PARAMS];
+    unsigned nparam;
 } fb_sink_t;
 
 static void fb_display(fb_sink_t *self, char_t character, uint32_t x, uint32_t y) {
@@ -75,6 +89,14 @@ static glyph_id_t ascii_to_glyph_id(unsigned char c) {
     return c - MIN_CHAR;
 }
 
+static char_t make_char(fb_sink_t *self, unsigned char c) {
+    return (char_t){.glyph = ascii_to_glyph_id(c)};
+}
+
+static char_t empty_char(void) {
+    return (char_t){.glyph = ascii_to_glyph_id(' ')};
+}
+
 static void maybe_scroll(fb_sink_t *self) {
     if (self->y < self->height) return;
 
@@ -91,7 +113,7 @@ static void maybe_scroll(fb_sink_t *self) {
         }
     }
 
-    char_t character = {.glyph = ascii_to_glyph_id(' ')};
+    char_t character = empty_char();
     uint32_t y = self->height - 1;
 
     for (uint32_t x = 0; x < self->width; x++) {
@@ -101,18 +123,124 @@ static void maybe_scroll(fb_sink_t *self) {
     self->y -= 1;
 }
 
+static void handle_esc(fb_sink_t *self, unsigned char c);
+
+static void handle_esc_esc(fb_sink_t *self, unsigned char c) {
+    switch (c) {
+    case '[':
+        self->state = ESC_PARAMS;
+        self->next_state = ESC_CSI;
+        self->nparam = 0;
+        break;
+    default: self->state = ESC_INIT; break;
+    }
+}
+
+static void handle_esc_params(fb_sink_t *self, unsigned char c) {
+    switch (c) {
+    case '0' ... '9':
+        if (self->nparam < MAX_PARAMS) {
+            self->params[self->nparam] *= 10;
+            self->params[self->nparam] += c - '0';
+        }
+        break;
+    case ':': break;
+    case ';':
+        if (self->nparam < MAX_PARAMS) self->nparam += 1;
+        break;
+    case '<' ... '?': break;
+    case ' ' ... '/':
+    case '@' ... '~':
+        self->nparam += 1;
+        self->state = ESC_PARAM_IGNORE;
+        return handle_esc(self, c);
+    default: self->state = ESC_INIT; break;
+    }
+}
+
+static void handle_esc_param_ignore(fb_sink_t *self, unsigned char c) {
+    switch (c) {
+    case ' ' ... '/': break;
+    case '@' ... '~': self->state = self->next_state; return handle_esc(self, c);
+    default: self->state = ESC_INIT; break;
+    }
+}
+
+static unsigned param(fb_sink_t *self, unsigned index, unsigned def) {
+    if (index < self->nparam && self->params[index] != 0) return self->params[index];
+    return def;
+}
+
+static void handle_csi_erase_line(fb_sink_t *self) {
+    char_t c = empty_char();
+
+    switch (param(self, 0, 0)) {
+    case 0:
+        for (uint32_t x = self->x; x < self->width; x++) {
+            fb_display(self, c, x, self->y);
+        }
+        break;
+    case 1:
+        for (uint32_t x = 0; x < self->x; x++) {
+            fb_display(self, c, x, self->y);
+        }
+        break;
+    case 2:
+        for (uint32_t x = 0; x < self->width; x++) {
+            fb_display(self, c, x, self->y);
+        }
+        break;
+    default: break;
+    }
+}
+
+static void handle_esc_csi(fb_sink_t *self, unsigned char c) {
+    self->state = ESC_INIT;
+
+    switch (c) {
+    case 'K': return handle_csi_erase_line(self);
+    }
+}
+
+static void handle_esc(fb_sink_t *self, unsigned char c) {
+    switch (self->state) {
+    case ESC_ESC: return handle_esc_esc(self, c);
+    case ESC_PARAMS: return handle_esc_params(self, c);
+    case ESC_PARAM_IGNORE: return handle_esc_param_ignore(self, c);
+    case ESC_CSI: return handle_esc_csi(self, c);
+    default: UNREACHABLE();
+    }
+}
+
 static void fb_write_single(fb_sink_t *self, unsigned char c) {
     switch (c) {
-    case '\n': self->y += 1; maybe_scroll(self); // fall through
-    case '\r': self->x = 0; return;
+    case 0: self->state = ESC_INIT; break;
+    case '\a': self->state = ESC_INIT; break;
+    case '\b':
+        self->x = self->x ? self->x - 1 : 0;
+        self->state = ESC_INIT;
+        break;
     case '\t':
         self->x = (self->x + 8) & ~7;
         if (self->x >= self->width) self->x = self->width - 1;
+        self->state = ESC_INIT;
+        return;
+    case '\n':
+    case '\v':
+    case '\f': self->y += 1; maybe_scroll(self); // fall through
+    case '\r':
+        self->state = ESC_INIT;
+        self->x = 0;
+        return;
+    case '\e': self->state = ESC_ESC; return;
+    }
+
+    if (self->state != ESC_INIT) {
+        handle_esc(self, c);
         return;
     }
 
-    char_t character = (char_t){.glyph = ascii_to_glyph_id(c)};
-    fb_display(self, character, self->x, self->y);
+    fb_display(self, make_char(self, c), self->x, self->y);
 
     self->x += 1;
 
