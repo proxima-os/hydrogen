@@ -5,6 +5,7 @@
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
+#include "fs/vfs.h"
 #include "hydrogen/eventqueue.h"
 #include "hydrogen/process.h"
 #include "hydrogen/signal.h"
@@ -409,12 +410,20 @@ int proc_clone(process_t **out) {
     process->alarm_event.func = alarm_trigger;
     process->alarm_task.func = alarm_send;
 
+    process->umask = current_thread->process->umask;
+    rcu_state_t state = rcu_read_lock();
+    process->work_dir = current_thread->process->work_dir;
+    process->root_dir = current_thread->process->root_dir;
+    dentry_ref(process->work_dir);
+    dentry_ref(process->root_dir);
+    rcu_read_unlock(state);
+
     obj_ref(&process->parent->base);
     mutex_acq(&process->parent->children_lock, 0, false);
     list_insert_tail(&process->parent->children, &process->parent_node);
     mutex_rel(&process->parent->children_lock);
 
-    rcu_state_t state = rcu_read_lock();
+    state = rcu_read_lock();
     pgroup_t *group = current_thread->process->group;
     pgroup_ref(group);
     rcu_read_unlock(state);

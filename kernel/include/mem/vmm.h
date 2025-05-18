@@ -23,7 +23,13 @@ typedef struct {
     void (*post_map)(mem_object_t *self, vmm_t *vmm, uintptr_t head, uintptr_t tail, unsigned flags, uint64_t offset);
     // if state_out isn't null, this function locks rcu without unlocking it, and writes the state to state_out.
     // this is done in such a way that the returned page stays valid until rcu is unlocked.
-    hydrogen_ret_t (*get_page)(mem_object_t *self, uint64_t index, rcu_state_t *state_out);
+    hydrogen_ret_t (*get_page)(
+            mem_object_t *self,
+            vmm_region_t *region,
+            uint64_t index,
+            rcu_state_t *state_out,
+            bool write
+    );
 } mem_object_ops_t;
 
 #define SHARED_VM_ID 0

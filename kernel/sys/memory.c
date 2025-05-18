@@ -476,7 +476,13 @@ int hydrogen_mem_object_resize(int object, size_t size) {
     int error = hnd_resolve(&data, object, OBJECT_MEMORY, HYDROGEN_MEM_OBJECT_WRITE);
     if (unlikely(error)) return error;
 
+    if (unlikely(!is_anon_mem_object((mem_object_t *)data.object))) {
+        error = EBADF;
+        goto ret;
+    }
+
     error = anon_mem_object_resize((mem_object_t *)data.object, size >> PAGE_SHIFT);
+ret:
     obj_deref(data.object);
     return error;
 }

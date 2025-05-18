@@ -1257,19 +1257,19 @@ void mem_object_init(mem_object_t *object) {
 int mem_object_read(mem_object_t *object, void *buffer, size_t count, uint64_t position) {
     if (unlikely(count == 0)) return 0;
 
-    const mem_object_ops_t *ops = (const mem_object_ops_t *)object;
+    const mem_object_ops_t *ops = (const mem_object_ops_t *)object->base.ops;
     if (unlikely(!ops->get_page)) return ENXIO;
 
     unsigned char buf[BUFFER_SIZE];
 
     do {
-        size_t offset = count & PAGE_MASK;
+        size_t offset = position & PAGE_MASK;
         size_t current = PAGE_SIZE - offset;
         if (current > count) current = count;
         if (current > sizeof(buf)) current = sizeof(buf);
 
         rcu_state_t state;
-        hydrogen_ret_t ret = ops->get_page(object, position >> PAGE_SHIFT, &state);
+        hydrogen_ret_t ret = ops->get_page(object, NULL, position >> PAGE_SHIFT, &state, false);
         if (unlikely(ret.error)) return ret.error;
         page_t *page = ret.pointer;
         memcpy(buf, page_to_virt(page) + offset, current);
@@ -1289,13 +1289,13 @@ int mem_object_read(mem_object_t *object, void *buffer, size_t count, uint64_t p
 int mem_object_write(mem_object_t *object, const void *buffer, size_t count, uint64_t position) {
     if (unlikely(count == 0)) return 0;
 
-    const mem_object_ops_t *ops = (const mem_object_ops_t *)object;
+    const mem_object_ops_t *ops = (const mem_object_ops_t *)object->base.ops;
     if (unlikely(!ops->get_page)) return ENXIO;
 
     unsigned char buf[BUFFER_SIZE];
 
     do {
-        size_t offset = count & PAGE_MASK;
+        size_t offset = position & PAGE_MASK;
         size_t current = PAGE_SIZE - offset;
         if (current > count) current = count;
         if (current > sizeof(buf)) current = sizeof(buf);
@@ -1304,7 +1304,7 @@ int mem_object_write(mem_object_t *object, const void *buffer, size_t count, uin
         if (unlikely(error)) return error;
 
         rcu_state_t state;
-        hydrogen_ret_t ret = ops->get_page(object, position >> PAGE_SHIFT, &state);
+        hydrogen_ret_t ret = ops->get_page(object, NULL, position >> PAGE_SHIFT, &state, true);
         if (unlikely(ret.error)) return ret.error;
         page_t *page = ret.pointer;
         memcpy(page_to_virt(page) + offset, buf, current);

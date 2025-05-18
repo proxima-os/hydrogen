@@ -31,14 +31,6 @@ _Static_assert(PAGE_SIZE >= 64, "PAGE_SIZE too small");
 #define LEVEL_COUNT (1ul << LEVEL_SHIFT)
 #define LEVEL_MASK (LEVEL_COUNT - 1)
 
-typedef struct {
-    mem_object_t base;
-    uintptr_t root;
-    size_t count;
-    size_t tables;
-    mutex_t update_lock;
-} anon_mem_object_t;
-
 static size_t level_index(size_t index, size_t level) {
     return (index >> (level * LEVEL_SHIFT)) & LEVEL_MASK;
 }
@@ -80,7 +72,7 @@ static page_t *get_noalloc(anon_mem_object_t *self, uint64_t index, rcu_state_t 
     void **curptr = NULL;
 
     for (;;) {
-        void *ptr = curptr ? rcu_read(curptr) : (void *)(root_value & ~PAGE_MASK);
+        void *ptr = curptr ? rcu_read(*curptr) : (void *)(root_value & ~PAGE_MASK);
 
         if (!ptr) {
             rcu_read_unlock(state);
@@ -98,7 +90,13 @@ static page_t *get_noalloc(anon_mem_object_t *self, uint64_t index, rcu_state_t 
     }
 }
 
-static hydrogen_ret_t anon_mem_object_get_page(mem_object_t *ptr, uint64_t index, rcu_state_t *state_out) {
+static hydrogen_ret_t anon_mem_object_get_page(
+        mem_object_t *ptr,
+        vmm_region_t *region,
+        uint64_t index,
+        rcu_state_t *state_out,
+        bool write
+) {
     anon_mem_object_t *self = (anon_mem_object_t *)ptr;
 
     void *ret = get_noalloc(self, index, state_out);
@@ -125,7 +123,7 @@ static hydrogen_ret_t anon_mem_object_get_page(mem_object_t *ptr, uint64_t index
             memset(ptr, 0, PAGE_SIZE);
 
             if (curptr) {
-                rcu_write(curptr, ptr);
+                rcu_write(*curptr, ptr);
             } else {
                 rcu_write(self->root, (uintptr_t)ptr | levels);
             }
@@ -134,7 +132,7 @@ static hydrogen_ret_t anon_mem_object_get_page(mem_object_t *ptr, uint64_t index
         if (levels == 0) {
             if (state_out) *state_out = rcu_read_lock(); // has to be done before releasing update_lock
             mutex_rel(&self->update_lock);
-            return ret_pointer(page_to_virt(ptr));
+            return ret_pointer(virt_to_page(ptr));
         }
 
         levels -= 1;
@@ -159,7 +157,7 @@ static size_t levels_to_tables(size_t levels, size_t count) {
     size_t sub_full_tables = 0;
 
     for (size_t i = levels; i > 0; i--) {
-        size_t index = level_index(i - 1, count - 1);
+        size_t index = level_index(count - 1, i - 1);
         ASSERT(i != levels || index >= 1);
 
         tables += sub_full_tables + 1;
@@ -170,25 +168,32 @@ static size_t levels_to_tables(size_t levels, size_t count) {
     return tables;
 }
 
-int anon_mem_object_create(mem_object_t **out, size_t pages) {
+int anon_mem_object_init(anon_mem_object_t *object, size_t pages) {
     size_t levels = count_to_levels(pages);
     size_t tables = levels_to_tables(levels, pages);
 
     size_t nreserve = tables + pages;
     if (nreserve != 0 && unlikely(!pmem_reserve(nreserve))) return ENOMEM;
 
-    anon_mem_object_t *object = vmalloc(sizeof(*object));
-    if (unlikely(!object)) {
-        if (nreserve != 0) pmem_unreserve(nreserve);
-        return ENOMEM;
-    }
-    memset(object, 0, sizeof(*object));
-
     object->base.base.ops = &ops.base;
     mem_object_init(&object->base);
     object->root = levels;
     object->count = pages;
     object->tables = tables;
+
+    return 0;
+}
+
+int anon_mem_object_create(mem_object_t **out, size_t pages) {
+    anon_mem_object_t *object = vmalloc(sizeof(*object));
+    if (unlikely(!object)) return ENOMEM;
+    memset(object, 0, sizeof(*object));
+
+    int error = anon_mem_object_init(object, pages);
+    if (unlikely(error)) {
+        vfree(object, sizeof(*object));
+        return error;
+    }
 
     *out = &object->base;
     return 0;
@@ -274,7 +279,6 @@ again: {
 }
 
 int anon_mem_object_resize(mem_object_t *ptr, size_t pages) {
-    if (ptr->base.ops != &ops.base) return EBADF;
     anon_mem_object_t *obj = (anon_mem_object_t *)ptr;
 
     size_t levels = count_to_levels(pages);
@@ -337,4 +341,8 @@ int anon_mem_object_resize(mem_object_t *ptr, size_t pages) {
 
     pmem_unreserve((old_pages - pages) + (old_tables - tables));
     return 0;
+}
+
+bool is_anon_mem_object(mem_object_t *obj) {
+    return obj->base.ops == &ops.base;
 }

@@ -1,9 +1,11 @@
 #include "sys/syscall.h"
 #include "arch/context.h"
 #include "arch/pmap.h"
+#include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "hydrogen/eventqueue.h"
+#include "hydrogen/filesystem.h"
 #include "hydrogen/handle.h"
 #include "hydrogen/hydrogen.h"
 #include "hydrogen/memory.h"
@@ -13,6 +15,7 @@
 #include "hydrogen/time.h"
 #include "hydrogen/types.h"
 #include "kernel/compiler.h"
+#include "kernel/filesystem.h"
 #include "kernel/return.h"
 #include "kernel/syscall.h"
 #include "kernel/types.h"
@@ -121,6 +124,50 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_GET_HOST_NAME: return hydrogen_get_host_name((void *)a0, a1);
     case SYSCALL_SET_HOST_NAME: return ret_error(hydrogen_set_host_name((const void *)a0, a1));
     case SYSCALL_PROCESS_ALARM: return hydrogen_process_alarm(a0, a1);
+    case SYSCALL_FS_CHDIR: return ret_error(hydrogen_fs_chdir(a0, a1, (const void *)a2, a3));
+    case SYSCALL_FS_CHROOT: return ret_error(hydrogen_fs_chroot(a0, a1, (const void *)a2, a3));
+    case SYSCALL_FS_UMASK: return hydrogen_fs_umask(a0, a1);
+    case SYSCALL_FS_CREATE: return ret_error(hydrogen_fs_create(a0, (const void *)a1, a2, a3, a4));
+    case SYSCALL_FS_SYMLINK: return ret_error(hydrogen_fs_symlink(a0, (const void *)a1, a2, (const void *)a3, a4));
+    case SYSCALL_FS_LINK: {
+        link_syscall_args_t args;
+        int error = verify_user_buffer(a0, sizeof(args));
+        if (unlikely(error)) return ret_error(error);
+
+        error = user_memcpy(&args, (const void *)a0, sizeof(args));
+        if (unlikely(error)) return ret_error(error);
+
+        return ret_error(
+                hydrogen_fs_link(args.rel, args.path, args.length, args.trel, args.target, args.tlength, args.flags)
+        );
+    }
+    case SYSCALL_FS_UNLINK: return ret_error(hydrogen_fs_unlink(a0, (const void *)a1, a2, a3));
+    case SYSCALL_FS_RENAME: return ret_error(hydrogen_fs_rename(a0, (const void *)a1, a2, a3, (const void *)a4, a5));
+    case SYSCALL_FS_ACCESS: return ret_error(hydrogen_fs_access(a0, (const void *)a1, a2, a3, a4));
+    case SYSCALL_FS_STAT:
+        return ret_error(hydrogen_fs_stat(a0, (const void *)a1, a2, (hydrogen_file_information_t *)a3, a4));
+    case SYSCALL_FS_READLINK: return hydrogen_fs_readlink(a0, (const void *)a1, a2, (void *)a3, a4);
+    case SYSCALL_FS_CHMOD: return ret_error(hydrogen_fs_chmod(a0, (const void *)a1, a2, a3, a4));
+    case SYSCALL_FS_CHOWN: return ret_error(hydrogen_fs_chown(a0, (const void *)a1, a2, a3, a4, a5));
+    case SYSCALL_FS_UTIME: {
+        utime_syscall_args_t args;
+        int error = verify_user_buffer(a3, sizeof(args));
+        if (unlikely(error)) return ret_error(error);
+
+        error = user_memcpy(&args, (const void *)a3, sizeof(args));
+        if (unlikely(error)) return ret_error(error);
+
+        return ret_error(hydrogen_fs_utime(a0, (const void *)a1, a2, args.atime, args.ctime, args.mtime, a4));
+    }
+    case SYSCALL_FS_TRUNCATE: return ret_error(hydrogen_fs_truncate(a0, (const void *)a1, a2, a3));
+    case SYSCALL_FS_OPEN: return hydrogen_fs_open(a0, (const void *)a1, a2, a3, a4);
+    case SYSCALL_FS_MMAP: return hydrogen_fs_mmap(a0, a1, a2, a3, a4, a5);
+    case SYSCALL_FS_PREAD: return hydrogen_fs_pread(a0, (void *)a1, a2, a3);
+    case SYSCALL_FS_PWRITE: return hydrogen_fs_pwrite(a0, (const void *)a1, a2, a3);
+    case SYSCALL_FS_SEEK: return hydrogen_fs_seek(a0, a1, a2);
+    case SYSCALL_FS_READ: return hydrogen_fs_read(a0, (void *)a1, a2);
+    case SYSCALL_FS_READDIR: return hydrogen_fs_readdir(a0, (void *)a1, a2);
+    case SYSCALL_FS_WRITE: return hydrogen_fs_write(a0, (const void *)a1, a2);
     default: return ret_error(ENOSYS);
     }
 }

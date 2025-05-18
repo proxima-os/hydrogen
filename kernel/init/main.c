@@ -3,6 +3,8 @@
 #include "arch/time.h"
 #include "cpu/cpudata.h"
 #include "drv/framebuffer.h" /* IWYU pragma: keep */
+#include "fs/ramfs.h"
+#include "fs/vfs.h"
 #include "hydrogen/memory.h"
 #include "hydrogen/types.h"
 #include "init/cmdline.h"
@@ -61,6 +63,7 @@ static void launch_init_process(void *ctx) {
     error = vmm_remap(current_thread->vmm, stack_base, USER_STACK_SIZE, HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE);
     if (unlikely(error)) panic("failed to make stack writable (%e)", error);
 
+    vfs_umask(current_thread->process, 022);
     arch_enter_user_mode_init(vdso_base + vdso_image.entry, stack_base, USER_STACK_SIZE);
 }
 
@@ -203,6 +206,20 @@ void schedule_kernel_task(task_t *task) {
     slist_insert_tail(&kernel_tasks, &task->node);
     spin_rel(&kernel_tasks_lock, state);
 }
+
+INIT_TEXT static void mount_rootfs(void) {
+    filesystem_t *fs;
+    int error = ramfs_create(&fs, 0755);
+    if (unlikely(error)) panic("failed to create rootfs (%e)", error);
+
+    error = vfs_mount(NULL, "/", 1, fs);
+    if (unlikely(error)) panic("failed to mount rootfs (%e)", error);
+
+    error = vfs_chroot(current_thread->process, NULL, "/", 1);
+    if (unlikely(error)) panic("failed to chroot to new root (%e)", error);
+}
+
+INIT_DEFINE(mount_rootfs, mount_rootfs, INIT_REFERENCE(vfs));
 
 INIT_TEXT static void verify_loader_revision(void) {
     if (!LIMINE_BASE_REVISION_SUPPORTED) {

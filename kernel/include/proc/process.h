@@ -14,6 +14,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+struct dentry;
+
 typedef struct pgroup pgroup_t;
 typedef struct process process_t;
 typedef struct session session_t;
@@ -27,7 +29,7 @@ typedef struct pid {
     session_t *session;
 } pid_t;
 
-typedef struct {
+typedef struct ident {
     refcnt_t references;
     uint32_t *groups;
     size_t num_groups;
@@ -77,6 +79,10 @@ struct process {
     uint64_t kern_time;
     uint64_t child_user_time;
     uint64_t child_kern_time;
+
+    uint32_t umask;
+    struct dentry *work_dir;
+    struct dentry *root_dir;
 
     spinlock_t alarm_lock;
     timer_event_t alarm_event;

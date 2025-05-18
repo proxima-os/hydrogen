@@ -14,6 +14,7 @@ typedef enum {
     OBJECT_PROCESS,
     OBJECT_NAMESPACE,
     OBJECT_EVENT_QUEUE,
+    OBJECT_FILE_DESCRIPTION,
 } object_type_t;
 
 typedef struct object object_t;

@@ -21,6 +21,9 @@ extern "C" {
 #define HYDROGEN_PROCESS_WAIT_SIGNAL (1u << 6)    /**< Allow the usage of #hydrogen_process_sigwait. */
 #define HYDROGEN_PROCESS_WAIT_STATUS (1u << 7)    /**< Allow the usage of #hydrogen_process_wait and friends. */
 #define HYDROGEN_PROCESS_ALARM (1u << 8)          /**< Allow the usage of #hydrogen_process_alarm. */
+#define HYDROGEN_PROCESS_CHDIR (1u << 9)          /**< Allow the working directory of the process to be changed. */
+#define HYDROGEN_PROCESS_CHROOT (1u << 10)        /**< Allow the root directory of the process to be changed. */
+#define HYDROGEN_PROCESS_UMASK (1u << 11)         /**< Allow the process's umask to be changed. */
 
 /**
  * Pseudo-handle that refers to the current process.
@@ -35,6 +38,9 @@ extern "C" {
  * - #HYDROGEN_PROCESS_CHANGE_SIGHAND
  * - #HYDROGEN_PROCESS_WAIT_SIGNAL
  * - #HYDROGEN_PROCESS_ALARM
+ * - #HYDROGEN_PROCESS_CHDIR
+ * - #HYDROGEN_PROCESS_CHROOT
+ * - #HYDROGEN_PROCESS_UMASK
  */
 #define HYDROGEN_THIS_PROCESS (-2)
 

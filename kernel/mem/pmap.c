@@ -1391,8 +1391,10 @@ static void create_new_user_mapping(
 
         hydrogen_ret_t ret = ops->get_page(
                 region->object,
+                region,
                 (region->offset + (address - region->head)) >> PAGE_SHIFT,
-                NULL
+                NULL,
+                type == PMAP_FAULT_WRITE
         );
         if (unlikely(ret.error)) {
             return user_fault_fail(
