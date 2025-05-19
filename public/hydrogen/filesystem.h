@@ -123,6 +123,9 @@ hydrogen_ret_t hydrogen_fs_readdir(int file, void *buffer, size_t size) __asm__(
 hydrogen_ret_t hydrogen_fs_read(int file, void *buffer, size_t size) __asm__("__hydrogen_fs_read");
 hydrogen_ret_t hydrogen_fs_write(int file, const void *buffer, size_t size) __asm__("__hydrogen_fs_write");
 
+hydrogen_ret_t hydrogen_fs_fflags(int file, int flags) __asm__("__hydrogen_fs_fflags");
+hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) __asm__("__hydrogen_fs_fpath");
+
 #ifdef __cplusplus
 };
 #endif

@@ -22,9 +22,9 @@
 #define FILE_MAKE_BITS (__S_ISVTX | FILE_PERM_BITS)
 #define FILE_MODE_BITS (__S_ISUID | __S_ISGID | FILE_MAKE_BITS)
 
-#define FILE_DESC_FLAGS (__O_APPEND)
-#define FILE_OPEN_FLAGS \
-    (FILE_DESC_FLAGS | __O_TRUNC | __O_NOFOLLOW | __O_EXCL | __O_DIRECTORY | __O_CREAT | __O_WRONLY | __O_RDONLY)
+#define FILE_PERM_FLAGS (__O_WRONLY | __O_RDONLY)
+#define FILE_DESC_FLAGS (__O_APPEND | FILE_PERM_FLAGS)
+#define FILE_OPEN_FLAGS (__O_TRUNC | __O_NOFOLLOW | __O_EXCL | __O_DIRECTORY | __O_CREAT | FILE_DESC_FLAGS)
 
 #define FILESYSTEM_READ_ONLY (1u << 0)
 
@@ -199,6 +199,9 @@ hydrogen_ret_t vfs_seek(file_t *file, hydrogen_seek_anchor_t anchor, int64_t off
 hydrogen_ret_t vfs_read(file_t *file, void *buffer, size_t size);
 hydrogen_ret_t vfs_readdir(file_t *file, void *buffer, size_t size);
 hydrogen_ret_t vfs_write(file_t *file, const void *buffer, size_t size);
+
+int vfs_fflags(file_t *file, int flags);
+hydrogen_ret_t vfs_fpath(file_t *file, void **buf_out, size_t *len_out);
 
 void dentry_ref(dentry_t *entry);
 void dentry_deref(dentry_t *entry);

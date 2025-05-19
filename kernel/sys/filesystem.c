@@ -512,3 +512,33 @@ hydrogen_ret_t hydrogen_fs_write(int file, const void *buffer, size_t size) {
     obj_deref(&fdesc->base);
     return ret;
 }
+
+hydrogen_ret_t hydrogen_fs_fflags(int file, int flags) {
+    file_t *fdesc;
+    int error = file_resolve(&fdesc, file, 0);
+    if (unlikely(error)) return ret_error(error);
+
+    flags = vfs_fflags(fdesc, flags);
+    obj_deref(&fdesc->base);
+    return ret_integer(flags);
+}
+
+hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) {
+    int error = verify_user_buffer((uintptr_t)buffer, size);
+    if (unlikely(error)) return ret_error(error);
+
+    file_t *fdesc;
+    error = file_resolve(&fdesc, file, 0);
+    if (unlikely(error)) return ret_error(error);
+
+    void *path;
+    size_t length;
+    hydrogen_ret_t ret = vfs_fpath(fdesc, &path, &length);
+    if (unlikely(ret.error)) return ret;
+
+    error = user_memcpy(buffer, path, size < length ? size : length);
+    vfree(path, ret.integer);
+    if (unlikely(error)) return ret_error(error);
+
+    return ret_integer(length);
+}

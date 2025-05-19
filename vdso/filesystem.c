@@ -115,3 +115,11 @@ EXPORT hydrogen_ret_t hydrogen_fs_read(int file, void *buffer, size_t size) {
 EXPORT hydrogen_ret_t hydrogen_fs_write(int file, const void *buffer, size_t size) {
     return SYSCALL3(SYSCALL_FS_WRITE, file, buffer, size);
 }
+
+EXPORT hydrogen_ret_t hydrogen_fs_fflags(int file, int flags) {
+    return SYSCALL2(SYSCALL_FS_FFLAGS, file, flags);
+}
+
+EXPORT hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) {
+    return SYSCALL3(SYSCALL_FS_FPATH, file, buffer, size);
+}

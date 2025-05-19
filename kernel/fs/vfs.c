@@ -1506,6 +1506,92 @@ hydrogen_ret_t vfs_write(file_t *file, const void *buffer, size_t size) {
     return ret;
 }
 
+int vfs_fflags(file_t *file, int flags) {
+    mutex_acq(&file->lock, 0, false);
+
+    int old = file->flags;
+    if (flags >= 0) file->flags = (old & FILE_PERM_FLAGS) | (flags & (FILE_DESC_FLAGS & ~FILE_PERM_FLAGS));
+
+    mutex_rel(&file->lock);
+    return old & FILE_DESC_FLAGS;
+}
+
+static size_t try_get_fpath(dentry_t *root, dentry_t *entry, void *buffer, size_t size) {
+    size_t total = 0;
+
+    dentry_ref(entry);
+
+    for (;;) {
+        mutex_acq(&entry->lock, 0, false);
+
+        if (entry == root) {
+            mutex_rel(&entry->lock);
+
+            if (total == 0) {
+                if (size != 0) *(char *)(buffer + (size - 1)) = '/';
+                total += 1;
+            }
+
+            return total;
+        }
+
+        if (entry->parent != NULL) {
+            size_t clen = entry->name.size + 1;
+
+            if (size >= clen) {
+                size -= clen;
+                *(char *)(buffer + size) = '/';
+                memcpy(buffer + size + 1, entry->name.data, entry->name.size);
+            }
+
+            total += clen;
+
+            dentry_t *parent = entry->parent;
+            dentry_ref(parent);
+            mutex_rel(&entry->lock);
+            dentry_deref(entry);
+            mutex_acq(&parent->lock, 0, false);
+            entry = parent;
+        } else {
+            dentry_t *mountpoint = entry->fs->mountpoint;
+            dentry_ref(mountpoint);
+            mutex_rel(&entry->lock);
+            dentry_deref(entry);
+            mutex_acq(&mountpoint->lock, 0, false);
+            entry = mountpoint;
+        }
+    }
+}
+
+hydrogen_ret_t vfs_fpath(file_t *file, void **buf_out, size_t *len_out) {
+    rcu_state_t state = rcu_read_lock();
+    dentry_t *root = current_thread->process->root_dir;
+    dentry_ref(root);
+    rcu_read_unlock(state);
+
+    void *buffer = NULL;
+    size_t capacity = 0;
+
+    for (;;) {
+        size_t len = try_get_fpath(root, file->path, buffer, capacity);
+
+        if (len <= capacity) {
+            memmove(buffer, buffer + (capacity - len), len);
+            *buf_out = buffer;
+            *len_out = len;
+            return ret_integer(capacity);
+        }
+
+        vfree(buffer, capacity);
+        buffer = vmalloc(len);
+        capacity = len;
+
+        if (unlikely(!buffer)) {
+            return ret_error(ENOMEM);
+        }
+    }
+}
+
 void dentry_ref(dentry_t *entry) {
     __atomic_fetch_add(&entry->references, 1, __ATOMIC_ACQUIRE);
 }

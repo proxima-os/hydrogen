@@ -168,6 +168,8 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_FS_READ: return hydrogen_fs_read(a0, (void *)a1, a2);
     case SYSCALL_FS_READDIR: return hydrogen_fs_readdir(a0, (void *)a1, a2);
     case SYSCALL_FS_WRITE: return hydrogen_fs_write(a0, (const void *)a1, a2);
+    case SYSCALL_FS_FFLAGS: return hydrogen_fs_fflags(a0, a1);
+    case SYSCALL_FS_FPATH: return hydrogen_fs_fpath(a0, (void *)a1, a2);
     default: return ret_error(ENOSYS);
     }
 }
