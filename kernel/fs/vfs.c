@@ -1533,12 +1533,12 @@ static size_t try_get_fpath(dentry_t *root, dentry_t *entry, void *buffer, size_
     size_t total = 0;
 
     dentry_ref(entry);
+    mutex_acq(&entry->lock, 0, false);
 
     for (;;) {
-        mutex_acq(&entry->lock, 0, false);
-
         if (entry == root) {
             mutex_rel(&entry->lock);
+            dentry_deref(entry);
 
             if (total == 0) {
                 if (size != 0) *(char *)(buffer + (size - 1)) = '/';
@@ -1592,6 +1592,7 @@ hydrogen_ret_t vfs_fpath(dentry_t *path, void **buf_out, size_t *len_out) {
             memmove(buffer, buffer + (capacity - len), len);
             *buf_out = buffer;
             *len_out = len;
+            dentry_deref(root);
             return ret_integer(capacity);
         }
 
@@ -1600,6 +1601,7 @@ hydrogen_ret_t vfs_fpath(dentry_t *path, void **buf_out, size_t *len_out) {
         capacity = len;
 
         if (unlikely(!buffer)) {
+            dentry_deref(root);
             return ret_error(ENOMEM);
         }
     }
