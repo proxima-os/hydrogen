@@ -210,6 +210,7 @@ static size_t get_free_idx(namespace_t *ns, size_t minimum) {
 
     uint64_t *bitmap = &ns->bitmap[idx / 64];
     size_t offset = idx % 64;
+    idx &= ~63;
 
     while (idx < ns->capacity) {
         uint64_t value = *bitmap >> offset;
