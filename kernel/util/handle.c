@@ -432,3 +432,39 @@ int namespace_resolve(handle_data_t *out, namespace_t *ns, int handle) {
     rcu_read_unlock(state);
     return likely(data != NULL) ? 0 : EBADF;
 }
+
+void namespace_handle_exec(namespace_t *ns) {
+    mutex_acq(&ns->update_lock, 0, false);
+    ASSERT(ns->reserved == 0);
+
+    uint64_t *bitmap = ns->bitmap;
+
+    for (size_t i = 0; i < ns->capacity; i += 64) {
+        uint64_t bmval = *bitmap++;
+        if (!bmval) continue;
+
+        handle_data_t **data = &ns->data[i];
+        uint64_t mask = 1;
+
+        do {
+            size_t extra = __builtin_ctzll(bmval);
+            bmval >>= extra;
+            mask <<= extra;
+            data += extra;
+
+            handle_data_t *cur = *data;
+
+            if ((cur->flags & HYDROGEN_HANDLE_EXEC_KEEP) == 0) {
+                rcu_write(*data, NULL);
+                bitmap[-1] &= ~mask;
+                rcu_sync();
+                obj_deref(cur->object);
+                vfree(cur, sizeof(*cur));
+            }
+
+            bmval &= ~1ull;
+        } while (bmval);
+    }
+
+    mutex_rel(&ns->update_lock);
+}

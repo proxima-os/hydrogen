@@ -34,9 +34,14 @@ static void vfs_init(void) {
 
 INIT_DEFINE(vfs, vfs_init);
 
-// inode must be locked
-static int access_inode(inode_t *inode, ident_t *ident, uint32_t type, bool use_real) {
-    if (ident->euid == 0) return 0;
+int access_inode(inode_t *inode, ident_t *ident, uint32_t type, bool use_real) {
+    if (ident->euid == 0) {
+        if ((type & HYDROGEN_FILE_EXEC) != 0 && (inode->mode & (__S_IXUSR | __S_IXGRP | __S_IXOTH)) == 0) {
+            return EACCES;
+        }
+
+        return 0;
+    }
 
     uint32_t mask = 0;
 
@@ -1276,7 +1281,7 @@ static void open_regular_file(file_t *file, dentry_t *entry, int flags) {
     inode_ref(entry->inode);
 }
 
-int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int flags, uint32_t mode) {
+int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int flags, uint32_t mode, ident_t *ident) {
     if (unlikely((flags & ~FILE_OPEN_FLAGS) != 0)) return EINVAL;
     if (unlikely((mode & ~FILE_PERM_BITS) != 0)) return EINVAL;
     if (unlikely((flags & (__O_CREAT | __O_DIRECTORY)) == (__O_CREAT | __O_DIRECTORY))) return EINVAL;
@@ -1288,10 +1293,9 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
     if ((flags & __O_EXCL) != 0) lookup_flags |= LOOKUP_MUST_NOT_EXIST;
     if ((flags & (__O_EXCL | __O_NOFOLLOW)) == 0) lookup_flags |= LOOKUP_FOLLOW_SYMLINKS;
 
-    ident_t *ident = ident_get(current_thread->process);
     dentry_t *entry;
     int error = flookup(&entry, rel, path, length, ident, lookup_flags);
-    if (unlikely(error)) goto ret;
+    if (unlikely(error)) return error;
 
     file_t *file;
 
@@ -1313,7 +1317,7 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
             error = ENOENT;
             mutex_rel(&parent->lock);
             vfree(file, sizeof(*file));
-            goto ret2;
+            goto ret;
         }
 
         mutex_acq(&inode->lock, 0, false);
@@ -1324,7 +1328,7 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
             mutex_rel(&inode->lock);
             mutex_rel(&parent->lock);
             vfree(file, sizeof(*file));
-            goto ret2;
+            goto ret;
         }
 
         error = inode->ops->directory.create(inode, entry, HYDROGEN_REGULAR_FILE, ident, mode);
@@ -1332,7 +1336,7 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
         mutex_rel(&parent->lock);
         if (unlikely(error)) {
             vfree(file, sizeof(*file));
-            goto ret2;
+            goto ret;
         }
         mutex_acq(&entry->inode->lock, 0, false);
         open_regular_file(file, entry, flags);
@@ -1403,18 +1407,16 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
 
         if (unlikely(ret.error)) {
             error = ret.error;
-            goto ret2;
+            goto ret;
         }
 
         file = ret.pointer;
     }
 
     *out = file;
-ret2:
+ret:
     mutex_rel(&entry->lock);
     dentry_deref(entry);
-ret:
-    ident_deref(ident);
     return error;
 }
 

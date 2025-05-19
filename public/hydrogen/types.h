@@ -15,6 +15,11 @@ typedef struct {
     };
 } hydrogen_ret_t;
 
+typedef struct {
+    const void *data;
+    size_t size;
+} hydrogen_string_t;
+
 #ifdef __cplusplus
 };
 #endif

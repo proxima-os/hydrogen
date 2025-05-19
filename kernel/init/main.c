@@ -5,7 +5,6 @@
 #include "drv/framebuffer.h" /* IWYU pragma: keep */
 #include "fs/ramfs.h"
 #include "fs/vfs.h"
-#include "hydrogen/memory.h"
 #include "hydrogen/types.h"
 #include "init/cmdline.h"
 #include "init/task.h"
@@ -18,8 +17,8 @@
 #include "proc/process.h"
 #include "proc/sched.h"
 #include "sections.h"
+#include "sys/exec.h"
 #include "sys/transition.h"
-#include "sys/vdso.h"
 #include "util/handle.h"
 #include "util/object.h"
 #include "util/panic.h"
@@ -28,42 +27,57 @@
 #include "util/spinlock.h"
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 __attribute__((used, section(".requests0"))) static LIMINE_REQUESTS_START_MARKER;
 __attribute__((used, section(".requests2"))) static LIMINE_REQUESTS_END_MARKER;
 
 LIMINE_REQ LIMINE_BASE_REVISION(3);
 
-#define USER_STACK_SIZE 0x800000
-
 static slist_t kernel_tasks;
 static thread_t *task_thread;
 static spinlock_t kernel_tasks_lock;
 
 static void launch_init_process(void *ctx) {
+    static const char filename[] = "/sbin/init";
+    static const char *envp[] = {"HOME=/root"};
+
     int error = namespace_create(&current_thread->namespace);
     if (unlikely(error)) panic("failed to create init process namespace (%e)", error);
 
-    error = vmm_create(&current_thread->vmm);
-    if (unlikely(error)) panic("failed to create init process vmm (%e)", error);
-    vmm_switch(current_thread->vmm);
+    file_t *image;
+    ident_t *ident = ident_get(current_thread->process);
+    error = vfs_open(&image, NULL, filename, sizeof(filename) - 1, 0, 0, ident);
+    if (unlikely(error)) panic("failed to open init executable (%e)", error);
 
-    hydrogen_ret_t ret = setsid(current_thread->process);
-    if (unlikely(ret.error)) panic("failed to create init session (%e)", ret.error);
+    hydrogen_string_t filename_arg = {filename, sizeof(filename) - 1};
+    hydrogen_string_t envp_args[sizeof(envp) / sizeof(*envp)];
 
-    ret = vmm_map_vdso(current_thread->vmm);
-    if (unlikely(ret.error)) panic("failed to map vdso (%e)", ret.error);
-    uintptr_t vdso_base = ret.integer;
+    for (size_t i = 0; i < sizeof(envp) / sizeof(*envp); i++) {
+        envp_args[i].data = envp[i];
+        envp_args[i].size = strlen(envp[i]);
+    }
 
-    ret = vmm_map(current_thread->vmm, 0, USER_STACK_SIZE + PAGE_SIZE, HYDROGEN_MEM_LAZY_RESERVE, NULL, 0, 0);
-    if (unlikely(ret.error)) panic("failed to allocate stack area (%e)", ret.error);
-    uintptr_t stack_base = ret.integer + PAGE_SIZE;
-
-    error = vmm_remap(current_thread->vmm, stack_base, USER_STACK_SIZE, HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE);
-    if (unlikely(error)) panic("failed to make stack writable (%e)", error);
+    exec_data_t data;
+    error = create_exec_data(
+            &data,
+            current_thread->process,
+            image,
+            ident,
+            1,
+            &filename_arg,
+            sizeof(envp) / sizeof(*envp),
+            envp_args,
+            false
+    );
+    ident_deref(ident);
+    if (unlikely(error)) panic("failed to launch init process (%e)", error);
 
     vfs_umask(current_thread->process, 022);
-    arch_enter_user_mode_init(vdso_base + vdso_image.entry, stack_base, USER_STACK_SIZE);
+    vmm_switch(data.vmm);
+
+    exec_finalize(&data);
+    arch_enter_user_mode(data.pc, data.sp);
 }
 
 static void run_init_task(const char *target_name, void *id, init_task_t *task, init_task_t **target) {

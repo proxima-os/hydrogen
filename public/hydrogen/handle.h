@@ -22,6 +22,9 @@ extern "C" {
 /** Keep this handle when cloning the namespace. Not allowed on namespace handles. */
 #define HYDROGEN_HANDLE_CLONE_KEEP (1u << 0)
 
+/** Keep this handle when using #hydrogen_thread_exec in the namespace. */
+#define HYDROGEN_HANDLE_EXEC_KEEP (1u << 1)
+
 #define HYDROGEN_NAMESPACE_CLONE (1u << 0)   /**< Allow this namespace to be cloned. */
 #define HYDROGEN_NAMESPACE_ADD (1u << 1)     /**< Allow handles to be added to this namespace. */
 #define HYDROGEN_NAMESPACE_REMOVE (1u << 2)  /**< Allow handles to be removed from this namespace. */

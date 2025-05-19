@@ -14,6 +14,7 @@ extern "C" {
 #define __O_NOFOLLOW (1 << 6)
 #define __O_TRUNC (1 << 7)
 #define __O_APPEND (1 << 8)
+#define __O_CLOEXEC (1 << 9)
 
 #define __AT_SYMLINK_FOLLOW (1 << 0)
 #define __AT_REMOVEDIR (1 << 1)

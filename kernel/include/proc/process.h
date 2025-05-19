@@ -188,6 +188,7 @@ typedef enum {
 } relation_t;
 
 ident_t *ident_get(process_t *process);
+ident_t *ident_copy(ident_t *ident);
 relation_t get_relation(ident_t *ident, uint32_t uid, uint32_t gid, bool use_real);
 void ident_ref(ident_t *ident);
 void ident_deref(ident_t *ident);

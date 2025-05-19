@@ -18,6 +18,7 @@
 #include "kernel/filesystem.h"
 #include "kernel/return.h"
 #include "kernel/syscall.h"
+#include "kernel/thread.h"
 #include "kernel/types.h"
 #include "sys/vdso.h"
 #include "util/panic.h"
@@ -170,6 +171,16 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_FS_WRITE: return hydrogen_fs_write(a0, (const void *)a1, a2);
     case SYSCALL_FS_FFLAGS: return hydrogen_fs_fflags(a0, a1);
     case SYSCALL_FS_FPATH: return hydrogen_fs_fpath(a0, (void *)a1, a2);
+    case SYSCALL_THREAD_EXEC: {
+        exec_syscall_args_t args;
+        int error = verify_user_buffer(a3, sizeof(args));
+        if (unlikely(error)) return ret_error(error);
+
+        error = user_memcpy(&args, (const void *)a3, sizeof(args));
+        if (unlikely(error)) return ret_error(error);
+
+        return hydrogen_thread_exec(a0, a1, a2, args.argc, args.argv, args.envc, args.envp, a4);
+    }
     default: return ret_error(ENOSYS);
     }
 }

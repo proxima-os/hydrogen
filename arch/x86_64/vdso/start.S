@@ -11,12 +11,8 @@ _start:
     .cfi_signal_frame
     .cfi_undefined rip
     .cfi_undefined rsp
-    test %rbx, %rbx
-    jz 1f
     mov %rbx, %rdi
     call x86_64_sigreturn
-    jmp 2f
-1:  call vdso_start
-2:  ud2
+    ud2
     .cfi_endproc
 .size _start, . - _start

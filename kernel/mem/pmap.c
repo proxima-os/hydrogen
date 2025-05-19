@@ -33,12 +33,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#if HYDROGEN_ASSERTIONS
-#define PT_PREPARE_DEBUG 1
-#else
-#define PT_PREPARE_DEBUG 0
-#endif
-
 static void *kernel_page_table;
 static mutex_t kernel_pt_lock;
 static bool kernel_pt_switched;
@@ -349,12 +343,12 @@ static size_t do_destroy_range(vmm_t *vmm, void *table, unsigned level, uintptr_
         pte_t pte = arch_pt_read(table, level, index);
 
         if (level == 0) {
-#if PT_PREPARE_DEBUG
-            ENSURE(pte != 0);
+            ASSERT(pte != 0);
+#if HYDROGEN_ASSERTIONS
             arch_pt_write(table, leaves, index, 0);
 #endif
 
-            if (pte != 0 && (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
+            if (pte != ARCH_PT_PREPARE_PTE) {
                 int flags = arch_pt_get_leaf_flags(level, pte);
 
                 if (flags & PMAP_ANONYMOUS) {
@@ -372,9 +366,7 @@ static size_t do_destroy_range(vmm_t *vmm, void *table, unsigned level, uintptr_
             leaves += 1;
         } else {
             ASSERT(pte != 0);
-#if PT_PREPARE_DEBUG
-            ENSURE(pte != ARCH_PT_PREPARE_PTE);
-#endif
+            ASSERT(pte != ARCH_PT_PREPARE_PTE);
             ASSERT(arch_pt_is_edge(level, pte));
 
             void *child = arch_pt_edge_target(level, pte);
@@ -425,7 +417,7 @@ void pmap_finish_destruction(vmm_t *vmm) {
             ENSURE(arch_pt_read(vmm->pmap.table, level, i) == 0);
         }
 
-        ASSERT(virt_to_page(vmm->pmap.table)->anon.references == 0);
+        ENSURE(virt_to_page(vmm->pmap.table)->anon.references == 0);
     }
 #endif
 
@@ -461,18 +453,13 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
         pte_t pte = arch_pt_read(table, level, index);
 
         if (level == 0 || !arch_pt_is_edge(level, pte)) {
-#if PT_PREPARE_DEBUG
-            ENSURE(pte != 0);
-#endif
-
+            ASSERT(pte != 0);
             ASSERT(table != kernel_page_table);
 
-            if (pte != 0) {
-                arch_pt_write(table, level, index, 0);
+            arch_pt_write(table, level, index, 0);
 
-                if (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE) {
-                    tlb_add_unmap_leaf(tlb, virt, level, pte);
-                }
+            if (pte != ARCH_PT_PREPARE_PTE) {
+                tlb_add_unmap_leaf(tlb, virt, level, pte);
             }
 
             leaves += 1;
@@ -504,46 +491,35 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
 
 static ssize_t do_prepare(vmm_t *vmm, void *table, unsigned level, uintptr_t virt, size_t size, tlb_ctx_t *tlb) {
     size_t index = arch_pt_get_index(virt, level);
-    ssize_t leaves;
-
-#if !PT_PREPARE_DEBUG
-    if (level == 0) {
-        leaves = arch_pt_get_index(virt + (size - 1), level) - index + 1;
-        virt_to_page(table)->anon.references += leaves;
-        return leaves;
-    }
-#endif
+    ssize_t leaves = 0;
 
     size_t entry_size = 1ul << arch_pt_entry_bits(level);
     size_t entry_mask = entry_size - 1;
 
     uintptr_t start_virt = virt;
 
-    leaves = 0;
-
     do {
-#if PT_PREPARE_DEBUG
+        pte_t pte = arch_pt_read(table, level, index);
+
         if (level == 0) {
-            ENSURE(arch_pt_read(table, level, index) == 0);
-            arch_pt_write(table, level, index, ARCH_PT_PREPARE_PTE);
+            if (pte == 0) {
+                arch_pt_write(table, level, index, ARCH_PT_PREPARE_PTE);
+                leaves += 1;
+            }
+
             index += 1;
-            leaves += 1;
             virt += entry_size;
             size -= entry_size;
             continue;
         }
-#endif
 
-        pte_t pte = arch_pt_read(table, level, index);
         void *child;
 
         size_t cur = entry_size - (virt & entry_mask);
         if (cur > size) cur = size;
 
         if (pte != 0) {
-#if PT_PREPARE_DEBUG
-            ENSURE(pte != ARCH_PT_PREPARE_PTE);
-#endif
+            ASSERT(pte != ARCH_PT_PREPARE_PTE);
             ASSERT(arch_pt_is_edge(level, pte));
             child = arch_pt_edge_target(level, pte);
         } else {
@@ -602,9 +578,7 @@ static void do_alloc(void *table, unsigned level, uintptr_t virt, size_t size, i
 
     do {
         if (level == 0) {
-#if PT_PREPARE_DEBUG
-            ENSURE(arch_pt_read(table, level, index) == ARCH_PT_PREPARE_PTE);
-#endif
+            ASSERT(arch_pt_read(table, level, index) == ARCH_PT_PREPARE_PTE);
             page_t *page = pmem_alloc();
             memset(&page->anon.deref_lock, 0, sizeof(page->anon.deref_lock));
             page->anon.references = 1;
@@ -619,9 +593,7 @@ static void do_alloc(void *table, unsigned level, uintptr_t virt, size_t size, i
 
         pte_t pte = arch_pt_read(table, level, index);
         ASSERT(pte != 0);
-#if PT_PREPARE_DEBUG
-        ENSURE(pte != ARCH_PT_PREPARE_PTE);
-#endif
+        ASSERT(pte != ARCH_PT_PREPARE_PTE);
         ASSERT(arch_pt_is_edge(level, pte));
         void *child = arch_pt_edge_target(level, pte);
 
@@ -668,9 +640,7 @@ static void do_map(void *table, unsigned level, uintptr_t virt, uint64_t phys, s
 
     do {
         if (level == 0) {
-#if PT_PREPARE_DEBUG
-            ENSURE(arch_pt_read(table, level, index) == ARCH_PT_PREPARE_PTE);
-#endif
+            ASSERT(arch_pt_read(table, level, index) == ARCH_PT_PREPARE_PTE);
             arch_pt_write(table, level, index, arch_pt_create_leaf(level, phys, flags));
             index += 1;
             virt += entry_size;
@@ -681,9 +651,7 @@ static void do_map(void *table, unsigned level, uintptr_t virt, uint64_t phys, s
 
         pte_t pte = arch_pt_read(table, level, index);
         ASSERT(pte != 0);
-#if PT_PREPARE_DEBUG
-        ENSURE(pte != ARCH_PT_PREPARE_PTE);
-#endif
+        ASSERT(pte != ARCH_PT_PREPARE_PTE);
         ASSERT(arch_pt_is_edge(level, pte));
         void *child = arch_pt_edge_target(level, pte);
 
@@ -737,13 +705,10 @@ static void do_remap(void *table, unsigned level, uintptr_t virt, size_t size, i
         pte_t pte = arch_pt_read(table, level, index);
 
         if (level == 0) {
-#if PT_PREPARE_DEBUG
-            ENSURE(pte != 0);
-#endif
-
+            ASSERT(pte != 0);
             ASSERT(table != kernel_page_table);
 
-            if (pte != 0 && !(PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
+            if (pte != ARCH_PT_PREPARE_PTE) {
                 int new_flags = flags;
 
                 if (arch_pt_get_leaf_flags(level, pte) & PMAP_COPY_ON_WRITE) new_flags &= ~PMAP_WRITABLE;
@@ -801,12 +766,10 @@ static void do_clone(void *src, void *dst, unsigned level, uintptr_t virt, size_
         pte_t pte = arch_pt_read(src, level, index);
 
         if (level == 0) {
-#if PT_PREPARE_DEBUG
-            ENSURE(pte != 0);
-            ENSURE(arch_pt_read(dst, level, index) == ARCH_PT_PREPARE_PTE);
-#endif
+            ASSERT(pte != 0);
+            ASSERT(arch_pt_read(dst, level, index) == ARCH_PT_PREPARE_PTE);
 
-            if (pte != 0 && (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
+            if (pte != ARCH_PT_PREPARE_PTE) {
                 int flags = arch_pt_get_leaf_flags(level, pte);
 
                 if (cow) {
@@ -835,10 +798,8 @@ static void do_clone(void *src, void *dst, unsigned level, uintptr_t virt, size_
 
             ASSERT(pte != 0);
             ASSERT(dpte != 0);
-#if PT_PREPARE_DEBUG
-            ENSURE(pte != ARCH_PT_PREPARE_PTE);
-            ENSURE(dpte != ARCH_PT_PREPARE_PTE);
-#endif
+            ASSERT(pte != ARCH_PT_PREPARE_PTE);
+            ASSERT(dpte != ARCH_PT_PREPARE_PTE);
             ASSERT(arch_pt_is_edge(level, pte));
             ASSERT(arch_pt_is_edge(level, dpte));
 
@@ -904,9 +865,7 @@ void pmap_move(vmm_t *svmm, uintptr_t src, vmm_t *dvmm, uintptr_t dest, size_t s
 
         for (unsigned i = rlevel; i > 0; i--) {
             ASSERT(pte != 0);
-#if PT_PREPARE_DEBUG
-            ENSURE(pte != PT_PREPARE_DEBUG);
-#endif
+            ASSERT(pte != ARCH_PT_PREPARE_PTE);
             ASSERT(arch_pt_is_edge(i, pte));
 
             void *child = arch_pt_edge_target(i, pte);
@@ -923,37 +882,29 @@ void pmap_move(vmm_t *svmm, uintptr_t src, vmm_t *dvmm, uintptr_t dest, size_t s
             pte = arch_pt_read(table, i - 1, index);
         }
 
-#if PT_PREPARE_DEBUG
-        ENSURE(pte != 0);
-#endif
+        ASSERT(pte != 0);
 
-        if (PT_PREPARE_DEBUG || pte != 0) {
-            arch_pt_write(table, 0, index, 0);
+        arch_pt_write(table, 0, index, 0);
 
-            if (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE) {
-                tlb_add_leaf(&tlb, src, true);
-            }
-
-            table = droot;
-            index = arch_pt_get_index(dest, rlevel);
-            pte_t dpte = arch_pt_read(table, rlevel, index);
-
-            for (unsigned i = rlevel; i > 0; i--) {
-                ASSERT(dpte != 0);
-#if PT_PREPARE_DEBUG
-                ENSURE(dpte != ARCH_PT_PREPARE_PTE);
-#endif
-                ASSERT(arch_pt_is_edge(i, dpte));
-                table = arch_pt_edge_target(i, dpte);
-                index = arch_pt_get_index(dest, i - 1);
-                dpte = arch_pt_read(table, i - 1, index);
-            }
-
-#if PT_PREPARE_DEBUG
-            ENSURE(dpte == ARCH_PT_PREPARE_PTE);
-#endif
-            arch_pt_write(table, 0, index, pte);
+        if (pte != ARCH_PT_PREPARE_PTE) {
+            tlb_add_leaf(&tlb, src, true);
         }
+
+        table = droot;
+        index = arch_pt_get_index(dest, rlevel);
+        pte_t dpte = arch_pt_read(table, rlevel, index);
+
+        for (unsigned i = rlevel; i > 0; i--) {
+            ASSERT(dpte != 0);
+            ASSERT(dpte != ARCH_PT_PREPARE_PTE);
+            ASSERT(arch_pt_is_edge(i, dpte));
+            table = arch_pt_edge_target(i, dpte);
+            index = arch_pt_get_index(dest, i - 1);
+            dpte = arch_pt_read(table, i - 1, index);
+        }
+
+        ASSERT(dpte == ARCH_PT_PREPARE_PTE);
+        arch_pt_write(table, 0, index, pte);
 
         src += advance;
         dest += advance;
@@ -1001,14 +952,11 @@ static void do_rmmap(void *table, unsigned level, uintptr_t virt, size_t size, t
         pte_t pte = arch_pt_read(table, level, index);
 
         if (level == 0 || !arch_pt_is_edge(level, pte)) {
-#if PT_PREPARE_DEBUG
-            ENSURE(pte != 0);
-#endif
-
+            ASSERT(pte != 0);
             ASSERT(table != kernel_page_table);
 
-            if (pte != 0 && (!PT_PREPARE_DEBUG || pte != ARCH_PT_PREPARE_PTE)) {
-                arch_pt_write(table, level, index, PT_PREPARE_DEBUG ? ARCH_PT_PREPARE_PTE : 0);
+            if (pte != ARCH_PT_PREPARE_PTE) {
+                arch_pt_write(table, level, index, ARCH_PT_PREPARE_PTE);
                 tlb_add_unmap_leaf(tlb, virt, level, pte);
             }
         } else {
@@ -1065,9 +1013,7 @@ static bool get_pte(get_pte_result_t *out, void *root, uintptr_t address) {
 
     for (;;) {
         if (unlikely(out->pte == 0)) return false;
-#if PT_PREPARE_DEBUG
         if (unlikely(out->pte == ARCH_PT_PREPARE_PTE)) return false;
-#endif
         if (out->level == 0 || !arch_pt_is_edge(out->level, out->pte)) return true;
 
         out->table = arch_pt_edge_target(out->level, out->pte);
@@ -1484,11 +1430,9 @@ static void do_handle_user_fault(
             return user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_MAPERR, EFAULT);
         }
 
-#if PT_PREPARE_DEBUG
         if (unlikely(result.pte != ARCH_PT_PREPARE_PTE)) {
             return user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_MAPERR, EFAULT);
         }
-#endif
 
         return create_new_user_mapping(context, vmm, pc, address, type, flags, &result);
     }

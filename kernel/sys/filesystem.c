@@ -378,7 +378,9 @@ hydrogen_ret_t hydrogen_fs_open(int rel, const void *path, size_t length, int fl
     }
 
     file_t *file;
-    error = vfs_open(&file, frel, kpath, length, flags, mode);
+    ident_t *ident = ident_get(current_thread->process);
+    error = vfs_open(&file, frel, kpath, length, flags, mode, ident);
+    ident_deref(ident);
     if (unlikely(error)) goto err4;
 
     object_rights_t rights = 0;
@@ -387,6 +389,7 @@ hydrogen_ret_t hydrogen_fs_open(int rel, const void *path, size_t length, int fl
 
     uint32_t handle_flags = 0;
     if ((flags & __O_CLOFORK) == 0) handle_flags |= HYDROGEN_HANDLE_CLONE_KEEP;
+    if ((flags & __O_CLOEXEC) == 0) handle_flags |= HYDROGEN_HANDLE_EXEC_KEEP;
     int handle = hnd_alloc_reserved(current_thread->namespace, &file->base, rights, handle_flags, data);
 
     vfree(kpath, length);

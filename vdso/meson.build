@@ -15,7 +15,6 @@ vdso_sources += files(
     'hydrogen.c',
     'memory.c',
     'process.c',
-    'start.c',
     'thread.c',
     'time.c',
 )

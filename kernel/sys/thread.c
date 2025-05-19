@@ -4,6 +4,7 @@
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
+#include "fs/vfs.h"
 #include "hydrogen/handle.h"
 #include "hydrogen/memory.h"
 #include "hydrogen/process.h"
@@ -17,6 +18,7 @@
 #include "proc/process.h"
 #include "proc/sched.h"
 #include "proc/signal.h"
+#include "sys/exec.h"
 #include "sys/handle.h"
 #include "sys/memory.h"
 #include "sys/process.h"
@@ -137,6 +139,118 @@ err4:
     vfree(ctx, sizeof(*ctx));
 err3:
     if (vmm_hnd != HYDROGEN_THIS_VMM) obj_deref(&vmm->base);
+err2:
+    if (namespace != HYDROGEN_THIS_NAMESPACE) obj_deref(&ns->base);
+err:
+    if (process != HYDROGEN_THIS_PROCESS) obj_deref(&proc->base);
+    return ret_error(error);
+}
+
+static _Noreturn void do_exec(void *ctx) {
+    exec_data_t *data = ctx;
+    exec_finalize(data);
+    uintptr_t pc = data->pc;
+    uintptr_t sp = data->sp;
+    vfree(data, sizeof(*data));
+    arch_enter_user_mode(pc, sp);
+}
+
+hydrogen_ret_t hydrogen_thread_exec(
+        int process,
+        int namespace,
+        int image,
+        size_t argc,
+        const hydrogen_string_t *argv,
+        size_t envc,
+        const hydrogen_string_t *envp,
+        uint32_t flags
+) {
+    if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
+
+    int error = verify_user_buffer((uintptr_t)argv, argc * sizeof(*argv));
+    if (unlikely(error)) return ret_error(error);
+
+    error = verify_user_buffer((uintptr_t)envp, envc * sizeof(*envp));
+    if (unlikely(error)) return ret_error(error);
+
+    process_t *proc;
+    error = process_or_this(&proc, process, THIS_PROCESS_RIGHTS);
+    if (unlikely(error)) return ret_error(error);
+
+    namespace_t *ns;
+    error = namespace_or_this(&ns, namespace, THIS_NAMESPACE_RIGHTS);
+    if (unlikely(error)) goto err;
+
+    handle_data_t data;
+    error = hnd_resolve(&data, image, OBJECT_FILE_DESCRIPTION, 0);
+    if (unlikely(error)) goto err2;
+    file_t *file = (file_t *)data.object;
+
+    exec_data_t *exec_data = vmalloc(sizeof(*exec_data));
+    if (unlikely(!exec_data)) {
+        error = ENOMEM;
+        goto err3;
+    }
+
+    ident_t *ident = ident_get(current_thread->process);
+    error = create_exec_data(exec_data, proc, file, ident, argc, argv, envc, envp, true);
+    ident_deref(ident);
+    if (unlikely(error)) goto err4;
+
+    if (proc == current_thread->process) {
+        obj_deref(&file->base);
+
+        mutex_acq(&proc->threads_lock, 0, false);
+        __atomic_store_n(&proc->exiting, true, __ATOMIC_RELEASE);
+
+        LIST_FOREACH(proc->threads, thread_t, process_node, thread) {
+            if (thread != current_thread) {
+                sched_interrupt(thread, true);
+            }
+        }
+
+        proc_wait_until_single_threaded();
+        __atomic_store_n(&proc->exiting, false, __ATOMIC_RELEASE);
+        mutex_rel(&proc->threads_lock);
+
+        if (process != HYDROGEN_THIS_PROCESS) obj_deref(&proc->base);
+        if (namespace != HYDROGEN_THIS_NAMESPACE) obj_deref(&current_thread->namespace->base);
+        obj_deref(&current_thread->vmm->base);
+
+        current_thread->namespace = ns;
+        current_thread->vmm = exec_data->vmm;
+
+        do_exec(exec_data);
+    }
+
+    thread_t *thread;
+    error = sched_create_thread(&thread, do_exec, exec_data, NULL, NULL, THREAD_USER);
+    if (unlikely(error)) goto err5;
+
+    thread->vmm = exec_data->vmm;
+    thread->namespace = ns;
+    exec_data->vmm = NULL;
+    obj_ref(&ns->base);
+
+    hydrogen_ret_t ret = finalize_thread(proc, thread, flags);
+    obj_deref(&thread->base);
+    if (unlikely(ret.error)) {
+        error = ret.error;
+        goto err5;
+    }
+
+    obj_deref(&file->base);
+
+    if (namespace != HYDROGEN_THIS_NAMESPACE) obj_deref(&ns->base);
+    if (process != HYDROGEN_THIS_PROCESS) obj_deref(&proc->base);
+
+    return ret;
+err5:
+    free_exec_data(exec_data);
+err4:
+    vfree(exec_data, sizeof(*exec_data));
+err3:
+    obj_deref(&file->base);
 err2:
     if (namespace != HYDROGEN_THIS_NAMESPACE) obj_deref(&ns->base);
 err:

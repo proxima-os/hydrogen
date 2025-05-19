@@ -34,7 +34,9 @@ int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible) {
         list_insert_tail(&mutex->waiters, &current_thread->wait_node);
         sched_prepare_wait(interruptible);
         spin_rel_noirq(&mutex->lock);
+        preempt_unlock(state);
         status = sched_perform_wait(deadline);
+        state = preempt_lock();
         spin_acq_noirq(&mutex->lock);
 
         if (status) {

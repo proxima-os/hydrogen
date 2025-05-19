@@ -483,10 +483,12 @@ static vmm_region_t *get_next(vmm_t *vmm, vmm_region_t *prev) {
     return prev ? LIST_NEXT(*prev, vmm_region_t, node) : LIST_HEAD(vmm->regions, vmm_region_t, node);
 }
 
-static void process_unmap(vmm_t *vmm, uintptr_t head, uintptr_t tail, bool reserved) {
+static void process_unmap(vmm_t *vmm, uintptr_t head, uintptr_t tail, bool reserved, bool remove_instead_of_unmap) {
     size_t pages = (tail - head + 1) >> PAGE_SHIFT;
 
-    pmap_unmap(vmm, head, tail - head + 1);
+    if (remove_instead_of_unmap) pmap_rmmap(vmm, head, tail - head + 1);
+    else pmap_unmap(vmm, head, tail - head + 1);
+
     vmm->num_mapped -= pages;
     if (reserved) vmm->num_reserved -= reserved;
 }
@@ -500,7 +502,8 @@ static int remove_overlapping_regions(
         vmm_region_t **prev_inout,
         vmm_region_t **next_inout,
         uintptr_t head,
-        uintptr_t tail
+        uintptr_t tail,
+        bool remove_instead_of_unmap
 ) {
     vmm_region_t *prev = *prev_inout;
     vmm_region_t *next = *next_inout;
@@ -534,7 +537,7 @@ static int remove_overlapping_regions(
             if (unlikely(!nreg)) return ENOMEM;
             memset(nreg, 0, sizeof(*nreg));
 
-            process_unmap(vmm, head, tail, need_reserve_memory(cur->flags));
+            process_unmap(vmm, head, tail, need_reserve_memory(cur->flags), remove_instead_of_unmap);
 
             nreg->vmm = vmm;
             nreg->head = tail + 1;
@@ -556,7 +559,7 @@ static int remove_overlapping_regions(
         } else if (cur->head < head) {
             // Needs to be truncated
             ASSERT(LIST_PREV(*cur, vmm_region_t, node) == prev);
-            process_unmap(vmm, head, cur->tail, need_reserve_memory(cur->flags));
+            process_unmap(vmm, head, cur->tail, need_reserve_memory(cur->flags), remove_instead_of_unmap);
 
             cur->tail = head - 1;
 
@@ -565,7 +568,7 @@ static int remove_overlapping_regions(
         } else if (cur->tail > tail) {
             // Needs to be truncated and moved
             ASSERT(LIST_NEXT(*cur, vmm_region_t, node) == next);
-            process_unmap(vmm, cur->head, tail, need_reserve_memory(cur->flags));
+            process_unmap(vmm, cur->head, tail, need_reserve_memory(cur->flags), remove_instead_of_unmap);
 
             tree_mov(vmm, cur, tail + 1);
 
@@ -573,7 +576,7 @@ static int remove_overlapping_regions(
             return 0;
         } else {
             // Needs to be completely removed
-            process_unmap(vmm, cur->head, cur->tail, need_reserve_memory(cur->flags));
+            process_unmap(vmm, cur->head, cur->tail, need_reserve_memory(cur->flags), remove_instead_of_unmap);
 
             vmm_region_t *n = LIST_NEXT(*cur, vmm_region_t, node);
 
@@ -677,7 +680,7 @@ static int do_map(
         return ENOMEM;
     }
 
-    int error = remove_overlapping_regions(vmm, &prev, &next, head, tail);
+    int error = remove_overlapping_regions(vmm, &prev, &next, head, tail, true);
     if (unlikely(error)) {
         pmap_unmap(vmm, head, tail - head + 1);
         if (reserve) pmem_unreserve(pages);
@@ -1227,7 +1230,7 @@ int vmm_unmap(vmm_t *vmm, uintptr_t address, size_t size) {
     vmm_region_t *prev, *next;
     get_nonoverlap_bounds(vmm, address, tail, &prev, &next);
 
-    int error = remove_overlapping_regions(vmm, &prev, &next, address, tail);
+    int error = remove_overlapping_regions(vmm, &prev, &next, address, tail, false);
     rmutex_rel(&vmm->lock);
     return error;
 }

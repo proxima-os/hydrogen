@@ -24,6 +24,7 @@ kernel_sources += files(
     'proc/sched.c',
     'proc/signal.c',
     'sys/eventqueue.c',
+    'sys/exec.c',
     'sys/filesystem.c',
     'sys/handle.c',
     'sys/hydrogen.c',

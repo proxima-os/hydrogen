@@ -46,10 +46,6 @@ _Noreturn void arch_enter_user_mode(uintptr_t pc, uintptr_t sp) {
     arch_enter_user_mode_context(&context);
 }
 
-_Noreturn void arch_enter_user_mode_init(uintptr_t pc, uintptr_t stack_base, size_t stack_size) {
-    arch_enter_user_mode(pc, stack_base + stack_size);
-}
-
 _Noreturn void arch_enter_user_mode_context(arch_context_t *context) {
     ASSERT(current_thread->user_thread);
     current_thread->user_ctx = context;

@@ -1,3 +1,4 @@
+#include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
 #include "hydrogen/fcntl.h"
@@ -10,6 +11,7 @@
 #include "limine.h"
 #include "mem/memmap.h"
 #include "mem/pmem.h"
+#include "proc/process.h"
 #include "sections.h"
 #include "string.h"
 #include "util/object.h"
@@ -48,7 +50,7 @@ static uint64_t parse_oct_field(unsigned char *buf, size_t size) {
     return value;
 }
 
-static file_t *open_directory(file_t *dest, void **name_buf, size_t *name_len) {
+static file_t *open_directory(file_t *dest, void **name_buf, size_t *name_len, ident_t *ident) {
     char *name_start = *name_buf;
     char *name = name_start;
     size_t len = *name_len;
@@ -82,7 +84,7 @@ static file_t *open_directory(file_t *dest, void **name_buf, size_t *name_len) {
         }
 
         file_t *child;
-        error = vfs_open(&child, dest, name, complen, __O_DIRECTORY, 0);
+        error = vfs_open(&child, dest, name, complen, __O_DIRECTORY, 0, ident);
         obj_deref(&dest->base);
         if (unlikely(error)) {
             printk("initrd: failed to open parent directory %S for %S (%e)\n",
@@ -104,7 +106,7 @@ static file_t *open_directory(file_t *dest, void **name_buf, size_t *name_len) {
     return dest;
 }
 
-static bool extract_single(file_t *dest, void *data, size_t size) {
+static bool extract_single(file_t *dest, void *data, size_t size, ident_t *ident) {
     static char magic[] = "ustar";
     NONSTRING static char version[2] = "00";
 
@@ -165,10 +167,10 @@ static bool extract_single(file_t *dest, void *data, size_t size) {
         case 0:
         case '0':
         case '7':
-            parent = open_directory(dest, &name, &name_len);
+            parent = open_directory(dest, &name, &name_len, ident);
 
             if (parent) {
-                int error = vfs_open(&file, parent, name, name_len, __O_WRONLY | __O_CREAT | __O_EXCL, mode);
+                int error = vfs_open(&file, parent, name, name_len, __O_WRONLY | __O_CREAT | __O_EXCL, mode, ident);
 
                 if (error != 0) {
                     printk("initrd: failed to create regular file %S (%e)\n",
@@ -218,7 +220,7 @@ static bool extract_single(file_t *dest, void *data, size_t size) {
             }
             break;
         case '1':
-            parent = open_directory(dest, &name, &name_len);
+            parent = open_directory(dest, &name, &name_len, ident);
 
             if (parent) {
                 int error = vfs_link(
@@ -251,7 +253,7 @@ static bool extract_single(file_t *dest, void *data, size_t size) {
             }
             break;
         case '2':
-            parent = open_directory(dest, &name, &name_len);
+            parent = open_directory(dest, &name, &name_len, ident);
 
             if (parent) {
                 int error = vfs_symlink(
@@ -283,7 +285,7 @@ static bool extract_single(file_t *dest, void *data, size_t size) {
             break;
         case '5':
             size = 0;
-            parent = open_directory(dest, &name, &name_len);
+            parent = open_directory(dest, &name, &name_len, ident);
 
             if (parent) {
                 int error = vfs_create(parent, name, name_len, HYDROGEN_DIRECTORY, mode);
@@ -293,7 +295,7 @@ static bool extract_single(file_t *dest, void *data, size_t size) {
                     file = NULL;
                     errored = true;
                 } else {
-                    error = vfs_open(&file, parent, name, name_len, __O_DIRECTORY, 0);
+                    error = vfs_open(&file, parent, name, name_len, __O_DIRECTORY, 0, ident);
 
                     if (unlikely(error)) {
                         printk("initrd: failed to open directory %S (%e)\n", path, path_len, error);
@@ -357,16 +359,19 @@ static void extract_initrd(void) {
 
     bool errored = false;
 
+    ident_t *ident = ident_get(current_thread->process);
+
     file_t *dest;
-    int error = vfs_open(&dest, NULL, "", 0, __O_DIRECTORY, 0);
+    int error = vfs_open(&dest, NULL, "", 0, __O_DIRECTORY, 0, ident);
     if (unlikely(error)) panic("initrd: failed to open destination directory (%e)", error);
 
     for (uint64_t i = 0; i < module_req.response->module_count; i++) {
         struct limine_file *file = module_req.response->modules[i];
-        if (!extract_single(dest, file->address, file->size)) errored = true;
+        if (!extract_single(dest, file->address, file->size, ident)) errored = true;
     }
 
     obj_deref(&dest->base);
+    ident_deref(ident);
 
     if (errored) panic("initrd: extraction failed");
 }

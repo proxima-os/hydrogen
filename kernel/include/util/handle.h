@@ -9,7 +9,7 @@
 #include "util/object.h"
 #include <stdint.h>
 
-#define HANDLE_FLAGS (HYDROGEN_HANDLE_CLONE_KEEP)
+#define HANDLE_FLAGS (HYDROGEN_HANDLE_CLONE_KEEP | HYDROGEN_HANDLE_EXEC_KEEP)
 #define NS_ILL_FLAGS (HYDROGEN_HANDLE_CLONE_KEEP)
 
 typedef struct {
@@ -43,6 +43,7 @@ hydrogen_ret_t namespace_add(
 );
 int namespace_remove(namespace_t *ns, int handle);
 int namespace_resolve(handle_data_t *out, namespace_t *ns, int handle);
+void namespace_handle_exec(namespace_t *ns);
 
 int hnd_reserve(namespace_t *ns);
 void hnd_unreserve(namespace_t *ns);

@@ -24,9 +24,11 @@
 
 #define FILE_PERM_FLAGS (__O_WRONLY | __O_RDONLY)
 #define FILE_DESC_FLAGS (__O_APPEND | FILE_PERM_FLAGS)
-#define FILE_OPEN_FLAGS (__O_TRUNC | __O_NOFOLLOW | __O_EXCL | __O_DIRECTORY | __O_CREAT | FILE_DESC_FLAGS)
+#define FILE_OPEN_FLAGS \
+    (__O_CLOEXEC | __O_TRUNC | __O_NOFOLLOW | __O_EXCL | __O_DIRECTORY | __O_CREAT | FILE_DESC_FLAGS)
 
 #define FILESYSTEM_READ_ONLY (1u << 0)
+#define FILESYSTEM_NO_SETUID (1u << 1)
 
 typedef struct dentry dentry_t;
 typedef struct file file_t;
@@ -155,6 +157,9 @@ struct inode {
 
 INIT_DECLARE(vfs);
 
+// inode must be locked
+int access_inode(inode_t *inode, struct ident *ident, uint32_t type, bool use_real);
+
 int vfs_mount(file_t *file, const void *path, size_t length, filesystem_t *fs);
 
 int vfs_chdir(struct process *process, file_t *file, const void *path, size_t length);
@@ -183,7 +188,7 @@ int vfs_utime(
 );
 int vfs_truncate(file_t *rel, const void *path, size_t length, uint64_t size);
 
-int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int flags, uint32_t mode);
+int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int flags, uint32_t mode, ident_t *ident);
 hydrogen_ret_t vfs_mmap(
         file_t *file,
         object_rights_t rights,

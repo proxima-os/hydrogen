@@ -80,7 +80,7 @@ static page_t *get_noalloc(anon_mem_object_t *self, uint64_t index, rcu_state_t 
         }
 
         if (levels == 0) {
-            if (*state_out) *state_out = state;
+            if (state_out) *state_out = state;
             else rcu_read_unlock(state);
             return virt_to_page(ptr);
         }
