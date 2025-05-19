@@ -21,7 +21,7 @@
 #include "kernel/thread.h"
 #include "kernel/types.h"
 #include "sys/vdso.h"
-#include "util/panic.h"
+#include "util/printk.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -39,7 +39,15 @@ static bool is_in_vdso(uintptr_t pc) {
 
 bool prepare_syscall(uintptr_t pc) {
     if (unlikely(!is_in_vdso(pc))) {
-        panic("Syscall from outside vDSO. TODO: Send a signal here instead of panicking");
+        printk("syscall: attempted to invoke syscall from outside vDSO (pc: %Z), sending SIGSYS\n", pc);
+        __siginfo_t sig = {.__signo = __SIGSYS};
+        queue_signal(
+                current_thread->process,
+                &current_thread->sig_target,
+                &sig,
+                QUEUE_SIGNAL_FORCE,
+                &current_thread->fault_sig
+        );
         return false;
     }
 
