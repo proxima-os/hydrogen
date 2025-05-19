@@ -1,6 +1,7 @@
 #pragma once
 
 #include "arch/irq.h"
+#include "proc/sched.h"
 #include "util/list.h"
 #include <stdarg.h>
 
@@ -10,18 +11,22 @@ typedef struct printk_sink {
     void (*flush)(struct printk_sink *self);
 } printk_sink_t;
 
+typedef struct {
+    irq_state_t irq;
+    preempt_state_t preempt;
+} printk_state_t;
+
 void printk_add(printk_sink_t *sink);
 void printk_remove(printk_sink_t *sink);
 
 void vprintk(const char *format, va_list args);
 void printk(const char *format, ...);
 
-irq_state_t printk_lock(void);
-void printk_unlock(irq_state_t state);
+printk_state_t printk_lock(void);
+void printk_unlock(printk_state_t state);
 
 // Unlike with vprintk and printk, the caller is responsible for locking when using these functions.
 void printk_raw_formatv(const char *format, va_list args);
 void printk_raw_format(const char *format, ...);
 void printk_raw_write(const void *data, size_t count);
 void printk_raw_flush(void);
-size_t printk_raw_read(void *buffer, size_t count);

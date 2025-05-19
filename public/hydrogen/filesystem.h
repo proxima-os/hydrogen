@@ -21,6 +21,7 @@ typedef enum {
     HYDROGEN_REGULAR_FILE,
     HYDROGEN_DIRECTORY,
     HYDROGEN_SYMLINK,
+    HYDROGEN_CHARACTER_DEVICE,
 } hydrogen_file_type_t;
 
 typedef struct {

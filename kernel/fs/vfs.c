@@ -444,8 +444,18 @@ static void use_umask(uint32_t *mode) {
     *mode &= ~__atomic_load_n(&current_thread->process->umask, __ATOMIC_ACQUIRE);
 }
 
-int vfs_create(file_t *rel, const void *path, size_t length, hydrogen_file_type_t type, uint32_t mode) {
-    if (unlikely(type != HYDROGEN_REGULAR_FILE && type != HYDROGEN_DIRECTORY)) return EINVAL;
+int vfs_create(
+        file_t *rel,
+        const void *path,
+        size_t length,
+        hydrogen_file_type_t type,
+        uint32_t mode,
+        fs_device_t *device
+) {
+    if (unlikely(type != HYDROGEN_REGULAR_FILE && type != HYDROGEN_DIRECTORY && type != HYDROGEN_CHARACTER_DEVICE)) {
+        return EINVAL;
+    }
+
     if (unlikely((mode & ~FILE_MAKE_BITS) != 0)) return EINVAL;
     use_umask(&mode);
 
@@ -474,7 +484,7 @@ int vfs_create(file_t *rel, const void *path, size_t length, hydrogen_file_type_
     error = access_inode(parent->inode, ident, HYDROGEN_FILE_WRITE, false);
     if (unlikely(error)) goto ret3;
 
-    error = parent->inode->ops->directory.create(parent->inode, entry, type, ident, mode);
+    error = parent->inode->ops->directory.create(parent->inode, entry, type, ident, mode, device);
     if (unlikely(error)) goto ret3;
 
     parent->real_count += 1;
@@ -1272,13 +1282,7 @@ static const file_ops_t regular_file_ops = {
 
 static void open_regular_file(file_t *file, dentry_t *entry, int flags) {
     memset(file, 0, sizeof(*file));
-    file->base.ops = &regular_file_ops.base;
-    obj_init(&file->base, OBJECT_FILE_DESCRIPTION);
-    file->path = entry;
-    file->inode = entry->inode;
-    file->flags = flags;
-    dentry_ref(entry);
-    inode_ref(entry->inode);
+    init_file(file, &regular_file_ops, entry->inode, entry, flags);
 }
 
 int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int flags, uint32_t mode, ident_t *ident) {
@@ -1331,7 +1335,7 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
             goto ret;
         }
 
-        error = inode->ops->directory.create(inode, entry, HYDROGEN_REGULAR_FILE, ident, mode);
+        error = inode->ops->directory.create(inode, entry, HYDROGEN_REGULAR_FILE, ident, mode, NULL);
         mutex_rel(&inode->lock);
         mutex_rel(&parent->lock);
         if (unlikely(error)) {
@@ -1400,6 +1404,13 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
             break;
         }
         case HYDROGEN_SYMLINK: ret = ret_error(ELOOP); break;
+        case HYDROGEN_CHARACTER_DEVICE:
+            if (entry->inode->device) {
+                ret = entry->inode->device->ops->open(entry->inode->device, entry->inode, entry, flags);
+            } else {
+                ret = ret_error(ENXIO);
+            }
+            break;
         default: ret = ret_error(ENOTSUP); break;
         }
 
@@ -1636,8 +1647,12 @@ void inode_ref(inode_t *inode) {
 
 void inode_deref(inode_t *inode) {
     if (ref_dec(&inode->references)) {
-        if (inode->type == HYDROGEN_SYMLINK) {
-            vfree(inode->symlink, inode->size);
+        switch (inode->type) {
+        case HYDROGEN_SYMLINK: vfree(inode->symlink, inode->size); break;
+        case HYDROGEN_CHARACTER_DEVICE:
+            if (inode->device && inode->device->ops->free) inode->device->ops->free(inode->device);
+            break;
+        default: break;
         }
 
         inode->ops->free(inode);
@@ -1681,4 +1696,14 @@ int create_root_dentry(filesystem_t *fs, inode_t *root) {
 
     fs->root = entry;
     return 0;
+}
+
+void init_file(file_t *file, const file_ops_t *ops, inode_t *inode, dentry_t *path, int flags) {
+    file->base.ops = &ops->base;
+    obj_init(&file->base, OBJECT_FILE_DESCRIPTION);
+    file->path = path;
+    file->inode = inode;
+    file->flags = flags;
+    dentry_ref(path);
+    inode_ref(inode);
 }

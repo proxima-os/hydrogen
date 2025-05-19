@@ -71,7 +71,7 @@ static file_t *open_directory(file_t *dest, void **name_buf, size_t *name_len, i
 
         if (skiplen == len) break;
 
-        int error = vfs_create(dest, name, complen, HYDROGEN_DIRECTORY, 0755);
+        int error = vfs_create(dest, name, complen, HYDROGEN_DIRECTORY, 0755, NULL);
         if (error != 0 && unlikely(error != EEXIST)) {
             printk("initrd: failed to create parent directory %S for %S (%e)\n",
                    name_start,
@@ -288,7 +288,7 @@ static bool extract_single(file_t *dest, void *data, size_t size, ident_t *ident
             parent = open_directory(dest, &name, &name_len, ident);
 
             if (parent) {
-                int error = vfs_create(parent, name, name_len, HYDROGEN_DIRECTORY, mode);
+                int error = vfs_create(parent, name, name_len, HYDROGEN_DIRECTORY, mode, NULL);
 
                 if (error != 0 && unlikely(error != EEXIST)) {
                     printk("initrd: failed to create directory %S (%e)\n", path, path_len, error);

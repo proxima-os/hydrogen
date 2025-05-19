@@ -111,7 +111,7 @@ int hydrogen_fs_create(int rel, const void *path, size_t length, hydrogen_file_t
     error = copy_string(&kpath, path, length);
     if (unlikely(error)) goto ret;
 
-    error = vfs_create(frel, kpath, length, type, mode);
+    error = vfs_create(frel, kpath, length, type, mode, NULL);
 
     vfree(kpath, length);
 ret:

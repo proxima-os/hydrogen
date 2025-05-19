@@ -166,7 +166,8 @@ static int create_ramfs_inode(
         inode_t **out,
         hydrogen_file_type_t type,
         ident_t *ident,
-        uint32_t mode
+        uint32_t mode,
+        fs_device_t *device
 ) {
     ramfs_inode_t *inode = vmalloc(sizeof(*inode));
     if (unlikely(!inode)) return ENOMEM;
@@ -175,6 +176,7 @@ static int create_ramfs_inode(
     inode->base.fs = &fs->base;
     inode->base.type = type;
     inode->base.id = __atomic_fetch_add(&fs->next_id, 1, __ATOMIC_RELAXED);
+    inode->base.device = device;
 
     switch (type) {
     case HYDROGEN_REGULAR_FILE:
@@ -348,15 +350,9 @@ static const file_ops_t ramfs_file_dir_ops = {
 static hydrogen_ret_t ramfs_inode_directory_open(inode_t *ptr, dentry_t *path, int flags) {
     file_t *file = vmalloc(sizeof(*file));
     if (unlikely(!file)) return ret_error(ENOMEM);
-
     memset(file, 0, sizeof(*file));
-    file->base.ops = &ramfs_file_dir_ops.base;
-    obj_init(&file->base, OBJECT_FILE_DESCRIPTION);
-    file->path = path;
-    file->inode = ptr;
-    file->flags = flags;
-    dentry_ref(path);
-    inode_ref(ptr);
+
+    init_file(file, &ramfs_file_dir_ops, ptr, path, flags);
 
     return ret_pointer(file);
 }
@@ -370,10 +366,11 @@ static int ramfs_inode_directory_create(
         dentry_t *entry,
         hydrogen_file_type_t type,
         ident_t *ident,
-        uint32_t mode
+        uint32_t mode,
+        fs_device_t *device
 ) {
     inode_t *inode;
-    int error = create_ramfs_inode((ramfs_fs_t *)ptr->fs, ptr, &inode, type, ident, mode);
+    int error = create_ramfs_inode((ramfs_fs_t *)ptr->fs, ptr, &inode, type, ident, mode, device);
     if (unlikely(error)) return error;
 
     inode->links += 1;
@@ -399,7 +396,7 @@ static int ramfs_inode_directory_symlink(
     memcpy(buffer, target, length);
 
     inode_t *inode;
-    int error = create_ramfs_inode((ramfs_fs_t *)ptr->fs, ptr, &inode, HYDROGEN_SYMLINK, ident, 0777);
+    int error = create_ramfs_inode((ramfs_fs_t *)ptr->fs, ptr, &inode, HYDROGEN_SYMLINK, ident, 0777, NULL);
     if (unlikely(error)) {
         vfree(buffer, length);
         return error;
@@ -503,7 +500,7 @@ int ramfs_create(filesystem_t **out, uint32_t root_mode) {
 
     ident_t *ident = ident_get(current_thread->process);
     inode_t *root;
-    int error = create_ramfs_inode(fs, NULL, &root, HYDROGEN_DIRECTORY, ident, root_mode);
+    int error = create_ramfs_inode(fs, NULL, &root, HYDROGEN_DIRECTORY, ident, root_mode, NULL);
     ident_deref(ident);
     if (unlikely(error)) {
         vfree(fs, sizeof(*fs));

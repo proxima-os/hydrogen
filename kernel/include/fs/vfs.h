@@ -23,7 +23,7 @@
 #define FILE_MODE_BITS (__S_ISUID | __S_ISGID | FILE_MAKE_BITS)
 
 #define FILE_PERM_FLAGS (__O_WRONLY | __O_RDONLY)
-#define FILE_DESC_FLAGS (__O_APPEND | FILE_PERM_FLAGS)
+#define FILE_DESC_FLAGS (__O_NONBLOCK | __O_APPEND | FILE_PERM_FLAGS)
 #define FILE_OPEN_FLAGS \
     (__O_CLOEXEC | __O_TRUNC | __O_NOFOLLOW | __O_EXCL | __O_DIRECTORY | __O_CREAT | FILE_DESC_FLAGS)
 
@@ -101,6 +101,17 @@ struct filesystem {
     uint32_t flags;
 };
 
+typedef struct fs_device fs_device_t;
+
+typedef struct {
+    void (*free)(fs_device_t *self);
+    hydrogen_ret_t (*open)(fs_device_t *self, inode_t *inode, dentry_t *path, int flags);
+} fs_device_ops_t;
+
+typedef struct fs_device {
+    const fs_device_ops_t *ops;
+} fs_device_t;
+
 typedef struct {
     void (*free)(inode_t *self);
     int (*chmodown)(inode_t *self, uint32_t mode, uint32_t uid, uint32_t gid);
@@ -114,7 +125,8 @@ typedef struct {
                     dentry_t *entry,
                     hydrogen_file_type_t type,
                     struct ident *ident,
-                    uint32_t mode
+                    uint32_t mode,
+                    fs_device_t *device
             );
             int (*symlink)(inode_t *self, dentry_t *entry, const void *target, size_t size, struct ident *ident);
             int (*link)(inode_t *self, dentry_t *entry, inode_t *target);
@@ -152,6 +164,7 @@ struct inode {
     union {
         void *symlink;
         mem_object_t *regular;
+        fs_device_t *device;
     };
 };
 
@@ -166,7 +179,14 @@ int vfs_chdir(struct process *process, file_t *file, const void *path, size_t le
 int vfs_chroot(struct process *process, file_t *file, const void *path, size_t length);
 uint32_t vfs_umask(struct process *process, uint32_t mask);
 
-int vfs_create(file_t *rel, const void *path, size_t length, hydrogen_file_type_t type, uint32_t mode);
+int vfs_create(
+        file_t *rel,
+        const void *path,
+        size_t length,
+        hydrogen_file_type_t type,
+        uint32_t mode,
+        fs_device_t *device
+);
 int vfs_symlink(file_t *rel, const void *path, size_t length, const void *tpath, size_t tlength);
 int vfs_link(file_t *rel, const void *path, size_t length, file_t *trel, const void *tpath, size_t tlength, int flags);
 int vfs_unlink(file_t *rel, const void *path, size_t length, int flags);
@@ -217,3 +237,4 @@ uint64_t get_next_fs_id(void);
 void init_new_inode(inode_t *directory, inode_t *inode, ident_t *ident, uint32_t mode);
 
 int create_root_dentry(filesystem_t *fs, inode_t *root);
+void init_file(file_t *file, const file_ops_t *ops, inode_t *inode, dentry_t *path, int flags);

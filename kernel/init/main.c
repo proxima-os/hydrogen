@@ -5,6 +5,8 @@
 #include "drv/framebuffer.h" /* IWYU pragma: keep */
 #include "fs/ramfs.h"
 #include "fs/vfs.h"
+#include "hydrogen/filesystem.h"
+#include "hydrogen/handle.h"
 #include "hydrogen/types.h"
 #include "init/cmdline.h"
 #include "init/task.h"
@@ -38,6 +40,19 @@ static slist_t kernel_tasks;
 static thread_t *task_thread;
 static spinlock_t kernel_tasks_lock;
 
+static void associate_std_handle(int handle, file_t *file) {
+    hydrogen_ret_t ret = namespace_add(
+            current_thread->namespace,
+            HYDROGEN_FILE_WRITE,
+            handle,
+            &file->base,
+            OBJECT_FILE_DESCRIPTION,
+            HYDROGEN_HANDLE_CLONE_KEEP | HYDROGEN_HANDLE_EXEC_KEEP
+    );
+    if (unlikely(ret.error)) panic("failed to set up standard handle %d (%e)", handle, ret.error);
+    ASSERT(ret.integer == (size_t)handle);
+}
+
 static void launch_init_process(void *ctx) {
     static const char filename[] = "/sbin/init";
     static const char *envp[] = {"HOME=/root"};
@@ -45,8 +60,16 @@ static void launch_init_process(void *ctx) {
     int error = namespace_create(&current_thread->namespace);
     if (unlikely(error)) panic("failed to create init process namespace (%e)", error);
 
-    file_t *image;
+    file_t *file;
     ident_t *ident = ident_get(current_thread->process);
+    error = vfs_open(&file, NULL, "/dev/klog", 9, __O_WRONLY, 0, ident);
+    if (unlikely(error)) panic("failed to open /dev/klog (%e)", error);
+
+    associate_std_handle(0, file);
+    associate_std_handle(1, file);
+    associate_std_handle(2, file);
+
+    file_t *image;
     error = vfs_open(&image, NULL, filename, sizeof(filename) - 1, 0, 0, ident);
     if (unlikely(error)) panic("failed to open init executable (%e)", error);
 
@@ -93,7 +116,7 @@ static void run_init_task(const char *target_name, void *id, init_task_t *task, 
 
     // use raw printk calls to set up the terminal in such a way that the running text is shown
     // on consoles but as soon as something else gets printed it disappears and gets overwritten
-    irq_state_t state = printk_lock();
+    printk_state_t state = printk_lock();
     printk_raw_format("init(%s): running task %s...", target_name, task->name);
     printk_raw_flush();
     printk_raw_format("\r\e[2K");
@@ -212,6 +235,16 @@ static void mount_rootfs(void) {
 
     error = vfs_chroot(current_thread->process, NULL, "/", 1);
     if (unlikely(error)) panic("failed to chroot to new root (%e)", error);
+
+    error = vfs_create(NULL, "/dev", 4, HYDROGEN_DIRECTORY, 0755, NULL);
+    if (unlikely(error)) panic("failed to create /dev (%e)", error);
+
+    filesystem_t *devfs;
+    error = ramfs_create(&devfs, 0755);
+    if (unlikely(error)) panic("failed to create /dev filesystem (%e)", error);
+
+    error = vfs_mount(NULL, "/dev", 4, fs);
+    if (unlikely(error)) panic("failed to mount /dev (%e)", error);
 }
 
 INIT_DEFINE(mount_rootfs, mount_rootfs, INIT_REFERENCE(vfs));
