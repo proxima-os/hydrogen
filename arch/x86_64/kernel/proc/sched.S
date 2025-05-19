@@ -62,3 +62,5 @@ x86_64_thread_entry:
     ud2
     .cfi_endproc
 .size x86_64_thread_entry, . - x86_64_thread_entry
+
+.section ".note.GNU-stack", "", @progbits

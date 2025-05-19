@@ -182,3 +182,5 @@ idt_thunk .Li
 .section ".init.data", "aw", @progbits
 .org 256 * 8
 .size x86_64_idt_thunks, . - x86_64_idt_thunks
+
+.section ".note.GNU-stack", "", @progbits

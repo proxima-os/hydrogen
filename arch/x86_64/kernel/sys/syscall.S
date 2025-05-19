@@ -102,3 +102,5 @@ x86_64_syscall_entry:
     sysretq
     .cfi_endproc
 .size x86_64_syscall_entry, . - x86_64_syscall_entry
+
+.section ".note.GNU-stack", "", @progbits

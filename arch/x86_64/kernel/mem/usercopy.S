@@ -65,3 +65,5 @@ x86_64_user_memset_smap:
 .size x86_64_user_memset_smap, . - x86_64_user_memset_smap
 
 x86_64_usercopy_end:
+
+.section ".note.GNU-stack", "", @progbits

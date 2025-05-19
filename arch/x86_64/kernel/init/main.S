@@ -26,3 +26,5 @@ _entry:
 bsp_idle_stack: .space KERNEL_STACK_SIZE
 .Lstack_top:
 .size bsp_idle_stack, . - bsp_idle_stack
+
+.section ".note.GNU-stack", "", @progbits

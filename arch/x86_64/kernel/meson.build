@@ -1,4 +1,5 @@
 kernel_c_flags += ['-mcmodel=kernel', '-mgeneral-regs-only', '-mno-red-zone']
+kernel_l_flags += ['-Wl,-znoexecstack']
 kernel_include += include_directories('include')
 kernel_sources += files(
     'cpu/cpu.c',

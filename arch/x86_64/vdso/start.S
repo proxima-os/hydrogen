@@ -16,3 +16,5 @@ _start:
     ud2
     .cfi_endproc
 .size _start, . - _start
+
+.section ".note.GNU-stack", "", @progbits

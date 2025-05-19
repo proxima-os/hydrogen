@@ -222,3 +222,5 @@ x86_64_smp_trampoline_wakeup_entry:
 .globl x86_64_smp_trampoline_end
 x86_64_smp_trampoline_end:
 .size x86_64_smp_trampoline, . - x86_64_smp_trampoline
+
+.section ".note.GNU-stack", "", @progbits

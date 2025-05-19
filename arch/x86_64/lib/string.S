@@ -80,3 +80,5 @@ memset:
     ret
     .cfi_endproc
 .size memset, . - memset
+
+.section ".note.GNU-stack", "", @progbits
