@@ -11,6 +11,7 @@
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
 #include "proc/process.h"
+#include "proc/rcu.h"
 #include "sys/memory.h"
 #include "sys/process.h"
 #include "sys/syscall.h"
@@ -528,12 +529,27 @@ hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) {
     if (unlikely(error)) return ret_error(error);
 
     file_t *fdesc;
-    error = file_resolve(&fdesc, file, 0);
-    if (unlikely(error)) return ret_error(error);
+    dentry_t *entry;
+
+    if (file != HYDROGEN_INVALID_HANDLE) {
+        error = file_resolve(&fdesc, file, 0);
+        if (unlikely(error)) return ret_error(error);
+        entry = fdesc->path;
+    } else {
+        fdesc = NULL;
+        rcu_state_t state = rcu_read_lock();
+        entry = current_thread->process->work_dir;
+        dentry_ref(entry);
+        rcu_read_unlock(state);
+    }
 
     void *path;
     size_t length;
-    hydrogen_ret_t ret = vfs_fpath(fdesc, &path, &length);
+    hydrogen_ret_t ret = vfs_fpath(entry, &path, &length);
+
+    if (fdesc) obj_deref(&fdesc->base);
+    else dentry_deref(entry);
+
     if (unlikely(ret.error)) return ret;
 
     error = user_memcpy(buffer, path, size < length ? size : length);

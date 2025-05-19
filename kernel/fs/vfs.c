@@ -1563,7 +1563,7 @@ static size_t try_get_fpath(dentry_t *root, dentry_t *entry, void *buffer, size_
     }
 }
 
-hydrogen_ret_t vfs_fpath(file_t *file, void **buf_out, size_t *len_out) {
+hydrogen_ret_t vfs_fpath(dentry_t *path, void **buf_out, size_t *len_out) {
     rcu_state_t state = rcu_read_lock();
     dentry_t *root = current_thread->process->root_dir;
     dentry_ref(root);
@@ -1573,7 +1573,7 @@ hydrogen_ret_t vfs_fpath(file_t *file, void **buf_out, size_t *len_out) {
     size_t capacity = 0;
 
     for (;;) {
-        size_t len = try_get_fpath(root, file->path, buffer, capacity);
+        size_t len = try_get_fpath(root, path, buffer, capacity);
 
         if (len <= capacity) {
             memmove(buffer, buffer + (capacity - len), len);

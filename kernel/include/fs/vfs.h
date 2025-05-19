@@ -201,7 +201,7 @@ hydrogen_ret_t vfs_readdir(file_t *file, void *buffer, size_t size);
 hydrogen_ret_t vfs_write(file_t *file, const void *buffer, size_t size);
 
 int vfs_fflags(file_t *file, int flags);
-hydrogen_ret_t vfs_fpath(file_t *file, void **buf_out, size_t *len_out);
+hydrogen_ret_t vfs_fpath(dentry_t *path, void **buf_out, size_t *len_out);
 
 void dentry_ref(dentry_t *entry);
 void dentry_deref(dentry_t *entry);
