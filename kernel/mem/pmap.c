@@ -781,7 +781,7 @@ static void do_clone(void *src, void *dst, unsigned level, uintptr_t virt, size_
                         arch_pt_write(src, level, index, pte);
 
                         if (orig_flags & PMAP_WRITABLE) {
-                            tlb_add_edge(tlb, virt, true);
+                            tlb_add_leaf(tlb, virt, true);
                         }
                     }
                 }
