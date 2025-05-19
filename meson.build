@@ -8,6 +8,8 @@ project(
     version: '0.1.0',
 )
 
+pkg = import('pkgconfig')
+
 objcopy = find_program('objcopy')
 strip = find_program('strip')
 
@@ -45,3 +47,5 @@ endforeach
 subdir('lib')
 subdir('vdso')
 subdir('kernel')
+
+pkg.generate(vdso, description: 'System calls for the Hydrogen kernel')
