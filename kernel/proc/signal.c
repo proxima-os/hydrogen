@@ -119,7 +119,7 @@ int queue_signal(
     mutex_acq(&process->threads_lock, 0, false);
     mutex_acq(&target->lock, 0, false);
 
-    queue_signal_unlocked(process, target, info, flags, buffer);
+    queue_signal_unlocked(process, target, info, flags, sig);
 
     mutex_rel(&target->lock);
     mutex_rel(&process->threads_lock);
