@@ -927,7 +927,7 @@ ret:
 }
 
 int vfs_stat(file_t *rel, const void *path, size_t length, hydrogen_file_information_t *out, int flags) {
-    if (unlikely((flags & ~__AT_SYMLINK_NOFOLLOW) == 0)) return EINVAL;
+    if (unlikely((flags & ~__AT_SYMLINK_NOFOLLOW) != 0)) return EINVAL;
 
     uint32_t lookup_flags = LOOKUP_MUST_EXIST;
 
@@ -1090,7 +1090,7 @@ int vfs_utime(
         __int128_t mtime,
         int flags
 ) {
-    if (unlikely((flags & ~__AT_SYMLINK_NOFOLLOW)) == 0) return EINVAL;
+    if (unlikely((flags & ~__AT_SYMLINK_NOFOLLOW)) != 0) return EINVAL;
 
     uint32_t lookup_flags = LOOKUP_MUST_EXIST | LOOKUP_WRITABLE_FS;
 
