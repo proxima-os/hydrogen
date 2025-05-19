@@ -353,7 +353,13 @@ static int build_string_list(stack_build_ctx_t *ctx, vmm_t *src, size_t count, c
 
         if (unlikely(ret.error)) return ret.error;
 
-        ret = area_write(&ctx->main, &ret.integer, sizeof(ret.integer), _Alignof(uintptr_t), NULL);
+        uintptr_t pointer = ret.integer;
+
+        char c = 0;
+        ret = area_write(&ctx->blob, &c, sizeof(c), 1, NULL);
+        if (unlikely(ret.error)) return ret.error;
+
+        ret = area_write(&ctx->main, &pointer, sizeof(pointer), _Alignof(uintptr_t), NULL);
         if (unlikely(ret.error)) return ret.error;
     }
 
