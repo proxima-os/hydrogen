@@ -331,7 +331,12 @@ static hydrogen_ret_t ramfs_file_dir_readdir(file_t *ptr, void *buffer, size_t s
             mutex_rel(&entry->lock);
             return ret;
         }
-        if (ret.integer == 0) break;
+
+        if (ret.integer == 0) {
+            if (total != 0) break;
+            mutex_rel(&entry->lock);
+            return ret_error(EINVAL);
+        }
 
         total += ret.integer;
         ptr->position += 1;
