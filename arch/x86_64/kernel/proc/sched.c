@@ -31,6 +31,8 @@ thread_t *arch_switch_thread(thread_t *from, thread_t *to) {
         from->arch.es = x86_64_read_es();
         from->arch.fs = x86_64_read_fs();
         from->arch.gs = x86_64_read_gs();
+        from->arch.fs_base = x86_64_rdmsr(X86_64_MSR_FS_BASE);
+        from->arch.gs_base = x86_64_rdmsr(X86_64_MSR_KERNEL_GS_BASE);
     }
 
     if (to->user_thread) {
