@@ -264,7 +264,7 @@ static int load_image(image_info_t *out, vmm_t *vmm, file_t *file, ident_t *iden
         vfree(path, interp_size);
         if (unlikely(error)) return error;
 
-        error = load_image(out, vmm, file, ident, true);
+        error = load_image(out, vmm, interp, ident, true);
         obj_deref(&interp->base);
         if (unlikely(error)) return error;
     }
