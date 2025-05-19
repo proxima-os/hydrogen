@@ -106,7 +106,10 @@ typedef struct {
 extern const void x86_64_smp_trampoline, x86_64_smp_trampoline_wakeup_entry, x86_64_smp_trampoline_end;
 
 static void free_mapping(void *table, uintptr_t virt) {
-    for (unsigned level = arch_pt_levels() - 1; level > 0; level--) {
+    unsigned top_level = arch_pt_levels() - 1;
+    table = arch_pt_edge_target(top_level, arch_pt_read(table, top_level, arch_pt_get_index(virt, top_level)));
+
+    for (unsigned level = top_level - 1; level > 0; level--) {
         pte_t pte = arch_pt_read(table, level, arch_pt_get_index(virt, level));
         pmem_free_now(virt_to_page(table));
         if (pte == 0) return;
