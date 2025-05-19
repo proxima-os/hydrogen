@@ -30,21 +30,16 @@ extern "C" {
  * \param[in] vmm The VMM of the thread. Can be #HYDROGEN_THIS_VMM. Requires the same rights as #HYDROGEN_THIS_VMM.
  *                If #HYDROGEN_CLONED_VMM, the VMM of the new thread is a cloned version of the VMM of the current
  *                thread.
- * \param[in] namespace The namespace of the thread. Can be #HYDROGEN_THIS_NAMESPACE. Requires the same rights as
- *                      #HYDROGEN_THIS_NAMESPACE.
+ * \param[in] ns The namespace of the thread. Can be #HYDROGEN_THIS_NAMESPACE. Requires the same rights as
+ *               #HYDROGEN_THIS_NAMESPACE.
  * \param[in] pc The address to start executing at.
  * \param[in] sp The stack pointer of the new thread.
  * \param[in] flags The flags that should be set on the returned handle.
  * \return A handle to the newly created thread (in `integer`).
  */
-hydrogen_ret_t hydrogen_thread_create(
-        int process,
-        int vmm,
-        int namespace,
-        uintptr_t pc,
-        uintptr_t sp,
-        uint32_t flags
-) __asm__("__hydrogen_thread_create");
+hydrogen_ret_t hydrogen_thread_create(int process, int vmm, int ns, uintptr_t pc, uintptr_t sp, uint32_t flags) __asm__(
+        "__hydrogen_thread_create"
+);
 
 /**
  * Create a new thread and start an executable in it.
@@ -53,8 +48,8 @@ hydrogen_ret_t hydrogen_thread_create(
  *                    #HYDROGEN_THIS_PROCESS. If this is not the current process, and the process already has a thread,
  *                    thread creation will fail with #EPERM. If this is the current process, all of its threads
  *                    including the calling thread will be terminated before the new thread is created.
- * \param[in] namespace The namespace of the thread. Can be #HYDROGEN_THIS_NAMESPACE. All handles without
- *                      #HYDROGEN_HANDLE_EXEC_KEEP will be removed.
+ * \param[in] ns The namespace of the thread. Can be #HYDROGEN_THIS_NAMESPACE. All handles without
+ *               #HYDROGEN_HANDLE_EXEC_KEEP will be removed.
  * \param[in] image The executable image to execute.
  * \param[in] argc The number of items in `argv`.
  * \param[in] argv The argument vector to be passed to the executed image.
@@ -66,7 +61,7 @@ hydrogen_ret_t hydrogen_thread_create(
  */
 hydrogen_ret_t hydrogen_thread_exec(
         int process,
-        int namespace,
+        int ns,
         int image,
         size_t argc,
         const hydrogen_string_t *argv,
@@ -80,25 +75,23 @@ hydrogen_ret_t hydrogen_thread_exec(
  *
  * \param[in] process See #hydrogen_thread_create.
  * \param[in] vmm See #hydrogen_thread_create.
- * \param[in] namespace See #hydrogen_thread_create.
+ * \param[in] ns See #hydrogen_thread_create.
  * \param[in] flags The flags that should be set on the returned handle.
  * \return A handle to the created thread (in `integer`). In the created thread, this function will return
  *         #HYDROGEN_INVALID_HANDLE.
  */
-hydrogen_ret_t hydrogen_thread_clone(int process, int vmm, int namespace, uint32_t flags) __asm__(
-        "__hydrogen_thread_clone"
-);
+hydrogen_ret_t hydrogen_thread_clone(int process, int vmm, int ns, uint32_t flags) __asm__("__hydrogen_thread_clone");
 
 /**
  * Reinitialize the current thread.
  *
  * \param[in] vmm See #hydrogen_thread_create.
- * \param[in] namespace See #hydrogen_thread_create.
+ * \param[in] ns See #hydrogen_thread_create.
  * \param[in] pc See #hydrogen_thread_create.
  * \param[in] sp See #hydrogen_thread_create.
  * \return This function does not return, if successful; if not, an error code.
  */
-int hydrogen_thread_reinit(int vmm, int namespace, uintptr_t pc, uintptr_t sp) __asm__("__hydrogen_thread_reinit");
+int hydrogen_thread_reinit(int vmm, int ns, uintptr_t pc, uintptr_t sp) __asm__("__hydrogen_thread_reinit");
 
 /**
  * Yield to another thread.
