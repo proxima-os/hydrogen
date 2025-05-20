@@ -123,3 +123,24 @@ EXPORT hydrogen_ret_t hydrogen_fs_fflags(int file, int flags) {
 EXPORT hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) {
     return SYSCALL3(SYSCALL_FS_FPATH, file, buffer, size);
 }
+
+EXPORT int hydrogen_fs_fstat(int file, hydrogen_file_information_t *info) {
+    return SYSCALL2(SYSCALL_FS_FSTAT, file, info).error;
+}
+
+EXPORT int hydrogen_fs_fchmod(int file, uint32_t mode) {
+    return SYSCALL2(SYSCALL_FS_FCHMOD, file, mode).error;
+}
+
+EXPORT int hydrogen_fs_fchown(int file, uint32_t uid, uint32_t gid) {
+    return SYSCALL3(SYSCALL_FS_FCHOWN, file, uid, gid).error;
+}
+
+EXPORT int hydrogen_fs_futime(int file, __int128_t atime, __int128_t ctime, __int128_t mtime) {
+    utime_syscall_args_t args = {atime, ctime, mtime};
+    return SYSCALL2(SYSCALL_FS_FUTIME, file, &args).error;
+}
+
+EXPORT int hydrogen_fs_ftruncate(int file, uint64_t size) {
+    return SYSCALL2(SYSCALL_FS_FTRUNCATE, file, size).error;
+}

@@ -194,9 +194,12 @@ int vfs_rename(file_t *rel, const void *path, size_t length, file_t *trel, const
 
 int vfs_access(file_t *rel, const void *path, size_t length, uint32_t type, int flags);
 int vfs_stat(file_t *rel, const void *path, size_t length, hydrogen_file_information_t *out, int flags);
+int vfs_fstat(file_t *file, hydrogen_file_information_t *out);
 hydrogen_ret_t vfs_readlink(file_t *rel, const void *path, size_t length, void *buffer, size_t size);
 int vfs_chmod(file_t *rel, const void *path, size_t length, uint32_t mode, int flags);
+int vfs_fchmod(file_t *file, uint32_t mode);
 int vfs_chown(file_t *rel, const void *path, size_t length, uint32_t uid, uint32_t gid, int flags);
+int vfs_fchown(file_t *file, uint32_t uid, uint32_t gid);
 int vfs_utime(
         file_t *rel,
         const void *path,
@@ -206,7 +209,9 @@ int vfs_utime(
         __int128_t mtime,
         int flags
 );
+int vfs_futime(file_t *file, __int128_t atime, __int128_t ctime, __int128_t mtime);
 int vfs_truncate(file_t *rel, const void *path, size_t length, uint64_t size);
+int vfs_ftruncate(file_t *file, uint64_t size);
 
 int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int flags, uint32_t mode, ident_t *ident);
 hydrogen_ret_t vfs_mmap(

@@ -561,3 +561,56 @@ hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) {
 
     return ret_integer(length);
 }
+
+int hydrogen_fs_fstat(int file, hydrogen_file_information_t *info) {
+    int error = verify_user_buffer((uintptr_t)info, sizeof(*info));
+    if (unlikely(error)) return error;
+
+    file_t *fdesc;
+    error = file_resolve(&fdesc, file, 0);
+    if (unlikely(error)) return error;
+
+    error = vfs_fstat(fdesc, info);
+    obj_deref(&fdesc->base);
+    return error;
+}
+
+int hydrogen_fs_fchmod(int file, uint32_t mode) {
+    file_t *fdesc;
+    int error = file_resolve(&fdesc, file, 0);
+    if (unlikely(error)) return error;
+
+    error = vfs_fchmod(fdesc, mode);
+    obj_deref(&fdesc->base);
+    return error;
+}
+
+int hydrogen_fs_fchown(int file, uint32_t uid, uint32_t gid) {
+    file_t *fdesc;
+    int error = file_resolve(&fdesc, file, 0);
+    if (unlikely(error)) return error;
+
+    error = vfs_fchown(fdesc, uid, gid);
+    obj_deref(&fdesc->base);
+    return error;
+}
+
+int hydrogen_fs_futime(int file, __int128_t atime, __int128_t ctime, __int128_t mtime) {
+    file_t *fdesc;
+    int error = file_resolve(&fdesc, file, 0);
+    if (unlikely(error)) return error;
+
+    error = vfs_futime(fdesc, atime, ctime, mtime);
+    obj_deref(&fdesc->base);
+    return error;
+}
+
+int hydrogen_fs_ftruncate(int file, uint64_t size) {
+    file_t *fdesc;
+    int error = file_resolve(&fdesc, file, HYDROGEN_FILE_WRITE);
+    if (unlikely(error)) return error;
+
+    error = vfs_ftruncate(fdesc, size);
+    obj_deref(&fdesc->base);
+    return error;
+}

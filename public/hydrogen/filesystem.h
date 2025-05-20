@@ -85,14 +85,18 @@ int hydrogen_fs_access(int rel, const void *path, size_t length, uint32_t type, 
 int hydrogen_fs_stat(int rel, const void *path, size_t length, hydrogen_file_information_t *info, int flags) __asm__(
         "__hydrogen_fs_stat"
 );
+int hydrogen_fs_fstat(int file, hydrogen_file_information_t *info) __asm__("__hydrogen_fs_fstat");
 hydrogen_ret_t hydrogen_fs_readlink(int rel, const void *path, size_t length, void *buffer, size_t size) __asm__(
         "__hydrogen_fs_readlink"
 );
-int hydrogen_fs_chmod(int rel, const void *path, size_t length, uint32_t mode, int flags) __asm__("__hydrogen_fs_chmod"
+int hydrogen_fs_chmod(int rel, const void *path, size_t length, uint32_t mode, int flags) __asm__(
+        "__hydrogen_fs_chmod"
 );
+int hydrogen_fs_fchmod(int file, uint32_t mode) __asm__("__hydrogen_fs_fchmod");
 int hydrogen_fs_chown(int rel, const void *path, size_t length, uint32_t uid, uint32_t gid, int flags) __asm__(
         "__hydrogen_fs_chown"
 );
+int hydrogen_fs_fchown(int file, uint32_t uid, uint32_t gid) __asm__("__hydrogen_fs_fchown");
 int hydrogen_fs_utime(
         int rel,
         const void *path,
@@ -102,7 +106,9 @@ int hydrogen_fs_utime(
         __int128_t mtime,
         int flags
 ) __asm__("__hydrogen_fs_utime");
+int hydrogen_fs_futime(int file, __int128_t atime, __int128_t ctime, __int128_t mtime) __asm__("__hydrogen_fs_futime");
 int hydrogen_fs_truncate(int rel, const void *path, size_t length, uint64_t size) __asm__("__hydrogen_fs_truncate");
+int hydrogen_fs_ftruncate(int file, uint64_t size) __asm__("__hydrogen_fs_ftruncate");
 
 hydrogen_ret_t hydrogen_fs_open(int rel, const void *path, size_t length, int flags, uint32_t mode) __asm__(
         "__hydrogen_fs_open"

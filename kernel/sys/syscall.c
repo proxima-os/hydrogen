@@ -189,6 +189,20 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
 
         return hydrogen_thread_exec(a0, a1, a2, args.argc, args.argv, args.envc, args.envp, a4);
     }
+    case SYSCALL_FS_FSTAT: return ret_error(hydrogen_fs_fstat(a0, (hydrogen_file_information_t *)a1));
+    case SYSCALL_FS_FCHMOD: return ret_error(hydrogen_fs_fchmod(a0, a1));
+    case SYSCALL_FS_FCHOWN: return ret_error(hydrogen_fs_fchown(a0, a1, a2));
+    case SYSCALL_FS_FUTIME: {
+        utime_syscall_args_t args;
+        int error = verify_user_buffer(a1, sizeof(args));
+        if (unlikely(error)) return ret_error(error);
+
+        error = user_memcpy(&args, (const void *)a1, sizeof(args));
+        if (unlikely(error)) return ret_error(error);
+
+        return ret_error(hydrogen_fs_futime(a0, args.atime, args.ctime, args.mtime));
+    }
+    case SYSCALL_FS_FTRUNCATE: return ret_error(hydrogen_fs_ftruncate(a0, a1));
     default: return ret_error(ENOSYS);
     }
 }

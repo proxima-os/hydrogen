@@ -206,7 +206,8 @@ static int single_lookup(dentry_t **entry, const char *name, size_t length, iden
 }
 
 static int lookup(dentry_t **entry, const char *path, size_t length, ident_t *ident, uint32_t flags) {
-    if ((flags & 0xff) >= __SYMLOOP_MAX) return ELOOP;
+    if (unlikely((flags & 0xff) >= __SYMLOOP_MAX)) return ELOOP;
+    if (unlikely(length == 0)) return ENOENT;
 
     dentry_t *current = *entry;
 
@@ -926,6 +927,27 @@ ret:
     return error;
 }
 
+static void get_inode_info(inode_t *inode, hydrogen_file_information_t *out) {
+    mutex_acq(&inode->lock, 0, false);
+
+    out->filesystem_id = inode->fs->id;
+    out->id = inode->id;
+    out->links = inode->links;
+    out->blocks = inode->blocks;
+    out->size = inode->size;
+    out->block_size = inode->fs->block_size;
+    out->atime = inode->atime;
+    out->btime = inode->btime;
+    out->ctime = inode->ctime;
+    out->mtime = inode->mtime;
+    out->type = inode->type;
+    out->mode = inode->mode;
+    out->uid = inode->uid;
+    out->gid = inode->gid;
+
+    mutex_rel(&inode->lock);
+}
+
 int vfs_stat(file_t *rel, const void *path, size_t length, hydrogen_file_information_t *out, int flags) {
     if (unlikely((flags & ~__AT_SYMLINK_NOFOLLOW) != 0)) return EINVAL;
 
@@ -940,28 +962,16 @@ int vfs_stat(file_t *rel, const void *path, size_t length, hydrogen_file_informa
     if (unlikely(error)) return error;
 
     hydrogen_file_information_t info = {};
-    inode_t *inode = entry->inode;
-    mutex_acq(&inode->lock, 0, false);
-
-    info.filesystem_id = inode->fs->id;
-    info.id = inode->id;
-    info.links = inode->links;
-    info.blocks = inode->blocks;
-    info.size = inode->size;
-    info.block_size = inode->fs->block_size;
-    info.atime = inode->atime;
-    info.btime = inode->btime;
-    info.ctime = inode->ctime;
-    info.mtime = inode->mtime;
-    info.type = inode->type;
-    info.mode = inode->mode;
-    info.uid = inode->uid;
-    info.gid = inode->gid;
-
-    mutex_rel(&inode->lock);
+    get_inode_info(entry->inode, &info);
     mutex_rel(&entry->lock);
     dentry_deref(entry);
 
+    return user_memcpy(out, &info, sizeof(*out));
+}
+
+int vfs_fstat(file_t *file, hydrogen_file_information_t *out) {
+    hydrogen_file_information_t info = {};
+    get_inode_info(file->inode, &info);
     return user_memcpy(out, &info, sizeof(*out));
 }
 
@@ -988,6 +998,27 @@ ret:
     return RET_MAYBE(integer, error, full_size);
 }
 
+static int chmod_inode(inode_t *inode, ident_t *ident, uint32_t mode) {
+    int error;
+    mutex_acq(&inode->lock, 0, false);
+
+    if (ident->euid != 0) {
+        if (unlikely(ident->euid != inode->uid)) {
+            error = EPERM;
+            goto ret;
+        }
+
+        if (get_relation(ident, -1, inode->gid, false) != RELATION_GROUP) {
+            mode &= ~__S_ISGID;
+        }
+    }
+
+    error = inode->ops->chmodown(inode, mode, inode->uid, inode->gid);
+ret:
+    mutex_rel(&inode->lock);
+    return error;
+}
+
 int vfs_chmod(file_t *rel, const void *path, size_t length, uint32_t mode, int flags) {
     if (unlikely((mode & ~FILE_MODE_BITS) != 0)) return EINVAL;
     if (unlikely((flags & ~__AT_SYMLINK_NOFOLLOW) != 0)) return EINVAL;
@@ -1001,27 +1032,56 @@ int vfs_chmod(file_t *rel, const void *path, size_t length, uint32_t mode, int f
     int error = flookup(&entry, rel, path, length, ident, lookup_flags);
     if (unlikely(error)) goto ret;
 
-    inode_t *inode = entry->inode;
-    mutex_acq(&inode->lock, 0, false);
+    error = chmod_inode(entry->inode, ident, mode);
 
-    if (ident->euid != 0) {
-        if (unlikely(ident->euid != inode->uid)) {
-            error = EPERM;
-            goto ret2;
-        }
-
-        if (get_relation(ident, -1, inode->gid, false) != RELATION_GROUP) {
-            mode &= ~__S_ISGID;
-        }
-    }
-
-    error = inode->ops->chmodown(inode, mode, inode->uid, inode->gid);
-ret2:
-    mutex_rel(&inode->lock);
     mutex_rel(&entry->lock);
     dentry_deref(entry);
 ret:
     ident_deref(ident);
+    return error;
+}
+
+int vfs_fchmod(file_t *file, uint32_t mode) {
+    if (unlikely((mode & ~FILE_MODE_BITS) != 0)) return EINVAL;
+
+    inode_t *inode = file->inode;
+    if (unlikely((inode->fs->flags & FILESYSTEM_READ_ONLY) != 0)) return EROFS;
+
+    ident_t *ident = ident_get(current_thread->process);
+    int error = chmod_inode(inode, ident, mode);
+    ident_deref(ident);
+    return error;
+}
+
+static int chown_inode(inode_t *inode, ident_t *ident, uint32_t uid, uint32_t gid) {
+    int error;
+    mutex_acq(&inode->lock, 0, false);
+
+    if (uid == (uint32_t)-1) uid = inode->uid;
+    if (gid == (uint32_t)-1) gid = inode->gid;
+
+    uint32_t mode = inode->mode;
+
+    if (ident->euid != 0 && uid != inode->uid && gid != inode->gid) {
+        if (unlikely(ident->euid != uid)) {
+            error = EPERM;
+            goto ret;
+        }
+
+        if (get_relation(ident, -1, inode->gid, false) != RELATION_GROUP) {
+            error = EPERM;
+            goto ret;
+        }
+
+        if ((mode & (__S_IXUSR | __S_IXGRP | __S_IXOTH)) != 0) {
+            mode &= ~(__S_ISGID | __S_ISUID);
+        }
+    }
+
+    error = inode->ops->chmodown(inode, mode, uid, gid);
+
+ret:
+    mutex_rel(&inode->lock);
     return error;
 }
 
@@ -1037,33 +1097,8 @@ int vfs_chown(file_t *rel, const void *path, size_t length, uint32_t uid, uint32
     int error = flookup(&entry, rel, path, length, ident, lookup_flags);
     if (unlikely(error)) goto ret;
 
-    inode_t *inode = entry->inode;
-    mutex_acq(&inode->lock, 0, false);
+    error = chown_inode(entry->inode, ident, uid, gid);
 
-    if (uid == (uint32_t)-1) uid = inode->uid;
-    if (gid == (uint32_t)-1) gid = inode->gid;
-
-    uint32_t mode = inode->mode;
-
-    if (ident->euid != 0) {
-        if (unlikely(ident->euid != uid)) {
-            error = EPERM;
-            goto ret2;
-        }
-
-        if (get_relation(ident, -1, inode->gid, false) != RELATION_GROUP) {
-            error = EPERM;
-            goto ret2;
-        }
-
-        if ((mode & (__S_IXUSR | __S_IXGRP | __S_IXOTH)) != 0) {
-            mode &= ~(__S_ISGID | __S_ISUID);
-        }
-    }
-
-    error = inode->ops->chmodown(inode, mode, uid, gid);
-ret2:
-    mutex_rel(&inode->lock);
     mutex_rel(&entry->lock);
     dentry_deref(entry);
 ret:
@@ -1071,14 +1106,38 @@ ret:
     return error;
 }
 
-static int do_access(file_t *rel, inode_t *inode, ident_t *ident, size_t path_len, uint32_t type) {
-    if (path_len == 0) {
-        if ((type & HYDROGEN_FILE_READ) != 0 && unlikely((rel->flags & __O_RDONLY) == 0)) return EACCES;
-        if ((type & HYDROGEN_FILE_WRITE) != 0 && unlikely((rel->flags & __O_WRONLY) == 0)) return EACCES;
-        return 0;
+int vfs_fchown(file_t *file, uint32_t uid, uint32_t gid) {
+    inode_t *inode = file->inode;
+    if (unlikely((inode->fs->flags & FILESYSTEM_READ_ONLY) != 0)) return EROFS;
+
+    ident_t *ident = ident_get(current_thread->process);
+    int error = chown_inode(file->inode, ident, uid, gid);
+    ident_deref(ident);
+    return error;
+}
+
+static int utime_inode(inode_t *inode, ident_t *ident, __int128_t atime, __int128_t ctime, __int128_t mtime) {
+    int error;
+    mutex_acq(&inode->lock, 0, false);
+
+    if (ident->euid != 0) {
+        if (ident->euid != inode->uid) {
+            if ((atime != HYDROGEN_FILE_TIME_OMIT && atime != HYDROGEN_FILE_TIME_NOW) ||
+                (ctime != HYDROGEN_FILE_TIME_OMIT && ctime != HYDROGEN_FILE_TIME_NOW) ||
+                (mtime != HYDROGEN_FILE_TIME_OMIT && mtime != HYDROGEN_FILE_TIME_NOW)) {
+                error = EPERM;
+                goto ret;
+            }
+
+            error = access_inode(inode, ident, HYDROGEN_FILE_WRITE, false);
+            if (unlikely(error)) goto ret;
+        }
     }
 
-    return access_inode(inode, ident, type, false);
+    error = inode->ops->utime(inode, atime, ctime, mtime);
+ret:
+    mutex_rel(&inode->lock);
+    return error;
 }
 
 int vfs_utime(
@@ -1101,29 +1160,21 @@ int vfs_utime(
     int error = flookup(&entry, rel, path, length, ident, lookup_flags);
     if (unlikely(error)) goto ret;
 
-    inode_t *inode = entry->inode;
-    mutex_acq(&inode->lock, 0, false);
+    error = utime_inode(entry->inode, ident, atime, ctime, mtime);
 
-    if (ident->euid != 0) {
-        if (ident->euid != inode->uid) {
-            if ((atime != HYDROGEN_FILE_TIME_OMIT && atime != HYDROGEN_FILE_TIME_NOW) ||
-                (ctime != HYDROGEN_FILE_TIME_OMIT && ctime != HYDROGEN_FILE_TIME_NOW) ||
-                (mtime != HYDROGEN_FILE_TIME_OMIT && mtime != HYDROGEN_FILE_TIME_NOW)) {
-                error = EACCES;
-                goto ret2;
-            }
-
-            error = do_access(rel, inode, ident, length, HYDROGEN_FILE_WRITE);
-            if (unlikely(error)) goto ret2;
-        }
-    }
-
-    error = inode->ops->utime(inode, atime, ctime, mtime);
-ret2:
-    mutex_rel(&inode->lock);
     mutex_rel(&entry->lock);
     dentry_deref(entry);
 ret:
+    ident_deref(ident);
+    return error;
+}
+
+int vfs_futime(file_t *file, __int128_t atime, __int128_t ctime, __int128_t mtime) {
+    inode_t *inode = file->inode;
+    if (unlikely((inode->fs->flags & FILESYSTEM_READ_ONLY) != 0)) return EROFS;
+
+    ident_t *ident = ident_get(current_thread->process);
+    int error = utime_inode(inode, ident, atime, ctime, mtime);
     ident_deref(ident);
     return error;
 }
@@ -1144,23 +1195,38 @@ int vfs_truncate(file_t *rel, const void *path, size_t length, uint64_t size) {
     if (unlikely(error)) goto ret;
 
     inode_t *inode = entry->inode;
-    mutex_acq(&inode->lock, 0, false);
 
     if (unlikely(inode->type != HYDROGEN_REGULAR_FILE)) {
         error = EINVAL;
         goto ret2;
     }
 
-    error = do_access(rel, inode, ident, length, HYDROGEN_FILE_WRITE);
-    if (unlikely(error)) goto ret2;
+    mutex_acq(&inode->lock, 0, false);
+
+    error = access_inode(inode, ident, HYDROGEN_FILE_WRITE, false);
+    if (unlikely(error)) goto ret3;
 
     error = inode->ops->regular.truncate(inode, size);
-ret2:
+
+ret3:
     mutex_rel(&inode->lock);
+ret2:
     mutex_rel(&entry->lock);
     dentry_deref(entry);
 ret:
     ident_deref(ident);
+    return error;
+}
+
+int vfs_ftruncate(file_t *file, uint64_t size) {
+    if (unlikely(size > INT64_MAX)) return EINVAL;
+
+    inode_t *inode = file->inode;
+    if (unlikely(inode->type != HYDROGEN_REGULAR_FILE)) return EINVAL;
+
+    mutex_acq(&inode->lock, 0, false);
+    int error = inode->ops->regular.truncate(inode, size);
+    mutex_rel(&inode->lock);
     return error;
 }
 

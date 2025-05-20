@@ -182,7 +182,7 @@ static bool extract_single(file_t *dest, void *data, size_t size, ident_t *ident
                     file = NULL;
                     errored = true;
                 } else {
-                    int error = vfs_truncate(file, NULL, 0, size);
+                    int error = vfs_ftruncate(file, size);
 
                     if (unlikely(errored)) {
                         printk("initrd: failed to set size of regular file %S to %U bytes (%e)\n",
@@ -321,13 +321,13 @@ static bool extract_single(file_t *dest, void *data, size_t size, ident_t *ident
         }
 
         if (file) {
-            int error = vfs_chmod(file, "", 0, mode, __AT_SYMLINK_NOFOLLOW);
+            int error = vfs_fchmod(file, mode);
             if (unlikely(error)) {
                 printk("initrd: failed to change mode for %S to %o (%e)\n", path, path_len, mode, error);
                 errored = true;
             }
 
-            error = vfs_chown(file, "", 0, uid, gid, __AT_SYMLINK_NOFOLLOW);
+            error = vfs_fchown(file, uid, gid);
             if (unlikely(error)) {
                 printk("initrd: failed to change owner for %S to %u:%u (%e)\n", path, path_len, uid, gid, error);
                 errored = true;
@@ -362,7 +362,7 @@ static void extract_initrd(void) {
     ident_t *ident = ident_get(current_thread->process);
 
     file_t *dest;
-    int error = vfs_open(&dest, NULL, "", 0, __O_DIRECTORY, 0, ident);
+    int error = vfs_open(&dest, NULL, "/", 1, __O_DIRECTORY, 0, ident);
     if (unlikely(error)) panic("initrd: failed to open destination directory (%e)", error);
 
     for (uint64_t i = 0; i < module_req.response->module_count; i++) {
