@@ -93,10 +93,11 @@ static void signal_or_fatal(arch_context_t *context, int signal, int code) {
     if ((context->cs & 3) == 0) x86_64_idt_handle_fatal(context);
 
     __siginfo_t info = {.__signo = signal, .__code = code, .__data.__sigsegv.__address = (void *)context->rip};
-    printk("idt: sending signal %d to thread %d (process %d) due to exception at 0x%Z (code: %d)\n",
+    printk("idt: sending signal %d to thread %d (process %d) due to exception %U at 0x%Z (code: %d)\n",
            signal,
            current_thread->pid->id,
            current_thread->process->pid->id,
+           context->vector,
            context->rip,
            code);
     queue_signal(
