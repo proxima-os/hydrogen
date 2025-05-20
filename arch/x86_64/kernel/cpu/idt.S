@@ -125,6 +125,7 @@ x86_64_idt_thunks:
 
 .macro idt_thunk vector, errc=0
 1:  .cfi_startproc
+    .cfi_signal_frame
 .if \errc == 0
     .cfi_def_cfa rsp, 0x28
     .cfi_rel_offset rip, 0x00
