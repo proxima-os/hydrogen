@@ -371,6 +371,11 @@ static int build_string_list(stack_build_ctx_t *ctx, vmm_t *src, size_t count, c
     return 0;
 }
 
+typedef struct {
+    uintptr_t tag;
+    uintptr_t value;
+} auxv_t;
+
 static int build_stack(
         stack_build_ctx_t *ctx,
         vmm_t *src,
@@ -391,18 +396,22 @@ static int build_stack(
     error = build_string_list(ctx, src, envc, envp);
     if (unlikely(error)) return error;
 
-    uintptr_t aux_vector[][2] = {
-            {AT_SYSINFO_EHDR, vdso},
-            {AT_SECURE, secure ? 1 : 0},
-            {AT_PHDR, image->phdr},
-            {AT_PHENT, image->phdrent},
-            {AT_PHNUM, image->phdrnum},
-            {AT_BASE, image->base},
-            {AT_ENTRY, image->image_entry},
-            {AT_NULL, 0},
-    };
+    auxv_t aux_vector[8];
+    size_t nauxv = 0;
 
-    ret = area_write(&ctx->main, aux_vector, sizeof(aux_vector), _Alignof(uintptr_t), NULL);
+    aux_vector[nauxv++] = (auxv_t){AT_SYSINFO_EHDR, vdso};
+    aux_vector[nauxv++] = (auxv_t){AT_SECURE, secure ? 1 : 0};
+
+    if (image->image_entry != image->entrypoint) {
+        aux_vector[nauxv++] = (auxv_t){AT_PHDR, image->phdr};
+        aux_vector[nauxv++] = (auxv_t){AT_PHENT, image->phdrent};
+        aux_vector[nauxv++] = (auxv_t){AT_PHNUM, image->phdrnum};
+        aux_vector[nauxv++] = (auxv_t){AT_ENTRY, image->image_entry};
+    }
+
+    aux_vector[nauxv++] = (auxv_t){AT_NULL, 0};
+
+    ret = area_write(&ctx->main, aux_vector, nauxv * sizeof(*aux_vector), _Alignof(auxv_t), NULL);
     if (unlikely(ret.error)) return ret.error;
 
     return 0;
