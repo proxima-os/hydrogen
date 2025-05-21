@@ -359,6 +359,20 @@ ret:
     return error;
 }
 
+static object_rights_t get_open_rights(int flags) {
+    object_rights_t rights = 0;
+    if (flags & __O_RDONLY) rights |= HYDROGEN_FILE_READ;
+    if (flags & __O_WRONLY) rights |= HYDROGEN_FILE_WRITE;
+    return rights;
+}
+
+static uint32_t get_open_flags(int flags) {
+    uint32_t handle_flags = 0;
+    if ((flags & __O_CLOFORK) == 0) handle_flags |= HYDROGEN_HANDLE_CLONE_KEEP;
+    if ((flags & __O_CLOEXEC) == 0) handle_flags |= HYDROGEN_HANDLE_EXEC_KEEP;
+    return handle_flags;
+}
+
 hydrogen_ret_t hydrogen_fs_open(int rel, const void *path, size_t length, int flags, uint32_t mode) {
     file_t *frel;
     int error = file_for_rel(&frel, rel);
@@ -383,14 +397,13 @@ hydrogen_ret_t hydrogen_fs_open(int rel, const void *path, size_t length, int fl
     ident_deref(ident);
     if (unlikely(error)) goto err4;
 
-    object_rights_t rights = 0;
-    if (flags & __O_RDONLY) rights |= HYDROGEN_FILE_READ;
-    if (flags & __O_WRONLY) rights |= HYDROGEN_FILE_WRITE;
-
-    uint32_t handle_flags = 0;
-    if ((flags & __O_CLOFORK) == 0) handle_flags |= HYDROGEN_HANDLE_CLONE_KEEP;
-    if ((flags & __O_CLOEXEC) == 0) handle_flags |= HYDROGEN_HANDLE_EXEC_KEEP;
-    int handle = hnd_alloc_reserved(current_thread->namespace, &file->base, rights, handle_flags, data);
+    int handle = hnd_alloc_reserved(
+            current_thread->namespace,
+            &file->base,
+            get_open_rights(flags),
+            get_open_flags(flags),
+            data
+    );
 
     vfree(kpath, length);
     if (frel) obj_deref(&frel->base);
@@ -633,10 +646,37 @@ hydrogen_ret_t hydrogen_fs_fopen(int file, int flags) {
         if (unlikely(!inode)) return ret_error(EBADF);
     }
 
+    error = hnd_reserve(current_thread->namespace);
+    if (unlikely(error)) goto err;
+
+    handle_data_t *data = vmalloc(sizeof(*data));
+    if (unlikely(!data)) {
+        error = ENOMEM;
+        goto err2;
+    }
+
     file_t *ret;
     ident_t *ident = ident_get(current_thread->process);
     error = vfs_fopen(&ret, path, inode, flags, ident);
     ident_deref(ident);
+    if (unlikely(error)) goto err3;
     if (fdesc != NULL) obj_deref(&fdesc->base);
-    return RET_MAYBE(pointer, error, ret);
+
+    int handle = hnd_alloc_reserved(
+            current_thread->namespace,
+            &ret->base,
+            get_open_rights(flags),
+            get_open_flags(flags),
+            data
+    );
+
+    obj_deref(&ret->base);
+    return ret_integer(handle);
+err3:
+    vfree(data, sizeof(*data));
+err2:
+    hnd_unreserve(current_thread->namespace);
+err:
+    if (fdesc != NULL) obj_deref(&fdesc->base);
+    return ret_error(error);
 }
