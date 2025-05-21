@@ -347,7 +347,13 @@ err:
 }
 
 static int flookup(dentry_t **entry, file_t *file, const void *path, size_t length, ident_t *ident, uint32_t flags) {
-    *entry = file ? file->path : NULL;
+    if (file) {
+        if (!file->path) return ENOENT;
+        *entry = file->path;
+    } else {
+        *entry = NULL;
+    }
+
     return lookup(entry, path, length, ident, flags);
 }
 
@@ -1731,7 +1737,7 @@ void inode_deref(inode_t *inode) {
 }
 
 uint64_t get_next_fs_id(void) {
-    static uint64_t next = 1;
+    static uint64_t next = 1; // id 0 is the anonymous inode filesystem
     return __atomic_fetch_add(&next, 1, __ATOMIC_RELAXED);
 }
 
@@ -1775,11 +1781,79 @@ void init_file(file_t *file, const file_ops_t *ops, inode_t *inode, dentry_t *pa
     file->path = path;
     file->inode = inode;
     file->flags = flags;
-    dentry_ref(path);
+    if (path) dentry_ref(path);
     inode_ref(inode);
 }
 
 void free_file(file_t *file) {
     inode_deref(file->inode);
-    dentry_deref(file->path);
+    if (file->path) dentry_deref(file->path);
+}
+
+static filesystem_t anonymous_fs;
+static uint64_t anonymous_inode;
+
+static void anon_inode_free(inode_t *self) {
+    vfree(self, sizeof(*self));
+}
+
+static int anon_inode_chmodown(inode_t *self, uint32_t mode, uint32_t uid, uint32_t gid) {
+    self->mode = mode;
+    self->uid = uid;
+    self->gid = gid;
+    self->ctime = get_current_timestamp();
+    return 0;
+}
+
+static int anon_inode_utime(inode_t *self, __int128_t atime, __int128_t ctime, __int128_t mtime) {
+    __int128_t now = get_current_timestamp();
+
+    if (atime != HYDROGEN_FILE_TIME_OMIT) {
+        self->atime = atime == HYDROGEN_FILE_TIME_NOW ? now : atime;
+    }
+
+    if (ctime != HYDROGEN_FILE_TIME_OMIT) {
+        self->ctime = ctime == HYDROGEN_FILE_TIME_NOW ? now : ctime;
+    }
+
+    if (mtime != HYDROGEN_FILE_TIME_OMIT) {
+        self->mtime = mtime == HYDROGEN_FILE_TIME_NOW ? now : mtime;
+    }
+
+    return 0;
+}
+
+static const inode_ops_t anon_inode_ops = {
+        .free = anon_inode_free,
+        .chmodown = anon_inode_chmodown,
+        .utime = anon_inode_utime,
+};
+
+int vfs_create_anonymous(inode_t **out, hydrogen_file_type_t type, uint32_t mode, fs_device_t *device) {
+    if (unlikely(type != HYDROGEN_CHARACTER_DEVICE && type != HYDROGEN_BLOCK_DEVICE && type != HYDROGEN_FIFO)) {
+        return EINVAL;
+    }
+    if (unlikely((mode & ~FILE_MODE_BITS))) return EINVAL;
+
+    inode_t *inode = vmalloc(sizeof(*inode));
+    if (unlikely(!inode)) return ENOMEM;
+    memset(inode, 0, sizeof(*inode));
+
+    inode->ops = &anon_inode_ops;
+    inode->fs = &anonymous_fs;
+    inode->type = type;
+    inode->id = __atomic_fetch_add(&anonymous_inode, 1, __ATOMIC_RELAXED);
+
+    switch (type) {
+    case HYDROGEN_CHARACTER_DEVICE:
+    case HYDROGEN_BLOCK_DEVICE: inode->device = device; break;
+    default: UNREACHABLE();
+    }
+
+    ident_t *ident = ident_get(current_thread->process);
+    init_new_inode(NULL, inode, ident, mode);
+    ident_deref(ident);
+
+    *out = inode;
+    return 0;
 }

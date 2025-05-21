@@ -247,3 +247,5 @@ void init_new_inode(inode_t *directory, inode_t *inode, ident_t *ident, uint32_t
 int create_root_dentry(filesystem_t *fs, inode_t *root);
 void init_file(file_t *file, const file_ops_t *ops, inode_t *inode, dentry_t *path, int flags);
 void free_file(file_t *file);
+
+int vfs_create_anonymous(inode_t **out, hydrogen_file_type_t type, uint32_t mode, fs_device_t *device);

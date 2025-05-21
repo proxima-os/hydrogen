@@ -176,7 +176,6 @@ static int create_ramfs_inode(
     inode->base.fs = &fs->base;
     inode->base.type = type;
     inode->base.id = __atomic_fetch_add(&fs->next_id, 1, __ATOMIC_RELAXED);
-    inode->base.device = device;
 
     switch (type) {
     case HYDROGEN_REGULAR_FILE:
@@ -192,6 +191,8 @@ static int create_ramfs_inode(
         inode->base.regular = &inode->data.base;
         break;
     case HYDROGEN_DIRECTORY: inode->base.ops = &ramfs_inode_directory_ops; break;
+    case HYDROGEN_CHARACTER_DEVICE:
+    case HYDROGEN_BLOCK_DEVICE: inode->base.device = device; // fall through
     default: inode->base.ops = &ramfs_inode_special_ops; break;
     }
 
@@ -215,7 +216,7 @@ static hydrogen_ret_t ramfs_file_dir_seek(file_t *ptr, hydrogen_seek_anchor_t an
     case HYDROGEN_SEEK_CURRENT: position = ptr->position; break;
     case HYDROGEN_SEEK_END:
         mutex_acq(&ptr->path->lock, 0, false);
-        position = ptr->path->count + 2;
+        position = ptr->path->real_count + 2;
         mutex_rel(&ptr->path->lock);
         break;
     default: return ret_error(EINVAL);
@@ -317,6 +318,7 @@ static hydrogen_ret_t ramfs_file_dir_readdir(file_t *ptr, void *buffer, size_t s
             length = 2;
         } else {
             if (!current) break;
+            if (!current->inode) continue;
             id = current->inode->id;
             type = current->inode->type;
             name = current->name.data;

@@ -550,7 +550,18 @@ hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) {
     if (file != HYDROGEN_INVALID_HANDLE) {
         error = file_resolve(&fdesc, file, 0);
         if (unlikely(error)) return ret_error(error);
+
         entry = fdesc->path;
+        if (unlikely(!fdesc->path)) {
+            static const char path[] = "(anonymous)";
+            obj_deref(&fdesc->base);
+
+            size_t len = sizeof(path) - 1;
+            size_t cur = len < size ? len : size;
+
+            error = user_memcpy(buffer, path, cur);
+            return RET_MAYBE(integer, error, len);
+        }
     } else {
         fdesc = NULL;
         rcu_state_t state = rcu_read_lock();
