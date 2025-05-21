@@ -1,5 +1,6 @@
 #pragma once
 
+#include "fs/fifo.h"
 #include "hydrogen/fcntl.h"
 #include "hydrogen/filesystem.h"
 #include "hydrogen/stat.h"
@@ -165,6 +166,7 @@ struct inode {
         void *symlink;
         mem_object_t *regular;
         fs_device_t *device;
+        fifo_t fifo;
     };
 };
 
@@ -244,3 +246,4 @@ void init_new_inode(inode_t *directory, inode_t *inode, ident_t *ident, uint32_t
 
 int create_root_dentry(filesystem_t *fs, inode_t *root);
 void init_file(file_t *file, const file_ops_t *ops, inode_t *inode, dentry_t *path, int flags);
+void free_file(file_t *file);

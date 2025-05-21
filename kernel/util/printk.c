@@ -316,6 +316,7 @@ static void klog_file_free(object_t *ptr) {
         printk_unlock(state);
     }
 
+    free_file(&self->base);
     vfree(self, sizeof(*self));
 }
 

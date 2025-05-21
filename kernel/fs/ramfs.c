@@ -203,8 +203,7 @@ static int create_ramfs_inode(
 
 static void ramfs_file_dir_free(object_t *ptr) {
     file_t *file = (file_t *)ptr;
-    dentry_deref(file->path);
-    inode_deref(file->inode);
+    free_file(file);
     vfree(file, sizeof(*file));
 }
 

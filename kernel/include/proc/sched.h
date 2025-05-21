@@ -54,7 +54,7 @@ typedef struct thread {
     signal_target_t sig_target;
     __sigset_t sig_mask;
     __stack_t sig_stack;
-    queued_signal_t fault_sig;
+    queued_signal_t fault_sig, pipe_sig;
 
     uint64_t account_start_time;
     uint64_t kernel_start_time;

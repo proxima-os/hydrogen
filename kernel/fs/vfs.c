@@ -2,6 +2,7 @@
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
+#include "fs/fifo.h"
 #include "hydrogen/fcntl.h"
 #include "hydrogen/filesystem.h"
 #include "hydrogen/limits.h"
@@ -455,7 +456,7 @@ int vfs_create(
 ) {
     if (unlikely(
                 type != HYDROGEN_REGULAR_FILE && type != HYDROGEN_DIRECTORY && type != HYDROGEN_CHARACTER_DEVICE &&
-                type != HYDROGEN_BLOCK_DEVICE
+                type != HYDROGEN_BLOCK_DEVICE && type != HYDROGEN_FIFO
         )) {
         return EINVAL;
     }
@@ -1235,8 +1236,7 @@ int vfs_ftruncate(file_t *file, uint64_t size) {
 
 static void regular_file_free(object_t *ptr) {
     file_t *self = (file_t *)ptr;
-    dentry_deref(self->path);
-    inode_deref(self->inode);
+    free_file(self);
     vfree(self, sizeof(*self));
 }
 
@@ -1405,6 +1405,7 @@ static int do_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ide
             ret = ret_error(ENXIO);
         }
         break;
+    case HYDROGEN_FIFO: ret = fifo_open(&inode->fifo, inode, path, flags); break;
     default: ret = ret_error(ENOTSUP); break;
     }
 
@@ -1721,6 +1722,7 @@ void inode_deref(inode_t *inode) {
         case HYDROGEN_BLOCK_DEVICE:
             if (inode->device && inode->device->ops->free) inode->device->ops->free(inode->device);
             break;
+        case HYDROGEN_FIFO: fifo_free(&inode->fifo); break;
         default: break;
         }
 
@@ -1775,4 +1777,9 @@ void init_file(file_t *file, const file_ops_t *ops, inode_t *inode, dentry_t *pa
     file->flags = flags;
     dentry_ref(path);
     inode_ref(inode);
+}
+
+void free_file(file_t *file) {
+    inode_deref(file->inode);
+    dentry_deref(file->path);
 }

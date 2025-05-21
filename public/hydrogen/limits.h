@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#define __PIPE_BUF 0x4000
 #define __SYMLOOP_MAX 8
 
 #ifdef __cplusplus

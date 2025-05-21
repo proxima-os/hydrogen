@@ -4,6 +4,7 @@ kernel_sources += files(
     'cpu/cpudata.c',
     'cpu/smp.c',
     'drv/framebuffer.c',
+    'fs/fifo.c',
     'fs/ramfs.c',
     'fs/vfs.c',
     'init/cmdline.c',
