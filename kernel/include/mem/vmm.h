@@ -14,6 +14,9 @@
 #define VMM_REGION_FLAGS (VMM_PERM_FLAGS | HYDROGEN_MEM_LAZY_RESERVE | HYDROGEN_MEM_SHARED)
 #define VMM_MAP_FLAGS (VMM_REGION_FLAGS | HYDROGEN_MEM_EXACT | HYDROGEN_MEM_OVERWRITE)
 
+struct dentry;
+struct inode;
+
 typedef struct mem_object mem_object_t;
 typedef struct vmm_region vmm_region_t;
 typedef struct vmm vmm_t;
@@ -69,6 +72,9 @@ struct vmm {
     size_t num_reserved;
     size_t num_tables;
     uintptr_t vdso_addr;
+
+    struct dentry *path;
+    struct inode *inode;
 };
 
 int vmm_create(vmm_t **out);

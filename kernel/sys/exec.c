@@ -520,6 +520,11 @@ int create_exec_data(
         return error;
     }
 
+    vmm->path = image->path;
+    vmm->inode = image->inode;
+    if (vmm->path) dentry_ref(vmm->path);
+    inode_ref(vmm->inode);
+
     out->vmm = vmm;
     out->ident = ident;
     out->pc = image_info.entrypoint;

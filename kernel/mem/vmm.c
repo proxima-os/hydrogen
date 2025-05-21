@@ -3,6 +3,7 @@
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
+#include "fs/vfs.h"
 #include "hydrogen/memory.h"
 #include "hydrogen/types.h"
 #include "kernel/compiler.h"
@@ -311,6 +312,10 @@ static void vmm_free(object_t *ptr) {
 
     pmap_finish_destruction(vmm);
     pmem_unreserve(vmm->num_reserved);
+
+    if (vmm->path) dentry_deref(vmm->path);
+    if (vmm->inode) inode_deref(vmm->inode);
+
     vfree(vmm, sizeof(*vmm));
 }
 
