@@ -214,6 +214,7 @@ int vfs_truncate(file_t *rel, const void *path, size_t length, uint64_t size);
 int vfs_ftruncate(file_t *file, uint64_t size);
 
 int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int flags, uint32_t mode, ident_t *ident);
+int vfs_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ident_t *ident);
 hydrogen_ret_t vfs_mmap(
         file_t *file,
         object_rights_t rights,

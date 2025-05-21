@@ -144,3 +144,7 @@ EXPORT int hydrogen_fs_futime(int file, __int128_t atime, __int128_t ctime, __in
 EXPORT int hydrogen_fs_ftruncate(int file, uint64_t size) {
     return SYSCALL2(SYSCALL_FS_FTRUNCATE, file, size).error;
 }
+
+EXPORT hydrogen_ret_t hydrogen_fs_fopen(int file, int flags) {
+    return SYSCALL2(SYSCALL_FS_FOPEN, file, flags);
+}

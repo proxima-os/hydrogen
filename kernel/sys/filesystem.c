@@ -614,3 +614,16 @@ int hydrogen_fs_ftruncate(int file, uint64_t size) {
     obj_deref(&fdesc->base);
     return error;
 }
+
+hydrogen_ret_t hydrogen_fs_fopen(int file, int flags) {
+    file_t *fdesc;
+    int error = file_resolve(&fdesc, file, 0);
+    if (unlikely(error)) return ret_error(error);
+
+    file_t *ret;
+    ident_t *ident = ident_get(current_thread->process);
+    error = vfs_fopen(&ret, fdesc->path, fdesc->inode, flags, ident);
+    ident_deref(ident);
+    obj_deref(&fdesc->base);
+    return RET_MAYBE(pointer, error, ret);
+}

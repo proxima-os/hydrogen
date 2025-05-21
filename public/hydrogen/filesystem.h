@@ -113,6 +113,7 @@ int hydrogen_fs_ftruncate(int file, uint64_t size) __asm__("__hydrogen_fs_ftrunc
 hydrogen_ret_t hydrogen_fs_open(int rel, const void *path, size_t length, int flags, uint32_t mode) __asm__(
         "__hydrogen_fs_open"
 );
+hydrogen_ret_t hydrogen_fs_fopen(int file, int flags) __asm__("__hydrogen_fs_fopen");
 hydrogen_ret_t hydrogen_fs_mmap(
         int file,
         int vmm,

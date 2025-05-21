@@ -203,6 +203,7 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
         return ret_error(hydrogen_fs_futime(a0, args.atime, args.ctime, args.mtime));
     }
     case SYSCALL_FS_FTRUNCATE: return ret_error(hydrogen_fs_ftruncate(a0, a1));
+    case SYSCALL_FS_FOPEN: return hydrogen_fs_fopen(a0, a1);
     default: return ret_error(ENOSYS);
     }
 }

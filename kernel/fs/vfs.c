@@ -1351,6 +1351,65 @@ static void open_regular_file(file_t *file, dentry_t *entry, int flags) {
     init_file(file, &regular_file_ops, entry->inode, entry, flags);
 }
 
+static int do_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ident_t *ident) {
+    if (flags & __O_DIRECTORY) {
+        if (unlikely(inode->type != HYDROGEN_DIRECTORY)) return ENOTDIR;
+        if (unlikely(flags & __O_WRONLY)) return EISDIR;
+    } else if (inode->type == HYDROGEN_DIRECTORY) {
+        if (unlikely((flags & (__O_CREAT | __O_WRONLY)) != 0)) return EISDIR;
+    }
+
+    uint32_t type = 0;
+
+    if (flags & __O_RDONLY) type |= HYDROGEN_FILE_READ;
+    if (flags & __O_WRONLY) type |= HYDROGEN_FILE_WRITE;
+
+    mutex_acq(&inode->lock, 0, false);
+
+    int error = access_inode(inode, ident, type, false);
+    if (unlikely(error)) goto ret;
+
+    hydrogen_ret_t ret;
+
+    switch (inode->type) {
+    case HYDROGEN_DIRECTORY: ret = inode->ops->directory.open(inode, path, flags); break;
+    case HYDROGEN_REGULAR_FILE: {
+        if (flags & __O_TRUNC) {
+            error = inode->ops->regular.truncate(inode, 0);
+            if (unlikely(error)) {
+                ret = ret_error(error);
+                break;
+            }
+        }
+
+        file_t *file = vmalloc(sizeof(*file));
+        if (unlikely(!file)) {
+            ret = ret_error(ENOMEM);
+            break;
+        }
+        open_regular_file(file, path, flags);
+        ret = ret_pointer(file);
+        break;
+    }
+    case HYDROGEN_SYMLINK: ret = ret_error(ELOOP); break;
+    case HYDROGEN_CHARACTER_DEVICE:
+        if (inode->device) {
+            ret = inode->device->ops->open(inode->device, inode, path, flags);
+        } else {
+            ret = ret_error(ENXIO);
+        }
+        break;
+    default: ret = ret_error(ENOTSUP); break;
+    }
+
+    error = ret.error;
+
+    if (likely(error == 0)) *out = ret.pointer;
+ret:
+    mutex_rel(&inode->lock);
+    return error;
+}
+
 int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int flags, uint32_t mode, ident_t *ident) {
     if (unlikely((flags & ~FILE_OPEN_FLAGS) != 0)) return EINVAL;
     if (unlikely((mode & ~FILE_PERM_BITS) != 0)) return EINVAL;
@@ -1414,80 +1473,7 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
     } else {
         ASSERT((flags & __O_EXCL) == 0);
 
-        mutex_acq(&entry->inode->lock, 0, false);
-
-        if (flags & __O_DIRECTORY) {
-            if (entry->inode->type != HYDROGEN_DIRECTORY) {
-                mutex_rel(&entry->inode->lock);
-                error = ENOTDIR;
-                goto ret;
-            }
-
-            if (flags & __O_WRONLY) {
-                mutex_rel(&entry->inode->lock);
-                error = EISDIR;
-                goto ret;
-            }
-        } else if (entry->inode->type == HYDROGEN_DIRECTORY) {
-            if (flags & (__O_CREAT | __O_WRONLY)) {
-                mutex_rel(&entry->inode->lock);
-                error = EISDIR;
-                goto ret;
-            }
-        }
-
-        uint32_t type = 0;
-
-        if (flags & __O_RDONLY) type |= HYDROGEN_FILE_READ;
-        if (flags & __O_WRONLY) type |= HYDROGEN_FILE_WRITE;
-
-        error = access_inode(entry->inode, ident, type, false);
-        if (unlikely(error)) {
-            mutex_rel(&entry->inode->lock);
-            goto ret;
-        }
-
-        hydrogen_ret_t ret;
-
-        switch (entry->inode->type) {
-        case HYDROGEN_DIRECTORY: ret = entry->inode->ops->directory.open(entry->inode, entry, flags); break;
-        case HYDROGEN_REGULAR_FILE: {
-            if (flags & __O_TRUNC) {
-                error = entry->inode->ops->regular.truncate(entry->inode, 0);
-                if (unlikely(error)) {
-                    ret = ret_error(error);
-                    break;
-                }
-            }
-
-            file_t *file = vmalloc(sizeof(*file));
-            if (unlikely(!file)) {
-                ret = ret_error(ENOMEM);
-                break;
-            }
-            open_regular_file(file, entry, flags);
-            ret = ret_pointer(file);
-            break;
-        }
-        case HYDROGEN_SYMLINK: ret = ret_error(ELOOP); break;
-        case HYDROGEN_CHARACTER_DEVICE:
-            if (entry->inode->device) {
-                ret = entry->inode->device->ops->open(entry->inode->device, entry->inode, entry, flags);
-            } else {
-                ret = ret_error(ENXIO);
-            }
-            break;
-        default: ret = ret_error(ENOTSUP); break;
-        }
-
-        mutex_rel(&entry->inode->lock);
-
-        if (unlikely(ret.error)) {
-            error = ret.error;
-            goto ret;
-        }
-
-        file = ret.pointer;
+        error = do_fopen(&file, entry, entry->inode, flags, ident);
     }
 
     *out = file;
@@ -1495,6 +1481,14 @@ ret:
     mutex_rel(&entry->lock);
     dentry_deref(entry);
     return error;
+}
+
+int vfs_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ident_t *ident) {
+    if (unlikely((flags & ~FILE_OPEN_FLAGS) != 0)) return EINVAL;
+    if (unlikely((flags & (__O_CREAT | __O_DIRECTORY)) == (__O_CREAT | __O_DIRECTORY))) return EINVAL;
+    if (unlikely((flags & __O_EXCL) != 0)) return EEXIST;
+
+    return do_fopen(out, path, inode, flags, ident);
 }
 
 hydrogen_ret_t vfs_mmap(
