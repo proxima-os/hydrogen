@@ -1,6 +1,7 @@
 #include "hydrogen/filesystem.h"
 #include "arch/syscall.h"
 #include "hydrogen/types.h"
+#include "kernel/compiler.h"
 #include "kernel/filesystem.h"
 #include "kernel/syscall.h"
 #include "vdso.h"
@@ -147,4 +148,14 @@ EXPORT int hydrogen_fs_ftruncate(int file, uint64_t size) {
 
 EXPORT hydrogen_ret_t hydrogen_fs_fopen(int file, int flags) {
     return SYSCALL2(SYSCALL_FS_FOPEN, file, flags);
+}
+
+EXPORT int hydrogen_fs_pipe(int fds[2], int flags) {
+    hydrogen_ret_t ret = SYSCALL1(SYSCALL_FS_PIPE, flags);
+    if (unlikely(ret.error)) return ret.error;
+
+    fds[0] = ret.integer & 0xffffffff;
+    fds[1] = ret.integer >> 32;
+
+    return 0;
 }

@@ -204,6 +204,12 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     }
     case SYSCALL_FS_FTRUNCATE: return ret_error(hydrogen_fs_ftruncate(a0, a1));
     case SYSCALL_FS_FOPEN: return hydrogen_fs_fopen(a0, a1);
+    case SYSCALL_FS_PIPE: {
+        int fds[2];
+        int error = hydrogen_fs_pipe(fds, a0);
+        if (unlikely(error)) return ret_error(error);
+        return ret_integer(((uint64_t)fds[1] << 32) | fds[0]);
+    }
     default: return ret_error(ENOSYS);
     }
 }

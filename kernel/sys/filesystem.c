@@ -1,6 +1,7 @@
 #include "hydrogen/filesystem.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
+#include "errno.h"
 #include "fs/vfs.h"
 #include "hydrogen/fcntl.h"
 #include "hydrogen/handle.h"
@@ -690,4 +691,60 @@ err2:
 err:
     if (fdesc != NULL) obj_deref(&fdesc->base);
     return ret_error(error);
+}
+
+int hydrogen_fs_pipe(int fds[2], int flags) {
+    if (unlikely((flags & ~(__O_CLOEXEC | __O_CLOFORK | __O_NONBLOCK)) != 0)) return EINVAL;
+
+    handle_data_t *rdata = vmalloc(sizeof(*rdata));
+    if (unlikely(!rdata)) return ENOMEM;
+
+    handle_data_t *wdata = vmalloc(sizeof(*wdata));
+    int error = ENOMEM;
+    if (unlikely(!wdata)) goto err;
+
+    error = hnd_reserve(current_thread->namespace);
+    if (unlikely(error)) goto err2;
+
+    error = hnd_reserve(current_thread->namespace);
+    if (unlikely(error)) goto err3;
+
+    inode_t *inode;
+    ident_t *ident = ident_get(current_thread->process);
+    error = vfs_create_anonymous(&inode, HYDROGEN_FIFO, __S_IRUSR | __S_IWUSR, NULL, ident);
+    if (unlikely(error)) goto err4;
+
+    file_t *read;
+    error = vfs_fopen(&read, NULL, inode, flags | __O_RDONLY, ident);
+    if (unlikely(error)) goto err5;
+
+    file_t *write;
+    error = vfs_fopen(&write, NULL, inode, flags | __O_WRONLY, ident);
+    if (unlikely(error)) goto err6;
+
+    uint32_t hflags = get_open_flags(flags);
+
+    fds[0] = hnd_alloc_reserved(current_thread->namespace, &read->base, HYDROGEN_FILE_READ, hflags, rdata);
+    fds[1] = hnd_alloc_reserved(current_thread->namespace, &write->base, HYDROGEN_FILE_WRITE, hflags, wdata);
+
+    obj_deref(&write->base);
+    obj_deref(&read->base);
+    inode_deref(inode);
+    ident_deref(ident);
+
+    return 0;
+err6:
+    obj_deref(&read->base);
+err5:
+    inode_deref(inode);
+err4:
+    ident_deref(ident);
+    hnd_unreserve(current_thread->namespace);
+err3:
+    hnd_unreserve(current_thread->namespace);
+err2:
+    vfree(wdata, sizeof(*wdata));
+err:
+    vfree(rdata, sizeof(*rdata));
+    return error;
 }

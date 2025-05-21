@@ -1829,7 +1829,7 @@ static const inode_ops_t anon_inode_ops = {
         .utime = anon_inode_utime,
 };
 
-int vfs_create_anonymous(inode_t **out, hydrogen_file_type_t type, uint32_t mode, fs_device_t *device) {
+int vfs_create_anonymous(inode_t **out, hydrogen_file_type_t type, uint32_t mode, fs_device_t *device, ident_t *ident) {
     if (unlikely(type != HYDROGEN_CHARACTER_DEVICE && type != HYDROGEN_BLOCK_DEVICE && type != HYDROGEN_FIFO)) {
         return EINVAL;
     }
@@ -1850,9 +1850,7 @@ int vfs_create_anonymous(inode_t **out, hydrogen_file_type_t type, uint32_t mode
     default: UNREACHABLE();
     }
 
-    ident_t *ident = ident_get(current_thread->process);
     init_new_inode(NULL, inode, ident, mode);
-    ident_deref(ident);
 
     *out = inode;
     return 0;

@@ -116,6 +116,7 @@ hydrogen_ret_t hydrogen_fs_open(int rel, const void *path, size_t length, int fl
         "__hydrogen_fs_open"
 );
 hydrogen_ret_t hydrogen_fs_fopen(int file, int flags) __asm__("__hydrogen_fs_fopen");
+int hydrogen_fs_pipe(int fds[2], int flags) __asm__("__hydrogen_fs_pipe");
 hydrogen_ret_t hydrogen_fs_mmap(
         int file,
         int vmm,
