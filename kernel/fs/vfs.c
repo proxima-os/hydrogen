@@ -1374,19 +1374,21 @@ static int do_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ide
     switch (inode->type) {
     case HYDROGEN_DIRECTORY: ret = inode->ops->directory.open(inode, path, flags); break;
     case HYDROGEN_REGULAR_FILE: {
-        if (flags & __O_TRUNC) {
-            error = inode->ops->regular.truncate(inode, 0);
-            if (unlikely(error)) {
-                ret = ret_error(error);
-                break;
-            }
-        }
-
         file_t *file = vmalloc(sizeof(*file));
         if (unlikely(!file)) {
             ret = ret_error(ENOMEM);
             break;
         }
+
+        if (flags & __O_TRUNC) {
+            error = inode->ops->regular.truncate(inode, 0);
+            if (unlikely(error)) {
+                vfree(file, sizeof(*file));
+                ret = ret_error(error);
+                break;
+            }
+        }
+
         open_regular_file(file, path, flags);
         ret = ret_pointer(file);
         break;
