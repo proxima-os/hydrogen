@@ -453,7 +453,10 @@ int vfs_create(
         uint32_t mode,
         fs_device_t *device
 ) {
-    if (unlikely(type != HYDROGEN_REGULAR_FILE && type != HYDROGEN_DIRECTORY && type != HYDROGEN_CHARACTER_DEVICE)) {
+    if (unlikely(
+                type != HYDROGEN_REGULAR_FILE && type != HYDROGEN_DIRECTORY && type != HYDROGEN_CHARACTER_DEVICE &&
+                type != HYDROGEN_BLOCK_DEVICE
+        )) {
         return EINVAL;
     }
 
@@ -1395,6 +1398,7 @@ static int do_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ide
     }
     case HYDROGEN_SYMLINK: ret = ret_error(ELOOP); break;
     case HYDROGEN_CHARACTER_DEVICE:
+    case HYDROGEN_BLOCK_DEVICE:
         if (inode->device) {
             ret = inode->device->ops->open(inode->device, inode, path, flags);
         } else {
@@ -1714,6 +1718,7 @@ void inode_deref(inode_t *inode) {
         switch (inode->type) {
         case HYDROGEN_SYMLINK: vfree(inode->symlink, inode->size); break;
         case HYDROGEN_CHARACTER_DEVICE:
+        case HYDROGEN_BLOCK_DEVICE:
             if (inode->device && inode->device->ops->free) inode->device->ops->free(inode->device);
             break;
         default: break;
