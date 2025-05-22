@@ -223,7 +223,7 @@ static void *alloc_table(vmm_t *vmm, unsigned level) {
     bool ok = arch_pt_init_table(table, level);
 
     if (likely(ok)) {
-        vmm->num_tables += 1;
+        if (vmm) vmm->num_tables += 1;
         return table;
     } else {
         pmem_free_now(page);
