@@ -13,7 +13,6 @@
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
-#include "kernel/types.h"
 #include "mem/memmap.h"
 #include "mem/pmem.h"
 #include "mem/usercopy.h"
@@ -439,80 +438,18 @@ static void tlb_add_unmap_leaf(tlb_ctx_t *tlb, uintptr_t addr, unsigned level, p
     }
 }
 
-static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size, tlb_ctx_t *tlb) {
-    size_t index = arch_pt_get_index(virt, level);
-    size_t entry_size = 1ul << arch_pt_entry_bits(level);
-    size_t entry_mask = entry_size - 1;
-
-    size_t leaves = 0;
-
-    do {
-        size_t cur = entry_size - (virt & entry_mask);
-        if (cur > size) cur = size;
-
-        pte_t pte = arch_pt_read(table, level, index);
-
-        if (level == 0 || !arch_pt_is_edge(level, pte)) {
-            ASSERT(pte != 0);
-            ASSERT(table != kernel_page_table);
-
-            arch_pt_write(table, level, index, 0);
-
-            if (pte != ARCH_PT_PREPARE_PTE) {
-                tlb_add_unmap_leaf(tlb, virt, level, pte);
-            }
-
-            leaves += 1;
-        } else {
-            ASSERT(pte != 0);
-            ASSERT(arch_pt_is_edge(level, pte));
-
-            void *child = arch_pt_edge_target(level, pte);
-            size_t ret = do_unmap(child, level - 1, virt, cur, tlb);
-            leaves += ret;
-
-            page_t *page = virt_to_page(child);
-            page->anon.references -= ret;
-
-            if (page->anon.references == 0 && table != kernel_page_table) {
-                arch_pt_write(table, level, index, 0);
-                tlb_add_edge(tlb, virt, true);
-                shlist_insert_head(&tlb->free_queue, &page->anon.free_node);
-            }
-        }
-
-        index += 1;
-        virt += cur;
-        size -= cur;
-    } while (size > 0);
-
-    return leaves;
-}
-
-static ssize_t do_prepare(vmm_t *vmm, void *table, unsigned level, uintptr_t virt, size_t size, tlb_ctx_t *tlb) {
-    size_t index = arch_pt_get_index(virt, level);
-    ssize_t leaves = 0;
-
-    size_t entry_size = 1ul << arch_pt_entry_bits(level);
-    size_t entry_mask = entry_size - 1;
+static bool do_prepare_alloc(vmm_t *vmm, void *table, unsigned level, uintptr_t virt, size_t size, tlb_ctx_t *tlb) {
+    if (level == 0) return true;
 
     uintptr_t start_virt = virt;
+    size_t start_index = arch_pt_get_index(virt, level);
+    size_t entry_size = 1ul << arch_pt_entry_bits(level);
+    size_t entry_mask = entry_size - 1;
+
+    size_t index = start_index;
 
     do {
         pte_t pte = arch_pt_read(table, level, index);
-
-        if (level == 0) {
-            if (pte == 0) {
-                arch_pt_write(table, level, index, ARCH_PT_PREPARE_PTE);
-                leaves += 1;
-            }
-
-            index += 1;
-            virt += entry_size;
-            size -= entry_size;
-            continue;
-        }
-
         void *child;
 
         size_t cur = entry_size - (virt & entry_mask);
@@ -532,17 +469,75 @@ static ssize_t do_prepare(vmm_t *vmm, void *table, unsigned level, uintptr_t vir
             }
         }
 
-        ssize_t ret = do_prepare(vmm, child, level - 1, virt, cur, tlb);
-        if (unlikely(ret < 0)) goto err;
+        index += 1;
+
+        if (unlikely(!do_prepare_alloc(vmm, child, level - 1, virt, cur, tlb))) goto err;
+
+        virt += cur;
+        size -= cur;
+        continue;
+    err:
+        virt = start_virt & ~entry_mask;
+
+        for (size_t i = start_index; i < index; i++, virt += entry_size) {
+            pte = arch_pt_read(table, level, i);
+            ASSERT(pte != 0);
+            ASSERT(pte != ARCH_PT_PREPARE_PTE);
+            ASSERT(arch_pt_is_edge(level, pte));
+            
+            page_t *page = virt_to_page(arch_pt_edge_target(level, pte));
+
+            if (page->anon.references == 0) {
+                // newly allocated by this call, remove it
+                arch_pt_write(table, level, index, 0);
+                tlb_add_edge(tlb, virt, true);
+                shlist_insert_head(&tlb->free_queue, &page->anon.free_node);
+            }
+        }
+
+        return false;
+    } while (size > 0);
+
+    return true;
+}
+
+static size_t do_prepare_fill(vmm_t *vmm, void *table, unsigned level, uintptr_t virt, size_t size, tlb_ctx_t *tlb) {
+    size_t index = arch_pt_get_index(virt, level);
+    size_t leaves = 0;
+
+    size_t entry_size = 1ul << arch_pt_entry_bits(level);
+    size_t entry_mask = entry_size - 1;
+
+    do {
+        pte_t pte = arch_pt_read(table, level, index);
+
+        if (level == 0) {
+            if (pte == 0) {
+                arch_pt_write(table, level, index, ARCH_PT_PREPARE_PTE);
+                leaves += 1;
+            }
+
+            index += 1;
+            virt += entry_size;
+            size -= entry_size;
+            continue;
+        }
+
+        ASSERT(pte != 0);
+        ASSERT(pte != ARCH_PT_PREPARE_PTE);
+        ASSERT(arch_pt_is_edge(level, pte));
+
+        void *child = arch_pt_edge_target(level, pte);
+
+        size_t cur = entry_size - (virt & entry_mask);
+        if (cur > size) cur = size;
+
+        size_t ret = do_prepare_fill(vmm, child, level - 1, virt, cur, tlb);
 
         index += 1;
         leaves += ret;
         virt += cur;
         size -= cur;
-        continue;
-    err:
-        do_unmap(table, level, start_virt, virt + cur, tlb);
-        return -1;
     } while (size > 0);
 
     virt_to_page(table)->anon.references += leaves;
@@ -563,7 +558,13 @@ bool pmap_prepare(vmm_t *vmm, uintptr_t virt, size_t size) {
 
     tlb_ctx_t tlb;
     tlb_init(&tlb, vmm ? &vmm->pmap : NULL);
-    bool ok = do_prepare(vmm, vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, size, &tlb) >= 0;
+
+    bool ok = do_prepare_alloc(vmm, vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, size, &tlb);
+
+    if (ok) {
+        do_prepare_fill(vmm, vmm ? vmm->pmap.table : kernel_page_table, arch_pt_levels() - 1, virt, size, &tlb);
+    }
+
     tlb_commit(&tlb, vmm);
 
     migrate_unlock(state);
@@ -915,6 +916,56 @@ void pmap_move(vmm_t *svmm, uintptr_t src, vmm_t *dvmm, uintptr_t dest, size_t s
 
     migrate_unlock(state);
     if (!svmm) mutex_rel(&kernel_pt_lock);
+}
+
+static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size, tlb_ctx_t *tlb) {
+    size_t index = arch_pt_get_index(virt, level);
+    size_t entry_size = 1ul << arch_pt_entry_bits(level);
+    size_t entry_mask = entry_size - 1;
+
+    size_t leaves = 0;
+
+    do {
+        size_t cur = entry_size - (virt & entry_mask);
+        if (cur > size) cur = size;
+
+        pte_t pte = arch_pt_read(table, level, index);
+
+        if (level == 0 || !arch_pt_is_edge(level, pte)) {
+            ASSERT(pte != 0);
+            ASSERT(table != kernel_page_table);
+
+            arch_pt_write(table, level, index, 0);
+
+            if (pte != ARCH_PT_PREPARE_PTE) {
+                tlb_add_unmap_leaf(tlb, virt, level, pte);
+            }
+
+            leaves += 1;
+        } else {
+            ASSERT(pte != 0);
+            ASSERT(arch_pt_is_edge(level, pte));
+
+            void *child = arch_pt_edge_target(level, pte);
+            size_t ret = do_unmap(child, level - 1, virt, cur, tlb);
+            leaves += ret;
+
+            page_t *page = virt_to_page(child);
+            page->anon.references -= ret;
+
+            if (page->anon.references == 0 && table != kernel_page_table) {
+                arch_pt_write(table, level, index, 0);
+                tlb_add_edge(tlb, virt, true);
+                shlist_insert_head(&tlb->free_queue, &page->anon.free_node);
+            }
+        }
+
+        index += 1;
+        virt += cur;
+        size -= cur;
+    } while (size > 0);
+
+    return leaves;
 }
 
 void pmap_unmap(vmm_t *vmm, uintptr_t virt, size_t size) {
