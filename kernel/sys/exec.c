@@ -6,6 +6,7 @@
 #include "fs/vfs.h"
 #include "hydrogen/filesystem.h"
 #include "hydrogen/memory.h"
+#include "hydrogen/signal.h"
 #include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -541,12 +542,25 @@ int create_exec_data(
 }
 
 void exec_finalize(exec_data_t *data) {
-    mutex_acq(&current_thread->process->ident_update_lock, 0, false);
-    ident_t *old = current_thread->process->identity;
-    rcu_write(current_thread->process->identity, data->ident);
-    mutex_rel(&current_thread->process->ident_update_lock);
+    process_t *process = current_thread->process;
+    __atomic_store_n(&process->did_exec, true, __ATOMIC_RELEASE);
+
+    mutex_acq(&process->ident_update_lock, 0, false);
+    ident_t *old = process->identity;
+    rcu_write(process->identity, data->ident);
+    mutex_rel(&process->ident_update_lock);
     rcu_sync();
     ident_deref(old);
+
+    mutex_acq(&process->sig_lock, 0, false);
+
+    for (int i = 0; i < __NSIG; i++) {
+        struct __sigaction *handler = &process->sig_handlers[i];
+
+        if (handler->__func.__handler != __SIG_IGN) handler->__func.__handler = __SIG_DFL;
+    }
+
+    mutex_rel(&process->sig_lock);
 
     namespace_handle_exec(current_thread->namespace);
 }
