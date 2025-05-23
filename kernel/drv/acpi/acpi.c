@@ -25,11 +25,13 @@
 #include "string.h"
 #include "uacpi/event.h"
 #include "uacpi/kernel_api.h"
+#include "uacpi/namespace.h"
 #include "uacpi/platform/arch_helpers.h"
 #include "uacpi/platform/types.h"
 #include "uacpi/status.h"
 #include "uacpi/types.h"
 #include "uacpi/uacpi.h"
+#include "uacpi/utilities.h"
 #include "util/list.h"
 #include "util/object.h"
 #include "util/printk.h"
@@ -108,6 +110,59 @@ static void acpi_worker_thread(void *ptr) {
     }
 }
 
+extern acpi_driver_t __acpidrv_start[];
+extern acpi_driver_t __acpidrv_end[];
+
+static acpi_driver_t *get_driver_for_pnp_id(const char *id) {
+    for (acpi_driver_t *driver = __acpidrv_start; driver < __acpidrv_end; driver++) {
+        for (size_t i = 0; i < driver->num_pnp_ids; i++) {
+            if (!strcmp(id, driver->pnp_ids[i])) {
+                return driver;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+static bool process_pnp_id(uacpi_namespace_node *node, uacpi_namespace_node_info *info, const char *id) {
+    acpi_driver_t *driver = get_driver_for_pnp_id(id);
+    if (!driver) return false;
+
+    int error = driver->init_device(node, info);
+
+    if (unlikely(error)) {
+        printk("acpi: failed to initialize driver '%s' (%e)\n", driver->name, error);
+    }
+
+    return true;
+}
+
+static uacpi_iteration_decision process_device(void *ctx, uacpi_namespace_node *node, uacpi_u32 depth) {
+    uacpi_namespace_node_info *info;
+    uacpi_status ret = uacpi_get_namespace_node_info(node, &info);
+    if (uacpi_unlikely_error(ret)) {
+        const char *path = uacpi_namespace_node_generate_absolute_path(node);
+        printk("acpi: failed to get node information for %s: %s", path, uacpi_status_to_string(ret));
+        uacpi_free_absolute_path(path);
+        return UACPI_ITERATION_DECISION_CONTINUE;
+    }
+
+    if (info->flags & UACPI_NS_NODE_INFO_HAS_HID) {
+        if (process_pnp_id(node, info, info->hid.value)) goto done;
+    }
+
+    if (info->flags & UACPI_NS_NODE_INFO_HAS_CID) {
+        for (size_t i = 0; i < info->cid.num_ids; i++) {
+            if (process_pnp_id(node, info, info->cid.ids[i].value)) goto done;
+        }
+    }
+
+done:
+    uacpi_free_namespace_node_info(info);
+    return UACPI_ITERATION_DECISION_CONTINUE;
+}
+
 static void acpi_init(void) {
     if (!have_acpi_tables) return;
 
@@ -141,6 +196,19 @@ static void acpi_init(void) {
         printk("acpi: failed to initialize gpes: %s\n", uacpi_status_to_string(status));
         return;
     }
+
+    status = uacpi_namespace_for_each_child(
+            uacpi_namespace_root(),
+            process_device,
+            NULL,
+            UACPI_OBJECT_DEVICE_BIT,
+            UACPI_MAX_DEPTH_ANY,
+            NULL
+    );
+    if (uacpi_unlikely_error(status)) {
+        printk("acpi: failed to iterate namespace: %s\n", uacpi_status_to_string(status));
+        return;
+    }
 }
 
 INIT_DEFINE(
@@ -148,7 +216,8 @@ INIT_DEFINE(
         acpi_init,
         INIT_REFERENCE(scheduler),
         INIT_REFERENCE(enable_interrupts),
-        INIT_REFERENCE(pci_config_access)
+        INIT_REFERENCE(pci_config_access),
+        INIT_REFERENCE(mount_rootfs)
 );
 
 uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {

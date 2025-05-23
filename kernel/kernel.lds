@@ -26,6 +26,7 @@ SECTIONS {
     .inittask.earlyap : { __inittask_start_earlyap = .; KEEP(*(.inittask.earlyap)) __inittask_end_earlyap = .; } :data
     .inittask.dflt : { __inittask_start_dflt = .; KEEP(*(.inittask.dflt)) __inittask_end_dflt = .; } :data
     .inittask.dfltap : { __inittask_start_dfltap = .; KEEP(*(.inittask.dfltap)) __inittask_end_dfltap = .; } :data
+    .acpidrv : { __acpidrv_start = .; KEEP(*(.acpidrv)) __acpidrv_end = .; } :data
 
     . = ALIGN(CONSTANT(MAXPAGESIZE));
     .vdso : {
