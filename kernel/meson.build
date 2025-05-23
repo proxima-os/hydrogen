@@ -23,6 +23,7 @@ kernel_sources += files(
     'proc/process.c',
     'proc/rcu.c',
     'proc/sched.c',
+    'proc/semaphore.c',
     'proc/signal.c',
     'sys/eventqueue.c',
     'sys/exec.c',
