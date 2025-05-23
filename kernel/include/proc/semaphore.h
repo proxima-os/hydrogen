@@ -13,6 +13,6 @@ typedef struct {
 } semaphore_t;
 
 bool sema_try_wait(semaphore_t *sema);
-int sema_wait(semaphore_t *sema, bool interruptible, uint64_t deadline);
+int sema_wait(semaphore_t *sema, uint64_t deadline, bool interruptible);
 void sema_signal(semaphore_t *sema);
 void sema_reset(semaphore_t *sema);

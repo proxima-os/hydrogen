@@ -1,9 +1,9 @@
 #include "x86_64/lapic.h"
-#include "acpi/acpi.h" /* IWYU pragma: keep */
 #include "arch/idle.h"
 #include "arch/mmio.h"
 #include "arch/pmap.h"
 #include "cpu/cpudata.h"
+#include "drv/acpi/acpi.h" /* IWYU pragma: keep */
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"

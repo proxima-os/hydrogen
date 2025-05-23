@@ -5,6 +5,9 @@
 
 typedef uint16_t pio_addr_t;
 
+#define ARCH_HAS_PIO 1
+#define ARCH_PIO_MAX UINT16_MAX
+
 static inline uint8_t pio_read8(pio_addr_t address) {
     uint8_t value;
     asm volatile("inb %1, %0" : "=a"(value) : "Nd"(address) : "memory");

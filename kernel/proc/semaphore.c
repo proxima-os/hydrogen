@@ -15,7 +15,7 @@ bool sema_try_wait(semaphore_t *sema) {
     return ok;
 }
 
-int sema_wait(semaphore_t *sema, bool interruptible, uint64_t deadline) {
+int sema_wait(semaphore_t *sema, uint64_t deadline, bool interruptible) {
     mutex_acq(&sema->lock, 0, false);
 
     while (sema->count == 0) {
