@@ -748,3 +748,16 @@ err:
     vfree(rdata, sizeof(*rdata));
     return error;
 }
+
+hydrogen_ret_t hydrogen_fs_ioctl(int file, int request, void *buffer, size_t size) {
+    int error = verify_user_buffer((uintptr_t)buffer, size);
+    if (unlikely(error)) return ret_error(error);
+
+    file_t *fdesc;
+    error = file_resolve(&fdesc, file, 0);
+    if (unlikely(error)) return ret_error(error);
+
+    hydrogen_ret_t ret = vfs_ioctl(fdesc, request, buffer, size);
+    obj_deref(&fdesc->base);
+    return ret;
+}

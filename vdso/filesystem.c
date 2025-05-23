@@ -159,3 +159,7 @@ EXPORT int hydrogen_fs_pipe(int fds[2], int flags) {
 
     return 0;
 }
+
+EXPORT hydrogen_ret_t hydrogen_fs_ioctl(int file, int request, void *buffer, size_t size) {
+    return SYSCALL4(SYSCALL_FS_IOCTL, file, request, buffer, size);
+}
