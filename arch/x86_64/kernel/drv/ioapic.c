@@ -37,6 +37,7 @@ typedef struct {
     size_t count;
     bool active_low : 1;
     bool level_triggered : 1;
+    bool shareable : 1;
 } ioapic_pin_t;
 
 typedef struct ioapic {
@@ -207,7 +208,8 @@ int gsi_install(gsi_handler_t *out, uint32_t gsi, bool (*handler)(void *), void 
     ioapic_pin_t *pin = &ioapic->pins[gsi];
 
     if (pin->count != 0) {
-        if (!pin->level_triggered || !(flags & GSI_LEVEL_TRIGGERED) || pin->active_low != !!(flags & GSI_ACTIVE_LOW)) {
+        if (!pin->shareable || pin->level_triggered != !!(flags & GSI_LEVEL_TRIGGERED) ||
+            pin->active_low != !!(flags & GSI_ACTIVE_LOW)) {
             spin_rel(&ioapic->lock, state);
             return EBUSY;
         }
@@ -221,6 +223,7 @@ int gsi_install(gsi_handler_t *out, uint32_t gsi, bool (*handler)(void *), void 
 
         pin->active_low = flags & GSI_ACTIVE_LOW;
         pin->level_triggered = flags & GSI_LEVEL_TRIGGERED;
+        pin->shareable = flags & GSI_SHAREABLE;
 
         uint32_t entry = pin->irq.vector;
         if (pin->active_low) entry |= IOAPIC_ACTIVE_LOW;

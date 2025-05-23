@@ -1,4 +1,4 @@
-kernel_c_flags += ['-mcmodel=kernel', '-mgeneral-regs-only', '-mno-red-zone']
+kernel_c_flags += ['-DUACPI_KERNEL_INITIALIZATION', '-mcmodel=kernel', '-mgeneral-regs-only', '-mno-red-zone']
 kernel_l_flags += ['-Wl,-znoexecstack']
 kernel_include += include_directories('include')
 kernel_sources += files(
@@ -10,6 +10,7 @@ kernel_sources += files(
     'cpu/smp.c',
     'cpu/smp.S',
     'cpu/xsave.c',
+    'drv/acpi.c',
     'drv/debugcon.c',
     'drv/ioapic.c',
     'init/main.c',

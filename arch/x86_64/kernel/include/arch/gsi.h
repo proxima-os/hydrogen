@@ -8,6 +8,7 @@
 #define GSI_ACTIVE_LOW (1 << 0)
 #define GSI_EDGE_TRIGGERED 0
 #define GSI_LEVEL_TRIGGERED (1 << 1)
+#define GSI_SHAREABLE (1 << 2)
 
 typedef struct {
     struct ioapic *ioapic;
