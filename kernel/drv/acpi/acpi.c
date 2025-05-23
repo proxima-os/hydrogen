@@ -30,6 +30,7 @@
 #include "uacpi/status.h"
 #include "uacpi/types.h"
 #include "uacpi/uacpi.h"
+#include "util/list.h"
 #include "util/object.h"
 #include "util/printk.h"
 #include "util/spinlock.h"
@@ -70,8 +71,52 @@ static void acpi_tables_init(void) {
 
 INIT_DEFINE_EARLY(acpi_tables, acpi_tables_init, INIT_REFERENCE(memory), INIT_REFERENCE(verify_loader_revision));
 
+typedef struct {
+    list_node_t node;
+    uacpi_work_handler handler;
+    uacpi_handle ctx;
+    list_t waiting;
+} acpi_work_t;
+
+static list_t acpi_work;
+static thread_t *acpi_work_thread;
+static mutex_t acpi_work_lock;
+
+static void acpi_worker_thread(void *ptr) {
+    mutex_acq(&acpi_work_lock, 0, false);
+
+    for (;;) {
+        acpi_work_t *work = LIST_HEAD(acpi_work, acpi_work_t, node);
+
+        if (work == NULL) {
+            sched_prepare_wait(false);
+            mutex_rel(&acpi_work_lock);
+            sched_perform_wait(0);
+            continue;
+        }
+
+        mutex_rel(&acpi_work_lock);
+        work->handler(work->ctx);
+        mutex_acq(&acpi_work_lock, 0, false);
+
+        LIST_FOREACH(work->waiting, thread_t, wait_node, thread) {
+            sched_wake(thread);
+        }
+
+        list_remove(&acpi_work, &work->node);
+        vfree(work, sizeof(*work));
+    }
+}
+
 static void acpi_init(void) {
     if (!have_acpi_tables) return;
+
+    int error = sched_create_thread(&acpi_work_thread, acpi_worker_thread, NULL, NULL, &kernel_process, 0);
+    if (unlikely(error)) {
+        printk("acpi: failed to create worker thread (%e)\n", error);
+        return;
+    }
+    sched_wake(acpi_work_thread);
 
     uacpi_status status = uacpi_initialize(0);
     if (uacpi_unlikely_error(status)) {
@@ -265,12 +310,57 @@ void uacpi_kernel_unlock_spinlock(uacpi_handle handle, uacpi_cpu_flags flags) {
     spin_rel(handle, flags);
 }
 
+static size_t num_pending_irqs;
+static list_t pending_irqs_waiting;
+static mutex_t pending_irqs_lock;
+
 uacpi_status uacpi_kernel_schedule_work(uacpi_work_type type, uacpi_work_handler handler, uacpi_handle ctx) {
-    return UACPI_STATUS_UNIMPLEMENTED;
+    acpi_work_t *work = vmalloc(sizeof(*work));
+    if (unlikely(!work)) return UACPI_STATUS_OUT_OF_MEMORY;
+    memset(work, 0, sizeof(*work));
+
+    work->handler = handler;
+    work->ctx = ctx;
+
+    mutex_acq(&acpi_work_lock, 0, false);
+    list_insert_tail(&acpi_work, &work->node);
+    sched_wake(acpi_work_thread);
+    mutex_rel(&acpi_work_lock);
+
+    return UACPI_STATUS_OK;
 }
 
 uacpi_status uacpi_kernel_wait_for_work_completion(void) {
-    return UACPI_STATUS_UNIMPLEMENTED;
+    // Wait for in-flight IRQs
+    if (__atomic_load_n(&num_pending_irqs, __ATOMIC_ACQUIRE) != 0) {
+        mutex_acq(&pending_irqs_lock, 0, false);
+
+        if (__atomic_load_n(&num_pending_irqs, __ATOMIC_ACQUIRE) != 0) {
+            list_insert_tail(&pending_irqs_waiting, &current_thread->wait_node);
+            sched_prepare_wait(false);
+            mutex_rel(&pending_irqs_lock);
+            sched_perform_wait(0);
+            mutex_acq(&pending_irqs_lock, 0, false);
+        }
+
+        mutex_rel(&pending_irqs_lock);
+    }
+
+    // Wait for scheduled work
+    mutex_acq(&acpi_work_lock, 0, false);
+
+    acpi_work_t *work = LIST_TAIL(acpi_work, acpi_work_t, node);
+
+    if (work) {
+        list_insert_tail(&work->waiting, &current_thread->wait_node);
+        sched_prepare_wait(false);
+        mutex_rel(&acpi_work_lock);
+        sched_perform_wait(0);
+        mutex_acq(&acpi_work_lock, 0, false);
+    }
+
+    mutex_rel(&acpi_work_lock);
+    return UACPI_STATUS_OK;
 }
 
 typedef struct {
@@ -284,6 +374,7 @@ typedef struct {
 
 static bool handle_acpi_irq(void *ptr) {
     acpi_irq_t *irq = ptr;
+    __atomic_fetch_add(&num_pending_irqs, 1, __ATOMIC_ACQUIRE);
     __atomic_fetch_add(&irq->pending, 1, __ATOMIC_RELAXED);
     sema_signal(&irq->sema);
     return true;
@@ -296,6 +387,17 @@ static void acpi_irq_thread(void *ptr) {
         sema_wait(&irq->sema, 0, false);
         if (__atomic_fetch_sub(&irq->pending, 1, __ATOMIC_RELAXED) == 0) break;
         irq->handler(irq->ctx);
+
+        if (__atomic_fetch_sub(&num_pending_irqs, 1, __ATOMIC_RELEASE) == 1) {
+            mutex_acq(&pending_irqs_lock, 0, false);
+
+            LIST_FOREACH(pending_irqs_waiting, thread_t, wait_node, thread) {
+                sched_wake(thread);
+            }
+
+            list_clear(&pending_irqs_waiting);
+            mutex_rel(&pending_irqs_lock);
+        }
     }
 
     event_signal(&irq->terminated);
