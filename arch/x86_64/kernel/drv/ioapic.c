@@ -1,9 +1,12 @@
 #include "x86_64/ioapic.h"
+#include "arch/gsi.h"
+#include "arch/irq.h"
 #include "arch/mmio.h"
 #include "arch/pio.h"
 #include "arch/pmap.h"
 #include "cpu/cpudata.h"
 #include "drv/acpi/acpi.h" /* IWYU pragma: keep */
+#include "errno.h"
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "mem/kvmm.h"
@@ -15,6 +18,7 @@
 #include "util/panic.h"
 #include "util/printk.h"
 #include "util/slist.h"
+#include "util/spinlock.h"
 #include "x86_64/idtvec.h"
 #include "x86_64/lapic.h"
 #include <stdint.h>
@@ -29,10 +33,19 @@
 #define IOAPIC_MASKED (1u << 16)
 
 typedef struct {
+    irq_t irq;
+    size_t count;
+    bool active_low : 1;
+    bool level_triggered : 1;
+} ioapic_pin_t;
+
+typedef struct ioapic {
     slist_node_t node;
     uintptr_t regs;
     uint32_t gsi_base;
     uint32_t num_irqs;
+    spinlock_t lock;
+    ioapic_pin_t *pins;
 } ioapic_t;
 
 static struct {
@@ -109,8 +122,13 @@ static void x86_64_ioapic_init(void) {
             ioapic->gsi_base = entry->gsi_base;
             ioapic->num_irqs = ((ioapic_read(ioapic, IOAPICVER) >> 16) & 0xff) + 1;
 
+            ioapic->pins = vmalloc(sizeof(*ioapic->pins) * ioapic->num_irqs);
+            if (unlikely(!ioapic->pins)) panic("ioapic: failed to allocate pin list");
+            memset(ioapic->pins, 0, sizeof(*ioapic->pins) * ioapic->num_irqs);
+
             for (uint32_t i = 0; i < ioapic->num_irqs; i++) {
                 ioapic_write(ioapic, IOREDTBL(i), IOAPIC_MASKED | X86_64_IDT_LAPIC_SPURIOUS);
+                ioapic_write(ioapic, IOREDTBL(i) + 1, boot_cpu.arch.apic_id << 24);
             }
 
             slist_insert_tail(&ioapics, &ioapic->node);
@@ -143,18 +161,24 @@ static void x86_64_ioapic_init(void) {
             ioapic_t *apic = gsi_to_apic(&irq);
 
             if (apic) {
-                uint32_t desc = IOAPIC_NMI;
+                ioapic_pin_t *pin = &apic->pins[irq];
 
-                if ((entry->flags & ACPI_MADT_POLARITY_MASK) == ACPI_MADT_POLARITY_ACTIVE_LOW) {
-                    desc |= IOAPIC_ACTIVE_LOW;
+                if (pin->count != 0) {
+                    printk("ioapic: firmware requested duplicate nmi source on gsi %u\n", irq);
+                } else {
+                    pin->count = 1;
+                    pin->active_low = (entry->flags & ACPI_MADT_POLARITY_MASK) == ACPI_MADT_POLARITY_ACTIVE_LOW;
+                    pin->level_triggered = (entry->flags & ACPI_MADT_TRIGGERING_MASK) == ACPI_MADT_TRIGGERING_LEVEL;
+
+                    if (pin->level_triggered) {
+                        printk("ioapic: firmware requested level-triggered nmi, but nmis are always edge triggered\n");
+                    }
+
+                    uint32_t desc = IOAPIC_NMI;
+                    if (pin->active_low) desc |= IOAPIC_ACTIVE_LOW;
+                    if (pin->level_triggered) desc |= IOAPIC_LEVEL_TRIGGERED;
+                    ioapic_write(apic, IOREDTBL(irq), desc);
                 }
-
-                if ((entry->flags & ACPI_MADT_TRIGGERING_MASK) == ACPI_MADT_TRIGGERING_LEVEL) {
-                    printk("ioapic: firmware requested level-triggered nmi, but nmis are always edge triggered\n");
-                }
-
-                ioapic_write(apic, IOREDTBL(irq) + 1, boot_cpu.arch.apic_id << 24);
-                ioapic_write(apic, IOREDTBL(irq), desc);
             } else {
                 printk("ioapic: firmware requested nmi source on nonexistent gsi %u\n", irq);
             }
@@ -173,3 +197,59 @@ INIT_DEFINE_EARLY(
         INIT_REFERENCE(acpi_tables),
         INIT_REFERENCE(x86_64_lapic)
 );
+
+int gsi_install(gsi_handler_t *out, uint32_t gsi, bool (*handler)(void *), void *ctx, int flags) {
+    ioapic_t *ioapic = gsi_to_apic(&gsi);
+    if (unlikely(!ioapic)) return ENOENT;
+
+    irq_state_t state = spin_acq(&ioapic->lock);
+
+    ioapic_pin_t *pin = &ioapic->pins[gsi];
+
+    if (pin->count != 0) {
+        if (!pin->level_triggered || !(flags & GSI_LEVEL_TRIGGERED) || pin->active_low != !!(flags & GSI_ACTIVE_LOW)) {
+            spin_rel(&ioapic->lock, state);
+            return EBUSY;
+        }
+    } else {
+        int error = arch_irq_allocate(&pin->irq);
+
+        if (unlikely(error)) {
+            spin_rel(&ioapic->lock, state);
+            return error;
+        }
+
+        pin->active_low = flags & GSI_ACTIVE_LOW;
+        pin->level_triggered = flags & GSI_LEVEL_TRIGGERED;
+
+        uint32_t entry = pin->irq.vector;
+        if (pin->active_low) entry |= IOAPIC_ACTIVE_LOW;
+        if (pin->level_triggered) entry |= IOAPIC_LEVEL_TRIGGERED;
+        ioapic_write(ioapic, IOREDTBL(gsi), entry);
+    }
+
+    out->handler.func = handler;
+    out->handler.ctx = ctx;
+    arch_irq_add_handler(&pin->irq, &out->handler);
+    pin->count += 1;
+
+    spin_rel(&ioapic->lock, state);
+
+    out->ioapic = ioapic;
+    out->index = gsi;
+    return 0;
+}
+
+void gsi_uninstall(gsi_handler_t *handler) {
+    irq_state_t state = spin_acq(&handler->ioapic->lock);
+    ioapic_pin_t *pin = &handler->ioapic->pins[handler->index];
+
+    arch_irq_remove_handler(&pin->irq, &handler->handler);
+
+    if (--pin->count == 0) {
+        ioapic_write(handler->ioapic, IOREDTBL(handler->index), IOAPIC_MASKED);
+        arch_irq_free(&pin->irq);
+    }
+
+    spin_rel(&handler->ioapic->lock, state);
+}

@@ -1,4 +1,5 @@
 #include "drv/acpi/acpi.h"
+#include "arch/gsi.h"
 #include "arch/idle.h"
 #include "arch/pio.h"
 #include "arch/pmap.h"
@@ -15,7 +16,9 @@
 #include "mem/pmap.h"
 #include "mem/pmem.h"
 #include "mem/vmalloc.h"
+#include "proc/event.h"
 #include "proc/mutex.h"
+#include "proc/process.h"
 #include "proc/sched.h"
 #include "proc/semaphore.h"
 #include "sections.h"
@@ -27,6 +30,7 @@
 #include "uacpi/status.h"
 #include "uacpi/types.h"
 #include "uacpi/uacpi.h"
+#include "util/object.h"
 #include "util/printk.h"
 #include "util/spinlock.h"
 #include "util/time.h"
@@ -94,7 +98,13 @@ static void acpi_init(void) {
     }
 }
 
-INIT_DEFINE(acpi, acpi_init, INIT_REFERENCE(scheduler), INIT_REFERENCE(pci_config_access));
+INIT_DEFINE(
+        acpi,
+        acpi_init,
+        INIT_REFERENCE(scheduler),
+        INIT_REFERENCE(enable_interrupts),
+        INIT_REFERENCE(pci_config_access)
+);
 
 uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
     *out_rsdp_address = rsdp_phys;
@@ -263,17 +273,77 @@ uacpi_status uacpi_kernel_wait_for_work_completion(void) {
     return UACPI_STATUS_UNIMPLEMENTED;
 }
 
+typedef struct {
+    gsi_handler_t gsi;
+    uacpi_interrupt_handler handler;
+    uacpi_handle ctx;
+    semaphore_t sema;
+    size_t pending;
+    event_t terminated;
+} acpi_irq_t;
+
+static bool handle_acpi_irq(void *ptr) {
+    acpi_irq_t *irq = ptr;
+    __atomic_fetch_add(&irq->pending, 1, __ATOMIC_RELAXED);
+    sema_signal(&irq->sema);
+    return true;
+}
+
+static void acpi_irq_thread(void *ptr) {
+    acpi_irq_t *irq = ptr;
+
+    for (;;) {
+        sema_wait(&irq->sema, 0, false);
+        if (__atomic_fetch_sub(&irq->pending, 1, __ATOMIC_RELAXED) == 0) break;
+        irq->handler(irq->ctx);
+    }
+
+    event_signal(&irq->terminated);
+}
+
 uacpi_status uacpi_kernel_install_interrupt_handler(
         uacpi_u32 irq,
         uacpi_interrupt_handler handler,
         uacpi_handle ctx,
         uacpi_handle *out_irq_handle
 ) {
-    return UACPI_STATUS_UNIMPLEMENTED;
+    acpi_irq_t *data = vmalloc(sizeof(*data));
+    if (unlikely(!data)) return UACPI_STATUS_OUT_OF_MEMORY;
+    memset(data, 0, sizeof(*data));
+
+    data->handler = handler;
+    data->ctx = ctx;
+
+    int error = gsi_install(&data->gsi, irq, handle_acpi_irq, data, GSI_EDGE_TRIGGERED | GSI_ACTIVE_HIGH);
+    if (unlikely(error)) {
+        vfree(data, sizeof(*data));
+        return UACPI_STATUS_INTERNAL_ERROR;
+    }
+
+    thread_t *thread;
+    error = sched_create_thread(&thread, acpi_irq_thread, data, NULL, &kernel_process, 0);
+    if (unlikely(error)) {
+        gsi_uninstall(&data->gsi);
+        vfree(data, sizeof(*data));
+        return UACPI_STATUS_INTERNAL_ERROR;
+    }
+    sched_wake(thread);
+    obj_deref(&thread->base);
+
+    *out_irq_handle = data;
+    return UACPI_STATUS_OK;
 }
 
 uacpi_status uacpi_kernel_uninstall_interrupt_handler(uacpi_interrupt_handler handler, uacpi_handle irq_handle) {
-    return UACPI_STATUS_UNIMPLEMENTED;
+    acpi_irq_t *data = irq_handle;
+    gsi_uninstall(&data->gsi);
+
+    __atomic_store_n(&data->handler, NULL, __ATOMIC_RELAXED);
+    sema_signal(&data->sema);
+    event_wait(&data->terminated, 0, false);
+
+    vfree(data, sizeof(*data));
+    return UACPI_STATUS_OK;
 }
 
 uacpi_handle uacpi_kernel_create_event(void) {

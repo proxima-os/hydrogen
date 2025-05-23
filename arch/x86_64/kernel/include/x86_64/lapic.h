@@ -30,6 +30,8 @@ uint32_t x86_64_lapic_timer_remaining(void);
 void x86_64_lapic_irq_error(void);
 void x86_64_lapic_irq_spurious(void);
 
+void x86_64_lapic_irq_handle(uint8_t vector);
+
 static inline void x86_64_lapic_timer_stop(void) {
     x86_64_lapic_timer_start(0);
 }

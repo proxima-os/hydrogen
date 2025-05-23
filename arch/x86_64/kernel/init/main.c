@@ -32,5 +32,5 @@ static void init_arch_vdso_info(void) {
 }
 
 INIT_DEFINE_EARLY(x86_64_vdso_info, init_arch_vdso_info);
-INIT_DEFINE_EARLY(x86_64_interrupts, enable_irq, INIT_REFERENCE(x86_64_lapic), INIT_REFERENCE(x86_64_ioapic));
+INIT_DEFINE_EARLY(enable_interrupts, enable_irq, INIT_REFERENCE(x86_64_lapic), INIT_REFERENCE(x86_64_ioapic));
 INIT_DEFINE_EARLY_AP(x86_64_interrupts_ap, enable_irq);

@@ -6,6 +6,7 @@
 
 INIT_DECLARE(mount_rootfs);
 INIT_DECLARE(verify_loader_revision);
+INIT_DECLARE(enable_interrupts);
 
 _Noreturn void smp_init_current(event_t *event);
 void smp_init_current_late(void);

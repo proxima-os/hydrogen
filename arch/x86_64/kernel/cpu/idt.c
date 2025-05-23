@@ -161,6 +161,7 @@ USED void x86_64_idt_dispatch(arch_context_t *context) {
     case X86_64_IDT_LAPIC_TIMER: x86_64_handle_timer(); break;
     case X86_64_IDT_LAPIC_ERROR: x86_64_lapic_irq_error(); break;
     case X86_64_IDT_LAPIC_SPURIOUS: x86_64_lapic_irq_spurious(); break;
+    case X86_64_IDT_IRQ_MIN ... X86_64_IDT_IRQ_MAX: x86_64_lapic_irq_handle(context->vector); break;
     default: x86_64_idt_handle_fatal(context); break;
     }
 

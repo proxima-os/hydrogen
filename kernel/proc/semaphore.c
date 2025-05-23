@@ -24,7 +24,7 @@ int sema_wait(semaphore_t *sema, uint64_t deadline, bool interruptible) {
         mutex_rel(&sema->lock);
         int error = sched_perform_wait(deadline);
         mutex_acq(&sema->lock, 0, false);
-        
+
         if (unlikely(error)) {
             list_remove(&sema->waiting, &current_thread->wait_node);
             mutex_rel(&sema->lock);
@@ -40,7 +40,7 @@ int sema_wait(semaphore_t *sema, uint64_t deadline, bool interruptible) {
 void sema_signal(semaphore_t *sema) {
     mutex_acq(&sema->lock, 0, false);
 
-    if (sema->count++ == 1) {
+    if (sema->count++ == 0) {
         thread_t *thread = LIST_HEAD(sema->waiting, thread_t, wait_node);
 
         while (thread) {

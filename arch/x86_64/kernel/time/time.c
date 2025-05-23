@@ -1,5 +1,6 @@
 #include "arch/time.h"
 #include "cpu/cpudata.h"
+#include "init/main.h" /* IWYU pragma: keep */
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/time.h"
@@ -53,7 +54,7 @@ static void init_timers(void) {
     init_events();
 }
 
-INIT_DEFINE_EARLY(arch_time, init_timers, INIT_REFERENCE(memory), INIT_REFERENCE(x86_64_interrupts));
+INIT_DEFINE_EARLY(arch_time, init_timers, INIT_REFERENCE(memory), INIT_REFERENCE(enable_interrupts));
 
 void x86_64_switch_timer(
         uint64_t (*read)(void),
