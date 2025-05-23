@@ -1,6 +1,7 @@
 #include "drv/acpi/acpi.h"
 #include "arch/gsi.h"
 #include "arch/idle.h"
+#include "arch/irq.h"
 #include "arch/pio.h"
 #include "arch/pmap.h"
 #include "arch/time.h"
@@ -28,6 +29,7 @@
 #include "uacpi/namespace.h"
 #include "uacpi/platform/arch_helpers.h"
 #include "uacpi/platform/types.h"
+#include "uacpi/sleep.h"
 #include "uacpi/status.h"
 #include "uacpi/types.h"
 #include "uacpi/uacpi.h"
@@ -163,6 +165,20 @@ done:
     return UACPI_ITERATION_DECISION_CONTINUE;
 }
 
+static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx) {
+    uacpi_status ret = uacpi_prepare_for_sleep_state(UACPI_SLEEP_STATE_S5);
+    if (uacpi_unlikely_error(ret)) {
+        printk("acpi: failed to prepare sleep state: %s", uacpi_status_to_string(ret));
+        return UACPI_INTERRUPT_HANDLED;
+    }
+
+    irq_state_t state = save_disable_irq();
+    ret = uacpi_enter_sleep_state(UACPI_SLEEP_STATE_S5);
+    restore_irq(state);
+    printk("acpi: failed to enter sleep state: %s", uacpi_status_to_string(ret));
+    return UACPI_INTERRUPT_HANDLED;
+}
+
 static void acpi_init(void) {
     if (!have_acpi_tables) return;
 
@@ -207,7 +223,11 @@ static void acpi_init(void) {
     );
     if (uacpi_unlikely_error(status)) {
         printk("acpi: failed to iterate namespace: %s\n", uacpi_status_to_string(status));
-        return;
+    }
+
+    status = uacpi_install_fixed_event_handler(UACPI_FIXED_EVENT_POWER_BUTTON, handle_power_button, NULL);
+    if (uacpi_unlikely_error(status)) {
+        printk("acpi: failed to install power button handler: %s\n", uacpi_status_to_string(status));
     }
 }
 
