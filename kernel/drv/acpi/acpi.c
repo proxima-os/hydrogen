@@ -182,7 +182,7 @@ static uacpi_interrupt_ret handle_power_button(uacpi_handle ctx) {
 static void acpi_init(void) {
     if (!have_acpi_tables) return;
 
-    int error = sched_create_thread(&acpi_work_thread, acpi_worker_thread, NULL, NULL, &kernel_process, 0);
+    int error = sched_create_thread(&acpi_work_thread, acpi_worker_thread, NULL, &boot_cpu, &kernel_process, 0);
     if (unlikely(error)) {
         printk("acpi: failed to create worker thread (%e)\n", error);
         return;
