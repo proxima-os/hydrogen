@@ -3,6 +3,7 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/fifo.h"
+#include "hydrogen/eventqueue.h"
 #include "hydrogen/fcntl.h"
 #include "hydrogen/filesystem.h"
 #include "hydrogen/limits.h"
@@ -16,6 +17,7 @@
 #include "proc/process.h"
 #include "proc/rcu.h"
 #include "string.h"
+#include "util/eventqueue.h"
 #include "util/hash.h"
 #include "util/hlist.h"
 #include "util/list.h"
@@ -1246,6 +1248,24 @@ static void regular_file_free(object_t *ptr) {
     vfree(self, sizeof(*self));
 }
 
+static event_source_t always_pending_event_source = {.pending = true};
+
+static int regular_file_event_add(object_t *ptr, uint32_t rights, active_event_t *event) {
+    switch (event->source.type) {
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_READABLE:
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE: return event_source_add(&always_pending_event_source, event);
+    default: return EINVAL;
+    }
+}
+
+static void regular_file_event_del(object_t *ptr, active_event_t *event) {
+    switch (event->source.type) {
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_READABLE:
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE: event_source_del(&always_pending_event_source, event); break;
+    default: UNREACHABLE();
+    }
+}
+
 static hydrogen_ret_t regular_file_seek(file_t *self, hydrogen_seek_anchor_t anchor, int64_t offset) {
     uint64_t position;
 
@@ -1349,6 +1369,8 @@ static hydrogen_ret_t regular_file_mmap(
 
 static const file_ops_t regular_file_ops = {
         .base.free = regular_file_free,
+        .base.event_add = regular_file_event_add,
+        .base.event_del = regular_file_event_del,
         .seek = regular_file_seek,
         .read = regular_file_read,
         .write = regular_file_write,

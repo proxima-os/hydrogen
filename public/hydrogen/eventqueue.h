@@ -34,6 +34,22 @@ typedef enum {
      * The output data is the status type (in the upper 32 bits) and status value (in the lower 32 bits).
      */
     HYDROGEN_EVENT_PROCESS_STATUS,
+    /**
+     * Active when the a file description is ready for reading. See the POSIX manual on poll (POLLIN).
+     */
+    HYDROGEN_EVENT_FILE_DESCRIPTION_READABLE,
+    /**
+     * Active when the a file description is ready for writing. See the POSIX manual on poll (POLLOUT).
+     */
+    HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE,
+    /**
+     * Active when the a file description has an error condition present. See the POSIX manual on poll (POLLERR).
+     */
+    HYDROGEN_EVENT_FILE_DESCRIPTION_ERROR,
+    /**
+     * Active when the a file description has been disconnected. See the POSIX manual on poll (POLLHUP).
+     */
+    HYDROGEN_EVENT_FILE_DESCRIPTION_DISCONNECTED,
 } hydrogen_event_type_t;
 
 typedef struct {

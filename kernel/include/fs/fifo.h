@@ -2,6 +2,7 @@
 
 #include "hydrogen/types.h"
 #include "proc/mutex.h"
+#include "util/eventqueue.h"
 #include "util/list.h"
 #include <stddef.h>
 
@@ -21,6 +22,10 @@ typedef struct {
     list_t open_write_waiting;
     size_t num_readers;
     size_t num_writers;
+
+    event_source_t readable_event;
+    event_source_t writable_event;
+    event_source_t disconnect_event;
 
     mutex_t lock;
 } fifo_t;

@@ -3,6 +3,7 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
+#include "hydrogen/eventqueue.h"
 #include "hydrogen/fcntl.h"
 #include "hydrogen/limits.h"
 #include "hydrogen/signal.h"
@@ -13,6 +14,7 @@
 #include "proc/mutex.h"
 #include "proc/sched.h"
 #include "proc/signal.h"
+#include "util/eventqueue.h"
 #include "util/list.h"
 #include <stdint.h>
 #include <string.h>
@@ -56,11 +58,36 @@ static void fifo_file_free(object_t *ptr) {
 
     if ((self->base.flags & __O_WRONLY) != 0 && --fifo->num_writers == 0) {
         fifo_awaken(&fifo->read_waiting);
+        event_source_signal(&fifo->disconnect_event);
     }
 
     mutex_rel(&fifo->lock);
     free_file(&self->base);
     vfree(self, sizeof(*self));
+}
+
+static int fifo_file_event_add(object_t *ptr, uint32_t rights, active_event_t *event) {
+    fifo_file_t *self = (fifo_file_t *)ptr;
+    fifo_t *fifo = &self->base.inode->fifo;
+
+    switch (event->source.type) {
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_READABLE: return event_source_add(&fifo->readable_event, event);
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE: return event_source_add(&fifo->writable_event, event);
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_DISCONNECTED: return event_source_add(&fifo->disconnect_event, event);
+    default: return EINVAL;
+    }
+}
+
+static void fifo_file_event_del(object_t *ptr, active_event_t *event) {
+    fifo_file_t *self = (fifo_file_t *)ptr;
+    fifo_t *fifo = &self->base.inode->fifo;
+
+    switch (event->source.type) {
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_READABLE: event_source_del(&fifo->readable_event, event); break;
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE: event_source_del(&fifo->writable_event, event); break;
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_DISCONNECTED: event_source_del(&fifo->disconnect_event, event); break;
+    default: UNREACHABLE();
+    }
 }
 
 static hydrogen_ret_t fifo_file_read(file_t *ptr, void *buffer, size_t size, uint64_t position) {
@@ -115,6 +142,7 @@ static hydrogen_ret_t fifo_file_read(file_t *ptr, void *buffer, size_t size, uin
     if (fifo->read_idx == fifo->write_idx) fifo->has_data = false;
 
     fifo_awaken(&fifo->write_waiting);
+    event_source_signal(&fifo->writable_event);
     mutex_rel(&fifo->lock);
     return ret_integer(cur_count);
 }
@@ -194,6 +222,7 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
         }
 
         fifo->has_data = true;
+        event_source_signal(&fifo->readable_event);
         fifo_awaken(&fifo->read_waiting);
     } while (size != 0 && (self->base.flags & __O_NONBLOCK) == 0);
 
@@ -203,6 +232,8 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
 
 static const file_ops_t fifo_file_ops = {
         .base.free = fifo_file_free,
+        .base.event_add = fifo_file_event_add,
+        .base.event_del = fifo_file_event_del,
         .read = fifo_file_read,
         .write = fifo_file_write,
 };
@@ -270,6 +301,7 @@ hydrogen_ret_t fifo_open(fifo_t *fifo, inode_t *inode, dentry_t *path, int flags
     if (flags & __O_WRONLY) {
         fifo->num_writers += 1;
         fifo_awaken(&fifo->open_write_waiting);
+        event_source_reset(&fifo->disconnect_event);
     }
 
     mutex_rel(&fifo->lock);
