@@ -188,6 +188,8 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
                 int error = fifo_wait(fifo, &fifo->write_waiting, NULL);
 
                 if (unlikely(error)) {
+                    if (total != 0) break;
+
                     mutex_rel(&fifo->lock);
                     return ret_error(error);
                 }
