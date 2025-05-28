@@ -20,7 +20,6 @@ typedef struct session session_t;
 
 typedef struct pid {
     int id;
-    mutex_t remove_lock;
     struct thread *thread;
     process_t *process;
     pgroup_t *group;
@@ -114,12 +113,14 @@ struct session {
     size_t num_members;
 };
 
+extern mutex_t pids_lock;
 extern process_t kernel_process;
 extern process_t *init_process;
 
 int resolve_thread(struct thread **out, int tid);
 int resolve_process(process_t **out, int pid);
 int resolve_pgroup(pgroup_t **out, int pgid);
+int resolve_session(session_t **out, int sid);
 
 int proc_clone(process_t **out);
 

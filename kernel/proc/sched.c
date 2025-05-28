@@ -64,18 +64,24 @@ static void reap_thread(thread_t *thread) {
 static void thread_free(object_t *ptr) {
     thread_t *thread = (thread_t *)ptr;
 
+    if (thread->pid) {
+        pid_t *pid = thread->pid;
+        mutex_acq(&pids_lock, 0, false);
+
+        if (__atomic_load_n(&thread->base.references.references, __ATOMIC_ACQUIRE) != 0) {
+            mutex_rel(&pids_lock);
+            return;
+        }
+
+        pid->thread = NULL;
+        pid_handle_removal_and_unlock(pid);
+    }
+
     if (thread->state == THREAD_CREATED) {
         reap_thread(thread);
     }
 
     ASSERT(thread->state == THREAD_EXITED);
-
-    if (thread->pid) {
-        pid_t *pid = thread->pid;
-        mutex_acq(&pid->remove_lock, 0, false);
-        rcu_write(pid->thread, NULL);
-        pid_handle_removal_and_unlock(pid);
-    }
 
     if (thread->process) obj_deref(&thread->process->base);
 

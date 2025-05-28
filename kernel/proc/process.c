@@ -53,7 +53,7 @@ typedef union {
 static pid_table_entry_t *pid_table;
 static int32_t free_pids = -1;
 static size_t pids_capacity;
-static mutex_t pids_update_lock;
+mutex_t pids_lock;
 
 static pgroup_t kernel_group = {.references = REF_INIT(1)};
 static session_t kernel_session = {.references = REF_INIT(1)};
@@ -76,34 +76,28 @@ static int expand_pids(void) {
     if (new_cap > (size_t)INT32_MAX) new_cap = (size_t)INT32_MAX + 1;
     if (new_cap <= pids_capacity) return EAGAIN;
 
-    pid_table_entry_t *new_table = vmalloc(new_cap * sizeof(*pid_table));
+    pid_table_entry_t *new_table = vrealloc(
+            pid_table,
+            pids_capacity * sizeof(*pid_table),
+            new_cap * sizeof(*pid_table)
+    );
     if (unlikely(!new_table)) return ENOMEM;
 
-    memcpy(new_table, pid_table, pids_capacity * sizeof(*pid_table));
     memset(&new_table[pids_capacity], 0, (new_cap - pids_capacity) * sizeof(*pid_table));
 
     new_table[pids_capacity].free.next = free_pids;
     new_table[pids_capacity].free.limit = new_cap - pids_capacity - 1;
     free_pids = pids_capacity;
 
-    pid_table_entry_t *old_table = pid_table;
-    size_t old_table_size = pids_capacity * sizeof(*pid_table);
-
-    rcu_write(pid_table, new_table);
-    __atomic_store_n(&pids_capacity, new_cap, __ATOMIC_RELEASE);
-    rcu_sync();
-    vfree(old_table, old_table_size);
+    pid_table = new_table;
+    pids_capacity = new_cap;
 
     return 0;
 }
 
 static void make_free_entry(int32_t pid, int32_t next, int32_t limit) {
-#if __SIZEOF_POINTER__ == 4
-    __atomic_store_n(&pid_table[pid].allocated, (pid_t *)limit, __ATOMIC_RELEASE);
-    pid_table[pid].next = next;
-#else
-    __atomic_store_n(&pid_table[pid].allocated, (pid_t *)(((uint64_t)limit << 32) | next), __ATOMIC_RELEASE);
-#endif
+    pid_table[pid].free.limit = limit;
+    pid_table[pid].free.next = next;
 }
 
 static int allocate_pid(process_t *process, thread_t *thread) {
@@ -123,15 +117,9 @@ static int allocate_pid(process_t *process, thread_t *thread) {
         thread->pid = pid;
     }
 
-    mutex_acq(&pids_update_lock, 0, false);
-
     if (free_pids < 0) {
         int error = expand_pids();
-
-        if (unlikely(error)) {
-            mutex_rel(&pids_update_lock);
-            return error;
-        }
+        if (unlikely(error)) return error;
     }
 
     int32_t id = free_pids;
@@ -145,8 +133,7 @@ static int allocate_pid(process_t *process, thread_t *thread) {
     }
 
     pid->id = id;
-    rcu_write(entry->allocated, pid);
-    mutex_rel(&pids_update_lock);
+    entry->allocated = pid;
     return 0;
 }
 
@@ -159,9 +146,18 @@ static void process_free(object_t *ptr) {
     do {
         ASSERT(process != &kernel_process);
 
-        process_t *parent;
+        pid_t *pid = process->pid;
+        mutex_acq(&pids_lock, 0, false);
 
-        proc_alarm(process, 0);
+        if (__atomic_load_n(&process->base.references.references, __ATOMIC_ACQUIRE) != 0) {
+            mutex_rel(&pids_lock);
+            return;
+        }
+
+        pid->process = NULL;
+        pid_handle_removal_and_unlock(pid);
+
+        process_t *parent;
 
         if (!process->exit_signal_sent) {
             parent = get_parent_with_locked_children(process);
@@ -171,18 +167,14 @@ static void process_free(object_t *ptr) {
             parent = NULL;
         }
 
-        pid_t *pid = process->pid;
-        mutex_acq(&pid->remove_lock, 0, false);
-        rcu_write(pid->process, NULL);
-        pid_handle_removal_and_unlock(pid);
-
+        proc_alarm(process, 0);
         pgroup_deref(process->group);
         ident_deref(process->identity);
 
         signal_cleanup(&process->sig_target);
         vfree(process, sizeof(*process));
 
-        if (parent != NULL && ref_dec(&parent->base.references)) {
+        if (parent != NULL && ref_sub(&parent->base.references, 2)) {
             process = parent;
         } else {
             process = NULL;
@@ -307,81 +299,94 @@ static inline bool is_resolved_pid_valid(pid_t *pid) {
     return (uintptr_t)pid & (1ul << (sizeof(pid_t *) * 8 - 1));
 }
 
+static int get_pid(pid_t **out, int id) {
+    if (unlikely(id < 0)) return EINVAL;
+    if (unlikely((size_t)id >= pids_capacity)) return ESRCH;
+
+    pid_t *pid = pid_table[id].allocated;
+    if (unlikely(!is_resolved_pid_valid(pid))) return ESRCH;
+
+    *out = pid;
+    return 0;
+}
+
 int resolve_thread(struct thread **out, int tid) {
-    if (tid < 0) return EINVAL;
-    if ((size_t)tid >= __atomic_load_n(&pids_capacity, __ATOMIC_ACQUIRE)) return ESRCH;
+    mutex_acq(&pids_lock, 0, false);
 
-    rcu_state_t state = rcu_read_lock();
+    pid_t *pid;
+    int error = get_pid(&pid, tid);
+    thread_t *thread;
 
-    pid_t *pid = rcu_read(rcu_read(pid_table)[tid].allocated);
-
-    if (unlikely(!is_resolved_pid_valid(pid))) {
-        rcu_read_unlock(state);
-        return ESRCH;
+    if (likely(!error)) {
+        thread = pid->thread;
+        if (likely(thread)) obj_ref(&thread->base);
+        else error = ESRCH;
     }
 
-    thread_t *thread = rcu_read(pid->thread);
+    mutex_rel(&pids_lock);
+    if (unlikely(error)) return ESRCH;
 
-    if (unlikely(!thread)) {
-        rcu_read_unlock(state);
-        return ESRCH;
-    }
-
-    obj_ref(&thread->base);
-    rcu_read_unlock(state);
     *out = thread;
     return 0;
 }
 
-int resolve_process(process_t **out, int pid) {
-    if (pid < 0) return EINVAL;
-    if ((size_t)pid >= __atomic_load_n(&pids_capacity, __ATOMIC_ACQUIRE)) return ESRCH;
+int resolve_process(process_t **out, int id) {
+    mutex_acq(&pids_lock, 0, false);
 
-    rcu_state_t state = rcu_read_lock();
+    pid_t *pid;
+    int error = get_pid(&pid, id);
+    process_t *process;
 
-    pid_t *ppid = rcu_read(rcu_read(pid_table)[pid].allocated);
-
-    if (unlikely(!is_resolved_pid_valid(ppid))) {
-        rcu_read_unlock(state);
-        return ESRCH;
+    if (likely(!error)) {
+        process = pid->process;
+        if (likely(process)) obj_ref(&process->base);
+        else error = ESRCH;
     }
 
-    process_t *process = rcu_read(ppid->process);
+    mutex_rel(&pids_lock);
+    if (unlikely(error)) return ESRCH;
 
-    if (unlikely(!process)) {
-        rcu_read_unlock(state);
-        return ESRCH;
-    }
-
-    obj_ref(&process->base);
-    rcu_read_unlock(state);
     *out = process;
     return 0;
 }
 
 int resolve_pgroup(pgroup_t **out, int pgid) {
-    if (pgid < 0) return EINVAL;
-    if ((size_t)pgid >= __atomic_load_n(&pids_capacity, __ATOMIC_ACQUIRE)) return ESRCH;
+    mutex_acq(&pids_lock, 0, false);
 
-    rcu_state_t state = rcu_read_lock();
+    pid_t *pid;
+    int error = get_pid(&pid, pgid);
+    pgroup_t *group;
 
-    pid_t *pid = rcu_read(rcu_read(pid_table)[pgid].allocated);
-
-    if (unlikely(!is_resolved_pid_valid(pid))) {
-        rcu_read_unlock(state);
-        return ESRCH;
+    if (likely(!error)) {
+        group = pid->group;
+        if (likely(group)) pgroup_ref(group);
+        else error = ESRCH;
     }
 
-    pgroup_t *group = rcu_read(pid->group);
+    mutex_rel(&pids_lock);
+    if (unlikely(error)) return ESRCH;
 
-    if (unlikely(!group)) {
-        rcu_read_unlock(state);
-        return ESRCH;
-    }
-
-    pgroup_ref(group);
-    rcu_read_unlock(state);
     *out = group;
+    return 0;
+}
+
+int resolve_session(session_t **out, int sid) {
+    mutex_acq(&pids_lock, 0, false);
+
+    pid_t *pid;
+    int error = get_pid(&pid, sid);
+    session_t *session;
+
+    if (likely(!error)) {
+        session = pid->session;
+        if (likely(session)) session_ref(session);
+        else error = ESRCH;
+    }
+
+    mutex_rel(&pids_lock);
+    if (unlikely(error)) return ESRCH;
+
+    *out = session;
     return 0;
 }
 
@@ -399,38 +404,40 @@ int proc_clone(process_t **out) {
     memcpy(process->sig_handlers, current_thread->process->sig_handlers, sizeof(current_thread->process->sig_handlers));
     mutex_rel(&current_thread->process->sig_lock);
 
+    process->alarm_event.func = alarm_trigger;
+    process->alarm_task.func = alarm_send;
+
+    process->umask = __atomic_load_n(&current_thread->process->umask, __ATOMIC_ACQUIRE);
+    rcu_state_t state = rcu_read_lock();
+    process->work_dir = rcu_read(current_thread->process->work_dir);
+    process->root_dir = rcu_read(current_thread->process->root_dir);
+    process->group = rcu_read(current_thread->process->group);
+    dentry_ref(process->work_dir);
+    dentry_ref(process->root_dir);
+    pgroup_ref(process->group);
+    rcu_read_unlock(state);
+
+    mutex_acq(&pids_lock, 0, false);
     int error = allocate_pid(process, NULL);
+    mutex_rel(&pids_lock);
+
     if (unlikely(error)) {
+        dentry_deref(process->work_dir);
+        dentry_deref(process->root_dir);
+        pgroup_deref(process->group);
         ident_deref(process->identity);
         vfree(process, sizeof(*process));
         return error;
     }
-
-    process->alarm_event.func = alarm_trigger;
-    process->alarm_task.func = alarm_send;
-
-    process->umask = current_thread->process->umask;
-    rcu_state_t state = rcu_read_lock();
-    process->work_dir = current_thread->process->work_dir;
-    process->root_dir = current_thread->process->root_dir;
-    dentry_ref(process->work_dir);
-    dentry_ref(process->root_dir);
-    rcu_read_unlock(state);
 
     obj_ref(&process->parent->base);
     mutex_acq(&process->parent->children_lock, 0, false);
     list_insert_tail(&process->parent->children, &process->parent_node);
     mutex_rel(&process->parent->children_lock);
 
-    state = rcu_read_lock();
-    pgroup_t *group = current_thread->process->group;
-    pgroup_ref(group);
-    rcu_read_unlock(state);
-
-    process->group = group;
-    mutex_acq(&group->members_lock, 0, false);
-    list_insert_tail(&group->members, &process->group_node);
-    mutex_rel(&group->members_lock);
+    mutex_acq(&process->group->members_lock, 0, false);
+    list_insert_tail(&process->group->members, &process->group_node);
+    mutex_rel(&process->group->members_lock);
 
     mutex_acq(&current_thread->process->waitid_lock, 0, false);
     list_insert_tail(&current_thread->process->waitid_available, &process->waitid_node);
@@ -443,19 +450,23 @@ int proc_clone(process_t **out) {
 int proc_thread_create(process_t *process, struct thread *thread) {
     mutex_acq(&process->threads_lock, 0, false);
 
-    if (process->exiting) {
+    if (unlikely(process->exiting)) {
         mutex_rel(&process->threads_lock);
-        return EINVAL;
+        return EPERM;
     }
 
     if (list_empty(&process->threads)) {
+        mutex_acq(&pids_lock, 0, false);
         thread->pid = process->pid;
-        rcu_write(thread->pid->thread, thread);
+        thread->pid->thread = thread;
+        mutex_rel(&pids_lock);
     } else if (process != current_thread->process) {
         mutex_rel(&process->threads_lock);
         return EPERM;
     } else if (process != &kernel_process) {
+        mutex_acq(&pids_lock, 0, false);
         int error = allocate_pid(NULL, thread);
+        mutex_rel(&pids_lock);
 
         if (unlikely(error)) {
             mutex_rel(&process->threads_lock);
@@ -519,9 +530,9 @@ static void handle_process_group_orphaned(process_t *process) {
     mutex_acq(&process->sig_target.lock, 0, false);
 
     __siginfo_t info = {.__signo = __SIGHUP};
-    queue_signal(process, &process->sig_target, &info, 0, &process->hup_sig);
+    queue_signal_unlocked(process, &process->sig_target, &info, 0, &process->hup_sig);
     info = (__siginfo_t){.__signo = __SIGCONT};
-    queue_signal(process, &process->sig_target, &info, 0, &process->cont_sig);
+    queue_signal_unlocked(process, &process->sig_target, &info, 0, &process->cont_sig);
 
     mutex_rel(&process->sig_target.lock);
     mutex_rel(&process->threads_lock);
@@ -1238,7 +1249,7 @@ int broadcast_signal(int signal) {
     __siginfo_t info;
     create_user_siginfo(&info, signal);
 
-    mutex_acq(&pids_update_lock, 0, false);
+    mutex_acq(&pids_lock, 0, false);
 
     for (size_t i = 0; i < pids_capacity; i++) {
         pid_t *pid = pid_table[i].allocated;
@@ -1262,7 +1273,7 @@ int broadcast_signal(int signal) {
     }
 
 done:
-    mutex_rel(&pids_update_lock);
+    mutex_rel(&pids_lock);
     return sent ? 0 : error;
 }
 
@@ -1303,8 +1314,14 @@ void pgroup_deref(pgroup_t *group) {
         ASSERT(group != &kernel_group);
 
         pid_t *pid = group->pid;
-        mutex_acq(&pid->remove_lock, 0, false);
-        rcu_write(pid->group, NULL);
+        mutex_acq(&pids_lock, 0, false);
+
+        if (__atomic_load_n(&group->references.references, __ATOMIC_ACQUIRE) != 0) {
+            mutex_rel(&pids_lock);
+            return;
+        }
+
+        pid->group = NULL;
         pid_handle_removal_and_unlock(pid);
 
         session_deref(group->session);
@@ -1321,8 +1338,14 @@ void session_deref(session_t *session) {
         ASSERT(session != &kernel_session);
 
         pid_t *pid = session->pid;
-        mutex_acq(&pid->remove_lock, 0, false);
-        rcu_write(pid->session, NULL);
+        mutex_acq(&pids_lock, 0, false);
+
+        if (__atomic_load_n(&session->references.references, __ATOMIC_ACQUIRE) != 0) {
+            mutex_rel(&pids_lock);
+            return;
+        }
+
+        pid->session = NULL;
         pid_handle_removal_and_unlock(pid);
 
         vfree(session, sizeof(*session));
@@ -1393,11 +1416,16 @@ int setpgid(process_t *process, int pgid) {
     bool created = false;
 
     if (pgid == 0 || pgid == process->pid->id) {
+        mutex_acq(&pids_lock, 0, false);
+
         if (process->pid->group) {
             new_group = process->pid->group;
 
             error = 0;
-            if (new_group == old_group) goto err;
+            if (new_group == old_group) {
+                mutex_rel(&pids_lock);
+                goto err;
+            }
 
             pgroup_ref(new_group);
         } else {
@@ -1413,8 +1441,11 @@ int setpgid(process_t *process, int pgid) {
             new_group->session = own_session;
             session_ref(new_group->session);
             __atomic_fetch_add(&own_session->num_members, 1, __ATOMIC_ACQ_REL);
+            new_group->pid->group = new_group;
             created = true;
         }
+
+        mutex_rel(&pids_lock);
     } else {
         if (unlikely(resolve_pgroup(&new_group, pgid))) goto err;
         if (unlikely(new_group->session != own_session)) goto err;
@@ -1447,7 +1478,6 @@ int setpgid(process_t *process, int pgid) {
 
     if (newly_orphaned) handle_group_orphaned(old_group);
 
-    if (created) rcu_write(new_group->pid->group, new_group);
     rcu_write(process->group, new_group);
     mutex_rel(&process->group_update_lock);
     session_deref(own_session);
@@ -1481,7 +1511,11 @@ err:
 hydrogen_ret_t setsid(process_t *process) {
     mutex_acq(&process->group_update_lock, 0, false);
 
-    if (unlikely(process->pid->group != NULL)) {
+    mutex_acq(&pids_lock, 0, false);
+    bool was_leader = process->pid->group != NULL;
+    mutex_rel(&pids_lock);
+
+    if (unlikely(was_leader)) {
         mutex_rel(&process->group_update_lock);
         return ret_error(EPERM);
     }
@@ -1521,8 +1555,12 @@ hydrogen_ret_t setsid(process_t *process) {
     if (newly_orphaned) handle_group_orphaned(old_group);
 
     list_insert_tail(&group->members, &process->group_node);
-    rcu_write(group->pid->session, session);
-    rcu_write(group->pid->group, group);
+
+    mutex_acq(&pids_lock, 0, false);
+    group->pid->session = session;
+    group->pid->group = group;
+    mutex_rel(&pids_lock);
+
     rcu_write(process->group, group);
     mutex_rel(&process->group_update_lock);
     rcu_sync();
@@ -1823,14 +1861,10 @@ void ident_deref(ident_t *ident) {
 
 void pid_handle_removal_and_unlock(pid_t *pid) {
     if (pid->thread == NULL && pid->process == NULL && pid->group == NULL) {
-        mutex_acq(&pids_update_lock, 0, false);
         make_free_entry(pid->id, free_pids, 0);
         free_pids = pid->id;
-        mutex_rel(&pids_update_lock);
-        rcu_sync();
         vfree(pid, sizeof(*pid));
-    } else {
-        mutex_rel(&pid->remove_lock);
-        rcu_sync();
     }
+
+    mutex_rel(&pids_lock);
 }
