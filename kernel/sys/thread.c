@@ -465,6 +465,7 @@ int hydrogen_thread_send_signal(int thread_hnd, int signal) {
 
     __siginfo_t info;
     create_user_siginfo(&info, signal);
+    info.__code = __SI_TKILL;
 
     if (unlikely(!can_send_signal(thread->process, &info))) {
         error = EPERM;

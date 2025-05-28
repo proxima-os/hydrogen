@@ -27,7 +27,6 @@
 #include "util/refcount.h"
 #include "util/spinlock.h"
 #include "util/time.h"
-#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 

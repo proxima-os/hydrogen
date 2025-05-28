@@ -39,7 +39,10 @@ extern "C" {
 #define __SIGXCPU 24
 #define __SIGXFSZ 25
 #define __SIGVTALRM 26
+#define __SIGPROF 27
 #define __SIGWINCH 28
+#define __SIGIO 29
+#define __SIGPWR 30
 #define __SIGSYS 31
 #define __SIGRTMIN 32
 #define __SIGRTMAX 63
@@ -79,6 +82,7 @@ typedef struct {
 #define __SI_TIMER 3
 #define __SI_ASYNCIO 4
 #define __SI_MESGQ 5
+#define __SI_TKILL 6
 
 #define __ILL_ILLOPC 0x8000
 #define __ILL_ILLOPN 0x8001
