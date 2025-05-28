@@ -253,7 +253,7 @@ static size_t write_single(const void *data, size_t count) {
     memcpy(&printk_buf[write_idx], data, cur);
 
     LIST_FOREACH(klog_readers, klog_file_t, node, reader) {
-        if (reader->can_read && reader->read_idx >= write_idx && (nwi == 0 || reader->can_read < nwi)) {
+        if (reader->can_read && reader->read_idx >= write_idx && (nwi == 0 || reader->read_idx < nwi)) {
             reader->read_idx = nwi;
         }
 
