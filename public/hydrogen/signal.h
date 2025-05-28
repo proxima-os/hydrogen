@@ -77,47 +77,47 @@ typedef struct {
     } __data;
 } __siginfo_t;
 
-#define __SI_USER 1
-#define __SI_QUEUE 2
-#define __SI_TIMER 3
-#define __SI_ASYNCIO 4
-#define __SI_MESGQ 5
-#define __SI_TKILL 6
+#define __SI_USER (-1)
+#define __SI_QUEUE (-2)
+#define __SI_TIMER (-3)
+#define __SI_ASYNCIO (-4)
+#define __SI_MESGQ (-5)
+#define __SI_TKILL (-6)
 
-#define __ILL_ILLOPC 0x8000
-#define __ILL_ILLOPN 0x8001
-#define __ILL_ILLADR 0x8002
-#define __ILL_ILLTRP 0x8003
-#define __ILL_PRVOPC 0x8004
-#define __ILL_PRVREG 0x8005
-#define __ILL_COPROC 0x8006
-#define __ILL_BADSTK 0x8007
+#define __ILL_ILLOPC 1
+#define __ILL_ILLOPN 2
+#define __ILL_ILLADR 3
+#define __ILL_ILLTRP 4
+#define __ILL_PRVOPC 5
+#define __ILL_PRVREG 6
+#define __ILL_COPROC 7
+#define __ILL_BADSTK 8
 
-#define __FPE_INTDIV 0x8000
-#define __FPE_INTOVF 0x8001
-#define __FPE_FLTDIV 0x8002
-#define __FPE_FLTOVF 0x8003
-#define __FPE_FLTUND 0x8004
-#define __FPE_FLTRES 0x8005
-#define __FPE_FLTINV 0x8006
-#define __FPE_FLTSUB 0x8007
+#define __FPE_INTDIV 1
+#define __FPE_INTOVF 2
+#define __FPE_FLTDIV 3
+#define __FPE_FLTOVF 4
+#define __FPE_FLTUND 5
+#define __FPE_FLTRES 6
+#define __FPE_FLTINV 7
+#define __FPE_FLTSUB 8
 
-#define __SEGV_MAPERR 0x8000
-#define __SEGV_ACCERR 0x8001
+#define __SEGV_MAPERR 1
+#define __SEGV_ACCERR 2
 
-#define __BUS_ADRALN 0x8000
-#define __BUS_ADRERR 0x8001
-#define __BUS_OBJERR 0x8002
+#define __BUS_ADRALN 1
+#define __BUS_ADRERR 2
+#define __BUS_OBJERR 3
 
-#define __TRAP_BRKPT 0x8000
-#define __TRAP_TRACE 0x8001
+#define __TRAP_BRKPT 1
+#define __TRAP_TRACE 2
 
-#define __CLD_EXITED 0x8000
-#define __CLD_KILLED 0x8001
-#define __CLD_DUMPED 0x8002
-#define __CLD_TRAPPED 0x8003
-#define __CLD_STOPPED 0x8004
-#define __CLD_CONTINUED 0x8005
+#define __CLD_EXITED 1
+#define __CLD_KILLED 2
+#define __CLD_DUMPED 3
+#define __CLD_TRAPPED 4
+#define __CLD_STOPPED 5
+#define __CLD_CONTINUED 6
 
 struct __sigaction {
     union {
