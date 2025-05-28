@@ -16,7 +16,7 @@
 #include "util/object.h"
 #include <stdint.h>
 
-#define EVENT_INPUT_FLAGS (0)
+#define EVENT_INPUT_FLAGS (HYDROGEN_EVENT_NO_WAKE)
 
 static void event_queue_free(object_t *ptr) {
     event_queue_t *self = (event_queue_t *)ptr;
@@ -179,7 +179,7 @@ hydrogen_ret_t event_queue_wait(event_queue_t *queue, hydrogen_event_t *events, 
     mutex_acq(&queue->pending_lock, 0, false);
 
 retry:
-    while (list_empty(&queue->pending)) {
+    while (queue->num_waking == 0) {
         if (deadline != 0 && deadline <= arch_read_time()) {
             mutex_rel(&queue->pending_lock);
             return ret_error(EAGAIN);
@@ -237,8 +237,12 @@ int event_source_add(event_source_t *source, active_event_t *event) {
 
         list_insert_tail(&event->queue->pending, &event->pending_node);
 
-        LIST_FOREACH(event->queue->waiting, thread_t, wait_node, thread) {
-            sched_wake(thread);
+        if (!(event->flags & HYDROGEN_EVENT_NO_WAKE)) {
+            event->queue->num_waking += 1;
+
+            LIST_FOREACH(event->queue->waiting, thread_t, wait_node, thread) {
+                sched_wake(thread);
+            }
         }
 
         mutex_rel(&event->queue->pending_lock);
@@ -256,6 +260,7 @@ void event_source_del(event_source_t *source, active_event_t *event) {
     if (source->pending) {
         mutex_acq(&event->queue->pending_lock, 0, false);
         list_remove(&event->queue->pending, &event->pending_node);
+        if (!(event->flags & HYDROGEN_EVENT_QUEUE_REMOVE)) event->queue->num_waking -= 1;
         mutex_rel(&event->queue->pending_lock);
     }
 
@@ -292,6 +297,7 @@ void event_source_cleanup(event_source_t *source) {
         if (source->pending) {
             mutex_acq(&event->queue->pending_lock, 0, false);
             list_remove(&event->queue->pending, &event->pending_node);
+            if (!(event->flags & HYDROGEN_EVENT_NO_WAKE)) event->queue->num_waking -= 1;
             mutex_rel(&event->queue->pending_lock);
         }
 
@@ -317,8 +323,12 @@ void event_source_signal(event_source_t *source) {
 
         list_insert_tail(&event->queue->pending, &event->pending_node);
 
-        LIST_FOREACH(event->queue->waiting, thread_t, wait_node, thread) {
-            sched_wake(thread);
+        if (!(event->flags & HYDROGEN_EVENT_NO_WAKE)) {
+            event->queue->num_waking += 1;
+
+            LIST_FOREACH(event->queue->waiting, thread_t, wait_node, thread) {
+                sched_wake(thread);
+            }
         }
 
         mutex_rel(&event->queue->pending_lock);
@@ -341,6 +351,7 @@ void event_source_reset(event_source_t *source) {
     LIST_FOREACH(source->events, active_event_t, source_node, event) {
         mutex_acq(&event->queue->pending_lock, 0, false);
         list_remove(&event->queue->pending, &event->pending_node);
+        if (!(event->flags & HYDROGEN_EVENT_NO_WAKE)) event->queue->num_waking -= 1;
         mutex_rel(&event->queue->pending_lock);
     }
 

@@ -63,6 +63,8 @@ typedef struct {
     void *ctx;                  /**< The `ctx` parameter that was passed to #hydrogen_event_queue_add. */
 } hydrogen_event_t;
 
+#define HYDROGEN_EVENT_NO_WAKE (1 << 0) /**< Do not wake if this is the only event pending. */
+
 /**
  * Create an event queue.
  *

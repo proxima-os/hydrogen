@@ -18,6 +18,7 @@ typedef struct {
     mutex_t pending_lock;
     list_t pending;
     list_t waiting;
+    size_t num_waking; // The number of pending events that can wake up waiters.
 } event_queue_t;
 
 typedef struct {
