@@ -28,7 +28,7 @@ vdso = shared_library(
     include_directories: [inc, vdso_include],
     install: true,
     install_tag: 'devel', # the vDSO is provided in memory by the kernel, the copy on disk is only for linking programs
-    link_args: ['-T' + linker_script.full_path(), '-Wl,-Bsymbolic'],
+    link_args: ['-T' + linker_script.full_path()],
     link_depends: files('vdso.lds'),
     sources: [lib_sources, vdso_sources],
 )
