@@ -763,7 +763,8 @@ static void handle_process_exit(process_t *process) {
         mutex_rel(&parent->threads_lock);
     }
 
-    bool should_reap = parent->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDWAIT;
+    bool should_reap = parent->sig_handlers[__SIGCHLD].__func.__handler == __SIG_IGN ||
+                       parent->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDWAIT;
     if (should_reap) discard_status(process, parent, false);
     else obj_ref(&process->base);
 
