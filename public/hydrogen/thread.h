@@ -68,7 +68,7 @@ hydrogen_ret_t hydrogen_thread_exec(
         size_t envc,
         const hydrogen_string_t *envp,
         uint32_t flags
-);
+) __asm__("__hydrogen_thread_exec");
 
 /**
  * Create a new thread by cloning the current one.
