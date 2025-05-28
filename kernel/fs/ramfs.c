@@ -238,6 +238,7 @@ static hydrogen_ret_t emit_single(
         void **buffer,
         size_t *size,
         uint64_t id,
+        uint64_t position,
         hydrogen_file_type_t type,
         const void *name,
         size_t length
@@ -248,7 +249,7 @@ static hydrogen_ret_t emit_single(
     size_t totsz = (cursz + _Alignof(hydrogen_directory_entry_t)) & ~(_Alignof(hydrogen_directory_entry_t) - 1);
     if (totsz > *size) return ret_integer(0);
 
-    hydrogen_directory_entry_t base_entry = {.size = totsz, .id = id, .name_length = length, .type = type};
+    hydrogen_directory_entry_t base_entry = {.id = id, .position = position, .size = totsz, .type = type};
 
     int error = user_memcpy(*buffer, &base_entry, offset);
     if (unlikely(error)) return ret_error(error);
@@ -326,7 +327,7 @@ static hydrogen_ret_t ramfs_file_dir_readdir(file_t *ptr, void *buffer, size_t s
             current = LIST_NEXT(*current, dentry_t, list_node);
         }
 
-        hydrogen_ret_t ret = emit_single(&buffer, &size, id, type, name, length);
+        hydrogen_ret_t ret = emit_single(&buffer, &size, id, ptr->position, type, name, length);
         if (unlikely(ret.error)) {
             if (total != 0) break;
             mutex_rel(&entry->lock);

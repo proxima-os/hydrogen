@@ -50,10 +50,10 @@ typedef enum {
 } hydrogen_seek_anchor_t;
 
 typedef struct {
-    size_t size;
     uint64_t id;
-    size_t name_length;
-    hydrogen_file_type_t type;
+    uint64_t position;
+    unsigned short size;
+    unsigned char type;
     unsigned char name[0];
 } hydrogen_directory_entry_t;
 
