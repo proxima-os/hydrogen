@@ -10,8 +10,16 @@ EXPORT int hydrogen_fs_chdir(int process, int rel, const void *path, size_t leng
     return SYSCALL4(SYSCALL_FS_CHDIR, process, rel, path, length).error;
 }
 
+EXPORT int hydrogen_fs_fchdir(int process, int file) {
+    return SYSCALL2(SYSCALL_FS_FCHDIR, process, file).error;
+}
+
 EXPORT int hydrogen_fs_chroot(int process, int rel, const void *path, size_t length) {
     return SYSCALL4(SYSCALL_FS_CHROOT, process, rel, path, length).error;
+}
+
+EXPORT int hydrogen_fs_fchroot(int process, int file) {
+    return SYSCALL2(SYSCALL_FS_FCHROOT, process, file).error;
 }
 
 EXPORT hydrogen_ret_t hydrogen_fs_umask(int process, uint32_t mask) {

@@ -58,7 +58,9 @@ typedef struct {
 } hydrogen_directory_entry_t;
 
 int hydrogen_fs_chdir(int process, int rel, const void *path, size_t length) __asm__("__hydrogen_fs_chdir");
+int hydrogen_fs_fchdir(int process, int file) __asm__("__hydrogen_fs_fchdir");
 int hydrogen_fs_chroot(int process, int rel, const void *path, size_t length) __asm__("__hydrogen_fs_chroot");
+int hydrogen_fs_fchroot(int process, int file) __asm__("__hydrogen_fs_fchroot");
 hydrogen_ret_t hydrogen_fs_umask(int process, uint32_t mask) __asm__("__hydrogen_fs_umask");
 
 int hydrogen_fs_create(int rel, const void *path, size_t length, hydrogen_file_type_t type, uint32_t mode) __asm__(

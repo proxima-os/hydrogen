@@ -422,6 +422,22 @@ int vfs_chdir(struct process *process, file_t *file, const void *path, size_t le
     return 0;
 }
 
+int vfs_fchdir(struct process *process, file_t *file) {
+    if (unlikely(!file->path)) return ENOTDIR;
+
+    mutex_acq(&file->path->lock, 0, false);
+    bool ok = file->path->inode->type == HYDROGEN_DIRECTORY;
+    mutex_rel(&file->path->lock);
+    if (unlikely(!ok)) return ENOTDIR;
+
+    dentry_ref(file->path);
+    dentry_t *entry = __atomic_exchange_n(&process->work_dir, file->path, __ATOMIC_ACQ_REL);
+    rcu_sync();
+    dentry_deref(entry);
+
+    return 0;
+}
+
 int vfs_chroot(struct process *process, file_t *file, const void *path, size_t length) {
     ident_t *ident = ident_get(current_thread->process);
     dentry_t *entry;
@@ -436,11 +452,32 @@ int vfs_chroot(struct process *process, file_t *file, const void *path, size_t l
         return ENOTDIR;
     }
 
+    dentry_ref(entry);
+
     // this must be done before switching the root dir, as otherwise the work dir might be inaccessible from the root
     dentry_t *old_work = __atomic_exchange_n(&process->work_dir, entry, __ATOMIC_ACQ_REL);
     entry = __atomic_exchange_n(&process->root_dir, entry, __ATOMIC_ACQ_REL);
     rcu_sync();
     dentry_deref(entry);
+    dentry_deref(old_work);
+
+    return 0;
+}
+
+int vfs_fchroot(struct process *process, file_t *file) {
+    if (unlikely(!file->path)) return ENOTDIR;
+
+    mutex_acq(&file->path->lock, 0, false);
+    bool ok = file->path->inode->type == HYDROGEN_DIRECTORY;
+    mutex_rel(&file->path->lock);
+    if (unlikely(!ok)) return ENOTDIR;
+
+    dentry_ref(file->path);
+    dentry_ref(file->path);
+    dentry_t *old_work = __atomic_exchange_n(&process->work_dir, file->path, __ATOMIC_ACQ_REL);
+    dentry_t *old_root = __atomic_exchange_n(&process->root_dir, file->path, __ATOMIC_ACQ_REL);
+    rcu_sync();
+    dentry_deref(old_root);
     dentry_deref(old_work);
 
     return 0;

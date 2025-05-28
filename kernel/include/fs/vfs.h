@@ -180,7 +180,9 @@ int access_inode(inode_t *inode, struct ident *ident, uint32_t type, bool use_re
 int vfs_mount(file_t *file, const void *path, size_t length, filesystem_t *fs);
 
 int vfs_chdir(struct process *process, file_t *file, const void *path, size_t length);
+int vfs_fchdir(struct process *process, file_t *file);
 int vfs_chroot(struct process *process, file_t *file, const void *path, size_t length);
+int vfs_fchroot(struct process *process, file_t *file);
 uint32_t vfs_umask(struct process *process, uint32_t mask);
 
 int vfs_create(

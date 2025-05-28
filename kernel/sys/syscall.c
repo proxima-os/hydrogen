@@ -211,6 +211,8 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
         return ret_integer(((uint64_t)fds[1] << 32) | fds[0]);
     }
     case SYSCALL_FS_IOCTL: return hydrogen_fs_ioctl(a0, a1, (void *)a2, a3);
+    case SYSCALL_FS_FCHDIR: return ret_error(hydrogen_fs_fchdir(a0, a1));
+    case SYSCALL_FS_FCHROOT: return ret_error(hydrogen_fs_fchroot(a0, a1));
     default: return ret_error(ENOSYS);
     }
 }

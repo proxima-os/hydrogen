@@ -761,3 +761,33 @@ hydrogen_ret_t hydrogen_fs_ioctl(int file, int request, void *buffer, size_t siz
     obj_deref(&fdesc->base);
     return ret;
 }
+
+int hydrogen_fs_fchdir(int process, int file) {
+    process_t *proc;
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_CHDIR);
+
+    file_t *fdesc;
+    error = file_resolve(&fdesc, file, 0);
+    if (unlikely(error)) goto ret;
+
+    error = vfs_fchdir(proc, fdesc);
+    obj_deref(&fdesc->base);
+ret:
+    if (process != HYDROGEN_THIS_PROCESS) obj_deref(&proc->base);
+    return error;
+}
+
+int hydrogen_fs_fchroot(int process, int file) {
+    process_t *proc;
+    int error = process_or_this(&proc, process, HYDROGEN_PROCESS_CHROOT);
+
+    file_t *fdesc;
+    error = file_resolve(&fdesc, file, 0);
+    if (unlikely(error)) goto ret;
+
+    error = vfs_fchroot(proc, fdesc);
+    obj_deref(&fdesc->base);
+ret:
+    if (process != HYDROGEN_THIS_PROCESS) obj_deref(&proc->base);
+    return error;
+}
