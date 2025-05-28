@@ -47,6 +47,10 @@ typedef enum {
      */
     HYDROGEN_EVENT_FILE_DESCRIPTION_ERROR,
     /**
+     * Like #HYDROGEN_EVENT_FILE_DESCRIPTION_ERROR, but active for regular files. Used for implementing select.
+     */
+    HYDROGEN_EVENT_FILE_DESCRIPTION_ERROR_REGULAR,
+    /**
      * Active when the a file description has been disconnected. See the POSIX manual on poll (POLLHUP).
      */
     HYDROGEN_EVENT_FILE_DESCRIPTION_DISCONNECTED,

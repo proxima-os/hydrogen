@@ -1290,7 +1290,8 @@ static event_source_t always_pending_event_source = {.pending = true};
 static int regular_file_event_add(object_t *ptr, uint32_t rights, active_event_t *event) {
     switch (event->source.type) {
     case HYDROGEN_EVENT_FILE_DESCRIPTION_READABLE:
-    case HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE: return event_source_add(&always_pending_event_source, event);
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE:
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_ERROR_REGULAR: return event_source_add(&always_pending_event_source, event);
     default: return EINVAL;
     }
 }
@@ -1298,7 +1299,8 @@ static int regular_file_event_add(object_t *ptr, uint32_t rights, active_event_t
 static void regular_file_event_del(object_t *ptr, active_event_t *event) {
     switch (event->source.type) {
     case HYDROGEN_EVENT_FILE_DESCRIPTION_READABLE:
-    case HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE: event_source_del(&always_pending_event_source, event); break;
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE:
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_ERROR_REGULAR: event_source_del(&always_pending_event_source, event); break;
     default: UNREACHABLE();
     }
 }
