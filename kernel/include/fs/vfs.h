@@ -112,6 +112,7 @@ typedef struct {
 
 typedef struct fs_device {
     const fs_device_ops_t *ops;
+    refcnt_t references;
 } fs_device_t;
 
 typedef struct {
@@ -242,6 +243,8 @@ void dentry_ref(dentry_t *entry);
 void dentry_deref(dentry_t *entry);
 void inode_ref(inode_t *inode);
 void inode_deref(inode_t *inode);
+void fsdev_ref(fs_device_t *dev);
+void fsdev_deref(fs_device_t *dev);
 
 uint64_t get_next_fs_id(void);
 void init_new_inode(inode_t *directory, inode_t *inode, ident_t *ident, uint32_t mode);

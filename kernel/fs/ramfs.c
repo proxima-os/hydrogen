@@ -192,7 +192,7 @@ static int create_ramfs_inode(
         break;
     case HYDROGEN_DIRECTORY: inode->base.ops = &ramfs_inode_directory_ops; break;
     case HYDROGEN_CHARACTER_DEVICE:
-    case HYDROGEN_BLOCK_DEVICE: inode->base.device = device; // fall through
+    case HYDROGEN_BLOCK_DEVICE: inode->base.device = device; fsdev_ref(device); // fall through
     default: inode->base.ops = &ramfs_inode_special_ops; break;
     }
 

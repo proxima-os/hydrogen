@@ -14,6 +14,7 @@
 #include "util/error.h"
 #include "util/list.h"
 #include "util/panic.h"
+#include "util/refcount.h"
 #include "util/spinlock.h"
 #include <stdarg.h>
 #include <stdbool.h>
@@ -420,7 +421,7 @@ static const fs_device_ops_t klog_device_ops = {
 };
 
 static void create_klog_device(void) {
-    static fs_device_t device = {.ops = &klog_device_ops};
+    static fs_device_t device = {.ops = &klog_device_ops, .references = REF_INIT(1)};
 
     int error = vfs_create(NULL, "/dev/klog", 9, HYDROGEN_CHARACTER_DEVICE, 0600, &device);
     if (unlikely(error)) panic("failed to create /dev/klog (%e)", error);

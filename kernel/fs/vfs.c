@@ -1755,13 +1755,23 @@ void inode_deref(inode_t *inode) {
         case HYDROGEN_SYMLINK: vfree(inode->symlink, inode->size); break;
         case HYDROGEN_CHARACTER_DEVICE:
         case HYDROGEN_BLOCK_DEVICE:
-            if (inode->device && inode->device->ops->free) inode->device->ops->free(inode->device);
+            if (inode->device) fsdev_deref(inode->device);
             break;
         case HYDROGEN_FIFO: fifo_free(&inode->fifo); break;
         default: break;
         }
 
         inode->ops->free(inode);
+    }
+}
+
+void fsdev_ref(fs_device_t *dev) {
+    ref_inc(&dev->references);
+}
+
+void fsdev_deref(fs_device_t *dev) {
+    if (ref_dec(&dev->references)) {
+        dev->ops->free(dev);
     }
 }
 

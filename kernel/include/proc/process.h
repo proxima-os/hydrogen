@@ -14,8 +14,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-struct dentry;
-
 typedef struct pgroup pgroup_t;
 typedef struct process process_t;
 typedef struct session session_t;
