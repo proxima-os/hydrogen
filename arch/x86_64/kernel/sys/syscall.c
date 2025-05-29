@@ -13,6 +13,7 @@
 #include "x86_64/cpu.h"
 #include "x86_64/msr.h"
 #include <hydrogen/types.h>
+#include <hydrogen/x86_64/io.h>
 #include <hydrogen/x86_64/segments.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -47,6 +48,8 @@ static hydrogen_ret_t dispatch_arch_syscall(
     case X86_64_SYSCALL_GET_GS_BASE: return ret_integer(hydrogen_x86_64_get_gs_base());
     case X86_64_SYSCALL_SET_FS_BASE: return ret_error(hydrogen_x86_64_set_fs_base(a0));
     case X86_64_SYSCALL_SET_GS_BASE: return ret_error(hydrogen_x86_64_set_gs_base(a0));
+    case X86_64_SYSCALL_ENABLE_IO_ACCESS: return ret_error(hydrogen_x86_64_enable_io_access());
+    case X86_64_SYSCALL_DISABLE_IO_ACCESS: hydrogen_x86_64_disable_io_access(); return ret_error(0);
     default: return ret_error(ENOSYS);
     }
 }

@@ -19,6 +19,7 @@ kernel_sources += files(
     'mem/usercopy.S',
     'proc/sched.c',
     'proc/sched.S',
+    'sys/io.c',
     'sys/segments.c',
     'sys/syscall.c',
     'sys/syscall.S',
