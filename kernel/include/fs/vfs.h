@@ -25,8 +25,9 @@
 
 #define FILE_PERM_FLAGS (__O_WRONLY | __O_RDONLY)
 #define FILE_DESC_FLAGS (__O_NONBLOCK | __O_APPEND | FILE_PERM_FLAGS)
-#define FILE_OPEN_FLAGS \
-    (__O_CLOEXEC | __O_TRUNC | __O_NOFOLLOW | __O_EXCL | __O_DIRECTORY | __O_CREAT | __O_CLOFORK | FILE_DESC_FLAGS)
+#define FILE_OPEN_FLAGS                                                                                          \
+    (__O_TMPFILE | __O_CLOEXEC | __O_TRUNC | __O_NOFOLLOW | __O_EXCL | __O_DIRECTORY | __O_CREAT | __O_CLOFORK | \
+     FILE_DESC_FLAGS)
 
 #define FILESYSTEM_READ_ONLY (1u << 0)
 #define FILESYSTEM_NO_SETUID (1u << 1)
@@ -95,7 +96,12 @@ struct file {
     int flags;
 };
 
+typedef struct {
+    hydrogen_ret_t (*tmpfile)(filesystem_t *fs, struct ident *ident, uint32_t mode);
+} fs_ops_t;
+
 struct filesystem {
+    const fs_ops_t *ops;
     uint64_t id;
     dentry_t *mountpoint;
     dentry_t *root;

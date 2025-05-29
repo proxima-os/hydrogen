@@ -16,6 +16,7 @@ extern "C" {
 #define __O_APPEND (1 << 8)
 #define __O_CLOEXEC (1 << 9)
 #define __O_NONBLOCK (1 << 10)
+#define __O_TMPFILE (1 << 11)
 
 #define __AT_SYMLINK_FOLLOW (1 << 0)
 #define __AT_REMOVEDIR (1 << 1)

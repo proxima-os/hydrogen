@@ -499,10 +499,25 @@ static const inode_ops_t ramfs_inode_directory_ops = {
     .directory.rename = ramfs_inode_directory_rename,
 };
 
+static hydrogen_ret_t ramfs_tmpfile(filesystem_t *self, ident_t *ident, uint32_t mode) {
+    ramfs_fs_t *fs = (ramfs_fs_t *)self;
+
+    inode_t *inode;
+    int error = create_ramfs_inode(fs, NULL, &inode, HYDROGEN_REGULAR_FILE, ident, mode, NULL);
+    if (unlikely(error)) return ret_error(error);
+
+    return ret_pointer(inode);
+}
+
+static const fs_ops_t ramfs_ops = {
+    .tmpfile = ramfs_tmpfile,
+};
+
 int ramfs_create(filesystem_t **out, uint32_t root_mode) {
     ramfs_fs_t *fs = vmalloc(sizeof(*fs));
     if (unlikely(!fs)) return ENOMEM;
     memset(fs, 0, sizeof(*fs));
+    fs->base.ops = &ramfs_ops;
     fs->base.block_size = PAGE_SIZE;
 
     ident_t *ident = ident_get(current_thread->process);

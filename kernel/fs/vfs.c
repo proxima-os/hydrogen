@@ -1416,9 +1416,9 @@ static const file_ops_t regular_file_ops = {
     .mmap = regular_file_mmap,
 };
 
-static void open_regular_file(file_t *file, dentry_t *entry, int flags) {
+static void open_regular_file(file_t *file, inode_t *inode, dentry_t *path, int flags) {
     memset(file, 0, sizeof(*file));
-    init_file(file, &regular_file_ops, entry->inode, entry, flags);
+    init_file(file, &regular_file_ops, inode, path, flags);
 }
 
 static int do_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ident_t *ident) {
@@ -1459,7 +1459,7 @@ static int do_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ide
             }
         }
 
-        open_regular_file(file, path, flags);
+        open_regular_file(file, path->inode, path, flags);
         ret = ret_pointer(file);
         break;
     }
@@ -1487,12 +1487,12 @@ ret:
 int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int flags, uint32_t mode, ident_t *ident) {
     if (unlikely((flags & ~FILE_OPEN_FLAGS) != 0)) return EINVAL;
     if (unlikely((mode & ~FILE_PERM_BITS) != 0)) return EINVAL;
-    if (unlikely((flags & (__O_CREAT | __O_DIRECTORY)) == (__O_CREAT | __O_DIRECTORY))) return EINVAL;
+    if (unlikely((flags & __O_DIRECTORY) != 0 && (flags & (__O_CREAT | __O_TMPFILE)) != 0)) return EINVAL;
     use_umask(&mode);
 
     uint32_t lookup_flags = 0;
 
-    if ((flags & __O_CREAT) == 0) lookup_flags |= LOOKUP_MUST_EXIST;
+    if ((flags & __O_CREAT) == 0 || (flags & __O_TMPFILE) != 0) lookup_flags |= LOOKUP_MUST_EXIST;
     if ((flags & __O_EXCL) != 0) lookup_flags |= LOOKUP_MUST_NOT_EXIST;
     if ((flags & (__O_EXCL | __O_NOFOLLOW)) == 0) lookup_flags |= LOOKUP_FOLLOW_SYMLINKS;
 
@@ -1502,7 +1502,38 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
 
     file_t *file;
 
-    if (entry->inode == NULL) {
+    if (flags & __O_TMPFILE) {
+        inode_t *dir = entry->inode;
+        ASSERT(dir != NULL);
+
+        if (unlikely(dir->type != HYDROGEN_DIRECTORY)) {
+            error = ENOTDIR;
+            goto ret;
+        }
+
+        if (unlikely(!dir->fs->ops->tmpfile)) {
+            error = ENOTSUP;
+            goto ret;
+        }
+
+        file = vmalloc(sizeof(*file));
+        if (unlikely(!file)) {
+            error = ENOMEM;
+            goto ret;
+        }
+
+        hydrogen_ret_t ret = dir->fs->ops->tmpfile(dir->fs, ident, mode);
+        if (unlikely(ret.error)) {
+            error = ret.error;
+            goto ret;
+        }
+        inode_t *inode = ret.pointer;
+
+        mutex_acq(&inode->lock, 0, false);
+        open_regular_file(file, inode, NULL, flags);
+        mutex_rel(&inode->lock);
+        inode_deref(inode);
+    } else if (entry->inode == NULL) {
         ASSERT(flags & __O_CREAT);
 
         file = vmalloc(sizeof(*file));
@@ -1542,7 +1573,7 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
             goto ret;
         }
         mutex_acq(&entry->inode->lock, 0, false);
-        open_regular_file(file, entry, flags);
+        open_regular_file(file, entry->inode, entry, flags);
         mutex_rel(&entry->inode->lock);
     } else {
         ASSERT((flags & __O_EXCL) == 0);
@@ -1868,7 +1899,8 @@ void free_file(file_t *file) {
     if (file->path) dentry_deref(file->path);
 }
 
-static filesystem_t anonymous_fs;
+static const fs_ops_t anonymous_fs_ops = {};
+static filesystem_t anonymous_fs = {.ops = &anonymous_fs_ops};
 static uint64_t anonymous_inode;
 
 static void anon_inode_free(inode_t *self) {
