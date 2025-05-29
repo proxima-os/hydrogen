@@ -4,19 +4,24 @@
 #include "arch/mmio.h"
 #include "arch/pio.h"
 #include "arch/pmap.h"
+#include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "drv/acpi/acpi.h" /* IWYU pragma: keep */
 #include "drv/interrupt.h"
 #include "errno.h"
+#include "fs/vfs.h"
+#include "init/main.h" /* IWYU pragma: keep */
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "mem/kvmm.h"
 #include "mem/vmalloc.h"
 #include "string.h"
+#include "sys/interrupt.h"
 #include "uacpi/acpi.h"
 #include "uacpi/status.h"
 #include "uacpi/tables.h"
+#include "util/handle.h"
 #include "util/object.h"
 #include "util/panic.h"
 #include "util/printk.h"
@@ -24,6 +29,9 @@
 #include "util/spinlock.h"
 #include "x86_64/idtvec.h"
 #include "x86_64/lapic.h"
+#include <hydrogen/fcntl.h>
+#include <hydrogen/ioctl-data.h>
+#include <hydrogen/ioctl.h>
 #include <stdint.h>
 
 #define IOAPICID 0
@@ -56,7 +64,7 @@ typedef struct ioapic {
 
 static struct {
     uint32_t gsi;
-    uint16_t flags;
+    int flags;
 } isa_irq_overrides[16];
 
 _Static_assert(((X86_64_IDT_LAPIC_SPURIOUS - 7) & 7) == 0, "Spurious IRQ must have the 3 lowest bits set");
@@ -186,7 +194,14 @@ static void x86_64_ioapic_init(void) {
             case 0:
                 if (iso->source < 16) {
                     isa_irq_overrides[iso->source].gsi = iso->gsi;
-                    isa_irq_overrides[iso->flags].flags = iso->flags;
+
+                    if ((iso->flags & ACPI_MADT_POLARITY_MASK) == ACPI_MADT_POLARITY_ACTIVE_LOW) {
+                        isa_irq_overrides[iso->source].flags |= GSI_ACTIVE_LOW;
+                    }
+
+                    if ((iso->flags & ACPI_MADT_TRIGGERING_MASK) == ACPI_MADT_TRIGGERING_LEVEL) {
+                        isa_irq_overrides[iso->source].flags |= GSI_LEVEL_TRIGGERED;
+                    }
                 } else {
                     printk("ioapic: invalid isa interrupt %u\n", iso->source);
                 }
@@ -283,3 +298,66 @@ hydrogen_ret_t gsi_open(uint32_t gsi, int flags) {
     spin_rel(&irq->base.lock, state);
     return ret_pointer(&irq->base);
 }
+
+static void isa_irq_device_file_free(object_t *ptr) {
+    file_t *self = (file_t *)ptr;
+    free_file(self);
+    vfree(self, sizeof(*self));
+}
+
+static hydrogen_ret_t isa_irq_device_file_ioctl(file_t *self, int request, void *buffer, size_t size) {
+    switch (request) {
+    case __IOCTL_IRQ_OPEN: {
+        if (unlikely((self->flags & (__O_RDONLY | __O_WRONLY)) != (__O_RDONLY | __O_WRONLY))) return ret_error(EBADF);
+
+        hydrogen_ioctl_irq_open_t data;
+        if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
+
+        int error = user_memcpy(&data, buffer, sizeof(data));
+        if (unlikely(error)) return ret_error(error);
+
+        if (unlikely(data.flags & ~HANDLE_FLAGS)) return ret_error(EINVAL);
+        if (unlikely(data.irq >= 16)) return ret_error(ENOENT);
+
+        hydrogen_ret_t ret = gsi_open(isa_irq_overrides[data.irq].gsi, isa_irq_overrides[data.irq].flags);
+        if (unlikely(ret.error)) return ret_error(ret.error);
+        interrupt_t *irq = ret.pointer;
+
+        ret = hnd_alloc(&irq->base, INTERRUPT_RIGHTS, data.flags);
+        obj_deref(&irq->base);
+        return ret;
+    }
+    default: return ret_error(ENOTTY);
+    }
+}
+
+static const file_ops_t isa_irq_device_file_ops = {
+    .base.free = isa_irq_device_file_free,
+    .ioctl = isa_irq_device_file_ioctl,
+};
+
+static hydrogen_ret_t isa_irq_device_open(
+    fs_device_t *self,
+    inode_t *inode,
+    dentry_t *path,
+    int flags,
+    struct ident *ident
+) {
+    file_t *file = vmalloc(sizeof(*file));
+    if (unlikely(!file)) return ret_error(ENOMEM);
+    memset(file, 0, sizeof(*file));
+
+    init_file(file, &isa_irq_device_file_ops, inode, path, flags);
+
+    return ret_pointer(file);
+}
+
+static const fs_device_ops_t isa_irq_device_ops = {.open = isa_irq_device_open};
+static fs_device_t isa_irq_device = {.ops = &isa_irq_device_ops, .references = REF_INIT(1)};
+
+static void create_ioapic_devices(void) {
+    int error = vfs_create(NULL, "/dev/isa-irq", 12, HYDROGEN_CHARACTER_DEVICE, 0600, &isa_irq_device);
+    if (unlikely(error)) panic("ioapic: failed to create /dev/isa-irq (%e)", error);
+}
+
+INIT_DEFINE(create_ioapic_devices, create_ioapic_devices, INIT_REFERENCE(mount_rootfs));
