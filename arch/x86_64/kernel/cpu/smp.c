@@ -432,10 +432,7 @@ static void launch_cpu(
 ) {
     if (apic_id == this_cpu_read(arch.apic_id)) return;
 
-    if ((flags & (ACPI_PIC_ENABLED | ACPI_PIC_ONLINE_CAPABLE)) == 0) {
-        printk("smp: cpu with apic id %u is disabled by firmware\n", apic_id);
-        return;
-    }
+    if ((flags & (ACPI_PIC_ENABLED | ACPI_PIC_ONLINE_CAPABLE)) == 0) return;
 
     if (apic_id > 0xff && !x86_64_cpu_features.x2apic) {
         printk("smp: apic id above 255 but x2apic is not supported\n");
