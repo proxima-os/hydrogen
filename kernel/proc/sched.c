@@ -253,6 +253,8 @@ static void time_account_submit(thread_t *thread, uint64_t time) {
 
     __atomic_fetch_add(&process->kern_time, kern_time, __ATOMIC_RELAXED);
     __atomic_fetch_add(&process->user_time, user_time, __ATOMIC_RELAXED);
+    thread->kern_time += kern_time;
+    thread->user_time += user_time;
 }
 
 static void do_yield(cpu_t *cpu, bool migrating) {

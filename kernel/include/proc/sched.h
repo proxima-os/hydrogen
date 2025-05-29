@@ -58,6 +58,8 @@ typedef struct thread {
 
     uint64_t account_start_time;
     uint64_t kernel_start_time;
+    uint64_t user_time;
+    uint64_t kern_time;
 } thread_t;
 
 typedef struct task {

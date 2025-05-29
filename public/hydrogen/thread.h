@@ -4,6 +4,7 @@
 #ifndef HYDROGEN_THREAD_H
 #define HYDROGEN_THREAD_H
 
+#include "hydrogen/process.h"
 #include "hydrogen/signal.h"
 #include "hydrogen/types.h"
 #include <stddef.h>
@@ -146,6 +147,14 @@ hydrogen_ret_t hydrogen_thread_get_id(int thread) __asm__("__hydrogen_thread_get
  * \return A handle to the thread (in `integer`).
  */
 hydrogen_ret_t hydrogen_thread_find(int process, int thread_id, uint32_t flags) __asm__("__hydrogen_thread_find");
+
+/**
+ * Get the CPU time used by the current thread.
+ *
+ * \param[out] time The CPU time used by the current thread.
+ * \return 0, if successful; if not, an error code.
+ */
+int hydrogen_thread_get_cpu_time(hydrogen_cpu_time_t *time) __asm__("__hydrogen_thread_get_cpu_time");
 
 #ifdef __cplusplus
 };

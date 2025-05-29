@@ -129,7 +129,8 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_PROCESS_WAIT: return ret_error(hydrogen_process_wait(a0, a1, (__siginfo_t *)a2, a3));
     case SYSCALL_PROCESS_WAIT_ID: return hydrogen_process_wait_id(a0, a1, (__siginfo_t *)a2, a3);
     case SYSCALL_MEM_OBJECT_RESIZE: return ret_error(hydrogen_mem_object_resize(a0, a1));
-    case SYSCALL_PROCESS_GET_CPU_TIME: return ret_error(hydrogen_process_get_cpu_time((hydrogen_cpu_time_t *)a0));
+    case SYSCALL_PROCESS_GET_CPU_TIME:
+        return ret_error(hydrogen_process_get_cpu_time((hydrogen_process_cpu_time_t *)a0));
     case SYSCALL_GET_HOST_NAME: return hydrogen_get_host_name((void *)a0, a1);
     case SYSCALL_SET_HOST_NAME: return ret_error(hydrogen_set_host_name((const void *)a0, a1));
     case SYSCALL_PROCESS_ALARM: return hydrogen_process_alarm(a0, a1);
@@ -213,6 +214,7 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_FS_IOCTL: return hydrogen_fs_ioctl(a0, a1, (void *)a2, a3);
     case SYSCALL_FS_FCHDIR: return ret_error(hydrogen_fs_fchdir(a0, a1));
     case SYSCALL_FS_FCHROOT: return ret_error(hydrogen_fs_fchroot(a0, a1));
+    case SYSCALL_THREAD_GET_CPU_TIME: return ret_error(hydrogen_thread_get_cpu_time((hydrogen_cpu_time_t *)a0));
     default: return ret_error(ENOSYS);
     }
 }

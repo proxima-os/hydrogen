@@ -523,3 +523,16 @@ err:
     obj_deref(&thread->base);
     return ret_error(error);
 }
+
+int hydrogen_thread_get_cpu_time(hydrogen_cpu_time_t *time) {
+    int error = verify_user_buffer((uintptr_t)time, sizeof(*time));
+    if (unlikely(error)) return error;
+
+    sched_commit_time_accounting();
+
+    preempt_state_t state = preempt_lock();
+    hydrogen_cpu_time_t data = {.user = current_thread->user_time, .kernel = current_thread->kern_time};
+    preempt_unlock(state);
+
+    return user_memcpy(time, &data, sizeof(*time));
+}

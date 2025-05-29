@@ -73,3 +73,7 @@ EXPORT hydrogen_ret_t hydrogen_thread_get_id(int thread) {
 EXPORT hydrogen_ret_t hydrogen_thread_find(int process, int thread_id, uint32_t flags) {
     return SYSCALL3(SYSCALL_THREAD_FIND, process, thread_id, flags);
 }
+
+EXPORT int hydrogen_thread_get_cpu_time(hydrogen_cpu_time_t *time) {
+    return SYSCALL1(SYSCALL_THREAD_GET_CPU_TIME, time).error;
+}

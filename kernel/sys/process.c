@@ -406,16 +406,18 @@ hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned flags, __siginfo_t
     return proc_waitid(process, flags, info, deadline);
 }
 
-int hydrogen_process_get_cpu_time(hydrogen_cpu_time_t *time) {
+int hydrogen_process_get_cpu_time(hydrogen_process_cpu_time_t *time) {
     int error = verify_user_buffer((uintptr_t)time, sizeof(*time));
     if (unlikely(error)) return error;
 
+    sched_commit_time_accounting();
+
     process_t *process = current_thread->process;
-    hydrogen_cpu_time_t value = {
-            .user_time = __atomic_load_n(&process->user_time, __ATOMIC_RELAXED),
-            .kernel_time = __atomic_load_n(&process->kern_time, __ATOMIC_RELAXED),
-            .child_user_time = __atomic_load_n(&process->child_user_time, __ATOMIC_RELAXED),
-            .child_kernel_time = __atomic_load_n(&process->child_kern_time, __ATOMIC_RELAXED),
+    hydrogen_process_cpu_time_t value = {
+            .self.user = __atomic_load_n(&process->user_time, __ATOMIC_RELAXED),
+            .self.kernel = __atomic_load_n(&process->kern_time, __ATOMIC_RELAXED),
+            .children.user = __atomic_load_n(&process->child_user_time, __ATOMIC_RELAXED),
+            .children.kernel = __atomic_load_n(&process->child_kern_time, __ATOMIC_RELAXED),
     };
     return user_memcpy(time, &value, sizeof(*time));
 }
