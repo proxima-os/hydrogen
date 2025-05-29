@@ -1,1 +1,3 @@
 *.xbstrap
+/subprojects/*
+!/subprojects/*.wrap
