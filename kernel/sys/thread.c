@@ -3,6 +3,7 @@
 #include "arch/pmap.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
+#include "cpu/cpumask.h"
 #include "errno.h"
 #include "fs/vfs.h"
 #include "kernel/compiler.h"
@@ -535,4 +536,37 @@ int hydrogen_thread_get_cpu_time(hydrogen_cpu_time_t *time) {
     preempt_unlock(state);
 
     return user_memcpy(time, &data, sizeof(*time));
+}
+
+int hydrogen_thread_set_cpu_affinity(const uint64_t *bitmask, size_t size) {
+    size_t bsize = sizeof(*bitmask) * size;
+    int error = verify_user_buffer(bitmask, bsize);
+    if (unlikely(error)) return error;
+
+    cpu_mask_t mask;
+    error = user_memcpy(&mask, bitmask, bsize < sizeof(mask) ? bsize : sizeof(mask));
+    if (unlikely(error)) return error;
+    if (bsize < sizeof(mask)) memset((void *)&mask + bsize, 0, sizeof(mask) - bsize);
+
+    cpu_mask_sanitize(&mask);
+
+    if (unlikely(cpu_mask_empty(&mask))) return EINVAL;
+
+    sched_set_affinity(&mask);
+    return 0;
+}
+
+int hydrogen_thread_get_cpu_affinity(uint64_t *bitmask, size_t size) {
+    size_t bsize = sizeof(*bitmask) * size;
+    int error = verify_user_buffer(bitmask, bsize);
+    if (unlikely(error)) return error;
+
+    const cpu_mask_t *mask = &current_thread->affinity;
+    if (unlikely(bsize < sizeof(*mask))) return EINVAL;
+
+    error = user_memcpy(bitmask, mask, sizeof(*mask));
+    if (unlikely(error)) return error;
+    if (bsize > sizeof(*mask)) memset((void *)bitmask + sizeof(*mask), 0, bsize - sizeof(*mask));
+
+    return 0;
 }

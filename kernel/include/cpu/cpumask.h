@@ -1,6 +1,5 @@
 #pragma once
 
-#include "cpu/cpudata.h"
 #include "string.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -11,6 +10,8 @@
 typedef struct {
     uint64_t data;
 } cpu_mask_t;
+
+extern size_t num_cpus;
 
 static inline bool cpu_mask_empty(cpu_mask_t *mask) {
     return mask->data == 0;
@@ -24,11 +25,15 @@ static inline void cpu_mask_fill(cpu_mask_t *mask) {
     mask->data = (1ull << num_cpus) - 1;
 }
 
-static inline bool cpu_mask_get(cpu_mask_t *mask, size_t cpu) {
+static inline void cpu_mask_sanitize(cpu_mask_t *mask) {
+    mask->data &= (1ull << num_cpus) - 1;
+}
+
+static inline bool cpu_mask_get(const cpu_mask_t *mask, size_t cpu) {
     return mask->data & (1ull << cpu);
 }
 
-static inline bool cpu_mask_get_atomic(cpu_mask_t *mask, size_t cpu) {
+static inline bool cpu_mask_get_atomic(const cpu_mask_t *mask, size_t cpu) {
     return __atomic_load_n(&mask->data, __ATOMIC_RELAXED) & (1ull << cpu);
 }
 

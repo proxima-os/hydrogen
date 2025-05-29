@@ -552,6 +552,10 @@ static void smp_init(void) {
     sched_migrate(&boot_cpu);
     migrate_unlock(state);
 
+    cpu_mask_t mask;
+    cpu_mask_fill(&mask);
+    sched_set_affinity(&mask);
+
     launch_cleanup(launch_ctx);
 
     if (num_extra != 0) {

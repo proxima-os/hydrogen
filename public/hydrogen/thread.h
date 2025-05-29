@@ -156,6 +156,12 @@ hydrogen_ret_t hydrogen_thread_find(int process, int thread_id, uint32_t flags) 
  */
 int hydrogen_thread_get_cpu_time(hydrogen_cpu_time_t *time) __asm__("__hydrogen_thread_get_cpu_time");
 
+int hydrogen_thread_set_cpu_affinity(const uint64_t *bitmask, size_t size) __asm__(
+    "__hydrogen_thread_set_cpu_affinity"
+);
+
+int hydrogen_thread_get_cpu_affinity(uint64_t *bitmask, size_t size) __asm__("__hydrogen_thread_get_cpu_affinity");
+
 #ifdef __cplusplus
 };
 #endif

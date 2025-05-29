@@ -9,7 +9,6 @@
 #include "util/spinlock.h"
 #include "util/time.h"
 #include <stddef.h>
-#include <stdint.h>
 
 typedef struct cpu {
     arch_cpu_t arch; // must be the 1st field in the struct

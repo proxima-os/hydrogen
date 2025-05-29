@@ -2,6 +2,7 @@
 
 #include "arch/context.h"
 #include "arch/sched.h"
+#include "cpu/cpumask.h"
 #include "init/task.h"
 #include "proc/signal.h"
 #include "util/list.h"
@@ -60,6 +61,8 @@ typedef struct thread {
     uint64_t kernel_start_time;
     uint64_t user_time;
     uint64_t kern_time;
+
+    cpu_mask_t affinity;
 } thread_t;
 
 typedef struct task {
@@ -113,6 +116,8 @@ void sched_cancel_wait(void);
 _Noreturn void sched_exit(int status);
 void sched_migrate(struct cpu *dest);
 void sched_commit_time_accounting(void);
+
+void sched_set_affinity(const cpu_mask_t *mask);
 
 void sched_queue_task(task_t *task);
 _Noreturn void sched_idle(void);

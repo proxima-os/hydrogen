@@ -5,6 +5,7 @@
 #include "arch/stack.h"
 #include "arch/time.h"
 #include "cpu/cpudata.h"
+#include "cpu/cpumask.h"
 #include "cpu/smp.h"
 #include "errno.h"
 #include "init/task.h"
@@ -103,6 +104,7 @@ static void sched_init(void) {
     sched->current->cpu = cpu;
     sched->current->state = THREAD_RUNNING;
     sched->current->process = &kernel_process;
+    cpu_mask_fill(&sched->current->affinity);
 }
 
 INIT_DEFINE_EARLY(scheduler_early, sched_init);
@@ -143,6 +145,25 @@ static void sched_init_late(void) {
 INIT_DEFINE(scheduler, sched_init_late);
 INIT_DEFINE_AP(scheduler_ap, sched_init_late);
 
+static cpu_t *select_cpu_for_affinity(const cpu_mask_t *affinity) {
+    cpu_t *cur = NULL;
+    size_t cur_count = SIZE_MAX;
+
+    SLIST_FOREACH(cpus, cpu_t, node, cpu) {
+        if (!cpu_mask_get_atomic(affinity, cpu->id)) continue;
+
+        size_t count = __atomic_load_n(&cpu->sched.num_threads, __ATOMIC_RELAXED);
+
+        if (count < cur_count) {
+            cur = cpu;
+            cur_count = count;
+        }
+    }
+
+    ASSERT(cur != NULL);
+    return cur;
+}
+
 int sched_create_thread(
     thread_t **out,
     void (*func)(void *),
@@ -176,6 +197,7 @@ int sched_create_thread(
     thread->user_thread = (flags & THREAD_USER) != 0;
     thread->sig_mask = current_thread->sig_mask;
     thread->sig_stack.__flags = __SS_DISABLE;
+    thread->affinity = current_thread->affinity;
 
     if (process != NULL) {
         thread->process = process;
@@ -191,20 +213,7 @@ int sched_create_thread(
         obj_ref(&process->base);
     }
 
-    if (thread->cpu == NULL) {
-        size_t cur_count = SIZE_MAX;
-
-        SLIST_FOREACH(cpus, cpu_t, node, cpu) {
-            size_t count = __atomic_load_n(&cpu->sched.num_threads, __ATOMIC_RELAXED);
-
-            if (count < cur_count) {
-                thread->cpu = cpu;
-                cur_count = count;
-            }
-        }
-
-        ASSERT(thread->cpu != NULL);
-    }
+    if (thread->cpu == NULL) thread->cpu = select_cpu_for_affinity(&thread->affinity);
 
     __atomic_fetch_add(&thread->cpu->sched.num_threads, 1, __ATOMIC_RELAXED);
 
@@ -530,16 +539,9 @@ _Noreturn void sched_exit(int status) {
     UNREACHABLE();
 }
 
-void sched_migrate(struct cpu *dest) {
-    preempt_state_t state = preempt_lock();
-    ASSERT(state == PREEMPT_ENABLED);
-
-    cpu_t *src = get_current_cpu();
-
-    if (dest == src) {
-        preempt_unlock(state);
-        return;
-    }
+static void do_migrate(cpu_t *src, cpu_t *dest) {
+    ASSERT(src == get_current_cpu());
+    if (src == dest) return;
 
     thread_t *thread = src->sched.current;
     ASSERT(thread != &src->sched.idle_thread);
@@ -571,6 +573,15 @@ void sched_migrate(struct cpu *dest) {
     ASSERT(dest == get_current_cpu());
     spin_rel_noirq(&dest->sched.lock);
     restore_irq(istate);
+}
+
+void sched_migrate(struct cpu *dest) {
+    preempt_state_t state = preempt_lock();
+    ASSERT(state == PREEMPT_ENABLED);
+
+    cpu_t *src = get_current_cpu();
+    do_migrate(src, dest);
+
     preempt_unlock(state);
 }
 
@@ -586,6 +597,23 @@ void sched_commit_time_accounting(void) {
 
     spin_rel_noirq(&cpu->sched.lock);
     restore_irq(state);
+}
+
+void sched_set_affinity(const cpu_mask_t *mask) {
+    preempt_state_t state = preempt_lock();
+    ASSERT(state == PREEMPT_ENABLED);
+
+    cpu_t *src = get_current_cpu();
+    cpu_t *dest = src;
+
+    if (!cpu_mask_get(mask, src->id)) {
+        dest = select_cpu_for_affinity(mask);
+    }
+
+    current_thread->affinity = *mask;
+    do_migrate(src, dest);
+
+    preempt_unlock(state);
 }
 
 _Noreturn void sched_init_thread(thread_t *prev, void (*func)(void *), void *ctx) {
