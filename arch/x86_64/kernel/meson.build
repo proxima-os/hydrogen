@@ -10,7 +10,6 @@ kernel_sources += files(
     'cpu/smp.c',
     'cpu/smp.S',
     'cpu/xsave.c',
-    'drv/acpi.c',
     'drv/debugcon.c',
     'drv/ioapic.c',
     'init/main.c',

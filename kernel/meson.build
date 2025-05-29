@@ -1,6 +1,6 @@
 uacpi = subproject('uacpi')
 
-kernel_c_flags += ['-DUACPI_SIZED_FREES']
+kernel_c_flags += ['-DUACPI_BAREBONES_MODE', '-DUACPI_SIZED_FREES']
 kernel_include += uacpi.get_variable('includes')
 kernel_sources += uacpi.get_variable('sources')
 
@@ -10,7 +10,6 @@ kernel_sources += files(
     'cpu/cpudata.c',
     'cpu/smp.c',
     'drv/acpi/acpi.c',
-    'drv/pci/config-access.c',
     'drv/framebuffer.c',
     'fs/fifo.c',
     'fs/ramfs.c',
