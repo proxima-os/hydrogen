@@ -1,9 +1,9 @@
-#include "hydrogen/time.h"
 #include "arch/time.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "proc/process.h"
 #include "util/time.h"
+#include <hydrogen/time.h>
 #include <stdint.h>
 
 uint64_t hydrogen_boot_time(void) {

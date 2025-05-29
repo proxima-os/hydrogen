@@ -1,7 +1,7 @@
 #pragma once
 
-#include "hydrogen/eventqueue.h"
 #include "util/refcount.h"
+#include <hydrogen/eventqueue.h>
 #include <stdbool.h>
 #include <stdint.h>
 

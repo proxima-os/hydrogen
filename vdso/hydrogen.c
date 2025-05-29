@@ -1,10 +1,10 @@
-#include "hydrogen/hydrogen.h"
 #include "arch/syscall.h"
-#include "hydrogen/types.h"
 #include "kernel/syscall.h"
 #include "string.h"
 #include "vdso-config.h"
 #include "vdso.h"
+#include <hydrogen/hydrogen.h>
+#include <hydrogen/types.h>
 
 EXPORT size_t hydrogen_get_kernel_name(void *buffer, size_t size) {
     static const char name[] = "Hydrogen";

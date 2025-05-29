@@ -3,7 +3,6 @@
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
-#include "hydrogen/eventqueue.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
@@ -14,6 +13,7 @@
 #include "util/hlist.h"
 #include "util/list.h"
 #include "util/object.h"
+#include <hydrogen/eventqueue.h>
 #include <stdint.h>
 
 #define EVENT_INPUT_FLAGS (HYDROGEN_EVENT_NO_WAKE)
@@ -88,13 +88,13 @@ static int maybe_expand(event_queue_t *queue) {
 }
 
 int event_queue_add(
-        event_queue_t *queue,
-        object_t *object,
-        object_rights_t rights,
-        hydrogen_event_type_t type,
-        uint64_t data,
-        void *ctx,
-        uint32_t flags
+    event_queue_t *queue,
+    object_t *object,
+    object_rights_t rights,
+    hydrogen_event_type_t type,
+    uint64_t data,
+    void *ctx,
+    uint32_t flags
 ) {
     if (unlikely((flags & ~EVENT_INPUT_FLAGS) != 0)) return EINVAL;
     if (unlikely(object->ops->event_add == NULL)) return EINVAL;

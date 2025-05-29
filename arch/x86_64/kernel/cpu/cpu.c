@@ -15,11 +15,11 @@
 x86_64_cpu_features_t x86_64_cpu_features;
 
 static LIMINE_REQ struct limine_paging_mode_request pmode_req = {
-        .id = LIMINE_PAGING_MODE_REQUEST,
-        .revision = 1,
-        .mode = LIMINE_PAGING_MODE_X86_64_5LVL,
-        .min_mode = LIMINE_PAGING_MODE_X86_64_4LVL,
-        .max_mode = LIMINE_PAGING_MODE_X86_64_5LVL,
+    .id = LIMINE_PAGING_MODE_REQUEST,
+    .revision = 1,
+    .mode = LIMINE_PAGING_MODE_X86_64_5LVL,
+    .min_mode = LIMINE_PAGING_MODE_X86_64_4LVL,
+    .max_mode = LIMINE_PAGING_MODE_X86_64_5LVL,
 };
 
 void x86_64_cpu_detect(void) {
@@ -98,21 +98,20 @@ void x86_64_cpu_detect(void) {
     if (feat->nx) efer_value |= X86_64_MSR_EFER_NXE;
 
     x86_64_write_cr0(
-            X86_64_CR0_PG | X86_64_CR0_AM | X86_64_CR0_WP | X86_64_CR0_NE | X86_64_CR0_ET | X86_64_CR0_MP |
-            X86_64_CR0_PE
+        X86_64_CR0_PG | X86_64_CR0_AM | X86_64_CR0_WP | X86_64_CR0_NE | X86_64_CR0_ET | X86_64_CR0_MP | X86_64_CR0_PE
     );
     x86_64_write_cr4(cr4_value);
     x86_64_wrmsr(X86_64_MSR_EFER, efer_value);
 }
 
 static uint64_t gdt[7] = {
-        0,                // reserved
-        0x209b0000000000, // kernel code
-        0x40930000000000, // kernel data
-        0x40f30000000000, // user data
-        0x20fb0000000000, // user code
-        0,                // tss low
-        0,                // tss high
+    0,                // reserved
+    0x209b0000000000, // kernel code
+    0x40930000000000, // kernel data
+    0x40f30000000000, // user data
+    0x20fb0000000000, // user code
+    0,                // tss low
+    0,                // tss high
 };
 static spinlock_t gdt_lock;
 

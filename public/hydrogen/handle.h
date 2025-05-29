@@ -12,7 +12,7 @@
 #ifndef HYDROGEN_HANDLE_H
 #define HYDROGEN_HANDLE_H
 
-#include "hydrogen/types.h"
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -93,12 +93,12 @@ hydrogen_ret_t hydrogen_namespace_clone(int ns, uint32_t flags) __asm__("__hydro
  * \return The new handle (in `integer`).
  */
 hydrogen_ret_t hydrogen_namespace_add(
-        int src_ns,
-        int src_obj,
-        int dst_ns,
-        int dst_hnd,
-        uint32_t rights,
-        uint32_t flags
+    int src_ns,
+    int src_obj,
+    int dst_ns,
+    int dst_hnd,
+    uint32_t rights,
+    uint32_t flags
 ) __asm__("__hydrogen_namespace_add");
 
 /**
@@ -121,7 +121,7 @@ int hydrogen_namespace_remove(int ns, int handle) __asm__("__hydrogen_namespace_
  * \return 0, if successful; if not, an error code.
  */
 int hydrogen_namespace_resolve(int ns, int handle, uint32_t *rights, uint32_t *flags) __asm__(
-        "__hydrogen_namespace_resolve"
+    "__hydrogen_namespace_resolve"
 );
 
 #ifdef __cplusplus

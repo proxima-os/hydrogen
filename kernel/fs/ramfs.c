@@ -3,9 +3,6 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
-#include "hydrogen/filesystem.h"
-#include "hydrogen/memory.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/return.h"
@@ -19,6 +16,9 @@
 #include "util/list.h"
 #include "util/object.h"
 #include "util/time.h"
+#include <hydrogen/filesystem.h>
+#include <hydrogen/memory.h>
+#include <hydrogen/types.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -99,11 +99,11 @@ static void ramfs_inode_regular_data_free(object_t *ptr) {
 }
 
 static hydrogen_ret_t ramfs_inode_regular_data_get_page(
-        mem_object_t *ptr,
-        vmm_region_t *region,
-        uint64_t index,
-        rcu_state_t *state_out,
-        bool write
+    mem_object_t *ptr,
+    vmm_region_t *region,
+    uint64_t index,
+    rcu_state_t *state_out,
+    bool write
 ) {
     ramfs_inode_t *self = CONTAINER(ramfs_inode_t, data.base, ptr);
 
@@ -124,12 +124,12 @@ static hydrogen_ret_t ramfs_inode_regular_data_get_page(
 }
 
 static void ramfs_inode_regular_data_post_map(
-        mem_object_t *ptr,
-        vmm_t *vmm,
-        uintptr_t head,
-        uintptr_t tail,
-        unsigned flags,
-        uint64_t offset
+    mem_object_t *ptr,
+    vmm_t *vmm,
+    uintptr_t head,
+    uintptr_t tail,
+    unsigned flags,
+    uint64_t offset
 ) {
     ramfs_inode_t *self = CONTAINER(ramfs_inode_t, data.base, ptr);
     mutex_acq(&self->base.lock, 0, false);
@@ -143,31 +143,31 @@ static void ramfs_inode_regular_data_post_map(
 }
 
 static const inode_ops_t ramfs_inode_special_ops = {
-        .free = ramfs_inode_free,
-        .chmodown = ramfs_inode_chmodown,
-        .utime = ramfs_inode_utime,
+    .free = ramfs_inode_free,
+    .chmodown = ramfs_inode_chmodown,
+    .utime = ramfs_inode_utime,
 };
 static const inode_ops_t ramfs_inode_regular_ops = {
-        .free = ramfs_inode_regular_free,
-        .chmodown = ramfs_inode_chmodown,
-        .utime = ramfs_inode_utime,
-        .regular.truncate = ramfs_inode_regular_truncate,
+    .free = ramfs_inode_regular_free,
+    .chmodown = ramfs_inode_chmodown,
+    .utime = ramfs_inode_utime,
+    .regular.truncate = ramfs_inode_regular_truncate,
 };
 static const inode_ops_t ramfs_inode_directory_ops;
 static const mem_object_ops_t ramfs_inode_regular_data_ops = {
-        .base.free = ramfs_inode_regular_data_free,
-        .get_page = ramfs_inode_regular_data_get_page,
-        .post_map = ramfs_inode_regular_data_post_map,
+    .base.free = ramfs_inode_regular_data_free,
+    .get_page = ramfs_inode_regular_data_get_page,
+    .post_map = ramfs_inode_regular_data_post_map,
 };
 
 static int create_ramfs_inode(
-        ramfs_fs_t *fs,
-        inode_t *dir,
-        inode_t **out,
-        hydrogen_file_type_t type,
-        ident_t *ident,
-        uint32_t mode,
-        fs_device_t *device
+    ramfs_fs_t *fs,
+    inode_t *dir,
+    inode_t **out,
+    hydrogen_file_type_t type,
+    ident_t *ident,
+    uint32_t mode,
+    fs_device_t *device
 ) {
     ramfs_inode_t *inode = vmalloc(sizeof(*inode));
     if (unlikely(!inode)) return ENOMEM;
@@ -235,13 +235,13 @@ static hydrogen_ret_t ramfs_file_dir_seek(file_t *ptr, hydrogen_seek_anchor_t an
 }
 
 static hydrogen_ret_t emit_single(
-        void **buffer,
-        size_t *size,
-        uint64_t id,
-        uint64_t position,
-        hydrogen_file_type_t type,
-        const void *name,
-        size_t length
+    void **buffer,
+    size_t *size,
+    uint64_t id,
+    uint64_t position,
+    hydrogen_file_type_t type,
+    const void *name,
+    size_t length
 ) {
     size_t offset = offsetof(hydrogen_directory_entry_t, name);
     size_t cursz = offset + length;
@@ -349,9 +349,9 @@ static hydrogen_ret_t ramfs_file_dir_readdir(file_t *ptr, void *buffer, size_t s
 }
 
 static const file_ops_t ramfs_file_dir_ops = {
-        .base.free = ramfs_file_dir_free,
-        .seek = ramfs_file_dir_seek,
-        .readdir = ramfs_file_dir_readdir,
+    .base.free = ramfs_file_dir_free,
+    .seek = ramfs_file_dir_seek,
+    .readdir = ramfs_file_dir_readdir,
 };
 
 static hydrogen_ret_t ramfs_inode_directory_open(inode_t *ptr, dentry_t *path, int flags) {
@@ -369,12 +369,12 @@ static int ramfs_inode_directory_lookup(inode_t *ptr, dentry_t *entry) {
 }
 
 static int ramfs_inode_directory_create(
-        inode_t *ptr,
-        dentry_t *entry,
-        hydrogen_file_type_t type,
-        ident_t *ident,
-        uint32_t mode,
-        fs_device_t *device
+    inode_t *ptr,
+    dentry_t *entry,
+    hydrogen_file_type_t type,
+    ident_t *ident,
+    uint32_t mode,
+    fs_device_t *device
 ) {
     inode_t *inode;
     int error = create_ramfs_inode((ramfs_fs_t *)ptr->fs, ptr, &inode, type, ident, mode, device);
@@ -392,11 +392,11 @@ static int ramfs_inode_directory_create(
 }
 
 static int ramfs_inode_directory_symlink(
-        inode_t *ptr,
-        dentry_t *entry,
-        const void *target,
-        size_t length,
-        ident_t *ident
+    inode_t *ptr,
+    dentry_t *entry,
+    const void *target,
+    size_t length,
+    ident_t *ident
 ) {
     void *buffer = vmalloc(length);
     if (unlikely(!buffer)) return ENOMEM;
@@ -487,16 +487,16 @@ static int ramfs_inode_directory_rename(inode_t *srcdir, dentry_t *sentry, inode
 }
 
 static const inode_ops_t ramfs_inode_directory_ops = {
-        .free = ramfs_inode_free,
-        .chmodown = ramfs_inode_chmodown,
-        .utime = ramfs_inode_utime,
-        .directory.open = ramfs_inode_directory_open,
-        .directory.lookup = ramfs_inode_directory_lookup,
-        .directory.create = ramfs_inode_directory_create,
-        .directory.symlink = ramfs_inode_directory_symlink,
-        .directory.link = ramfs_inode_directory_link,
-        .directory.unlink = ramfs_inode_directory_unlink,
-        .directory.rename = ramfs_inode_directory_rename,
+    .free = ramfs_inode_free,
+    .chmodown = ramfs_inode_chmodown,
+    .utime = ramfs_inode_utime,
+    .directory.open = ramfs_inode_directory_open,
+    .directory.lookup = ramfs_inode_directory_lookup,
+    .directory.create = ramfs_inode_directory_create,
+    .directory.symlink = ramfs_inode_directory_symlink,
+    .directory.link = ramfs_inode_directory_link,
+    .directory.unlink = ramfs_inode_directory_unlink,
+    .directory.rename = ramfs_inode_directory_rename,
 };
 
 int ramfs_create(filesystem_t **out, uint32_t root_mode) {

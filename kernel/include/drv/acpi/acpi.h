@@ -14,7 +14,7 @@ typedef struct acpi_driver {
 #define ACPI_DRIVER3(id, name, func, ...)                                                  \
     static const char *const __acpidrv_id_##id[] = {__VA_ARGS__};                          \
     __attribute__((used, section(".acpidrv"))) static const acpi_driver_t __acpidrv_##id = \
-            {name, __acpidrv_id_##id, sizeof(__acpidrv_id_##id) / sizeof(*__acpidrv_id_##id), (func)}
+        {name, __acpidrv_id_##id, sizeof(__acpidrv_id_##id) / sizeof(*__acpidrv_id_##id), (func)}
 #define ACPI_DRIVER2(id, name, func, ...) ACPI_DRIVER3(id, name, func, ##__VA_ARGS__)
 #define ACPI_DRIVER(name, func, ...) ACPI_DRIVER2(__COUNTER__, name, func, ##__VA_ARGS__)
 

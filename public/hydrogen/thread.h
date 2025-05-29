@@ -4,9 +4,9 @@
 #ifndef HYDROGEN_THREAD_H
 #define HYDROGEN_THREAD_H
 
-#include "hydrogen/process.h"
-#include "hydrogen/signal.h"
-#include "hydrogen/types.h"
+#include <hydrogen/process.h>
+#include <hydrogen/signal.h>
+#include <hydrogen/types.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -39,7 +39,7 @@ extern "C" {
  * \return A handle to the newly created thread (in `integer`).
  */
 hydrogen_ret_t hydrogen_thread_create(int process, int vmm, int ns, uintptr_t pc, uintptr_t sp, uint32_t flags) __asm__(
-        "__hydrogen_thread_create"
+    "__hydrogen_thread_create"
 );
 
 /**
@@ -61,14 +61,14 @@ hydrogen_ret_t hydrogen_thread_create(int process, int vmm, int ns, uintptr_t pc
  *         the current process.
  */
 hydrogen_ret_t hydrogen_thread_exec(
-        int process,
-        int ns,
-        int image,
-        size_t argc,
-        const hydrogen_string_t *argv,
-        size_t envc,
-        const hydrogen_string_t *envp,
-        uint32_t flags
+    int process,
+    int ns,
+    int image,
+    size_t argc,
+    const hydrogen_string_t *argv,
+    size_t envc,
+    const hydrogen_string_t *envp,
+    uint32_t flags
 ) __asm__("__hydrogen_thread_exec");
 
 /**

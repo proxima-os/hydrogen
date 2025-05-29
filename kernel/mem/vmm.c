@@ -4,8 +4,6 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
-#include "hydrogen/memory.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/return.h"
@@ -20,6 +18,8 @@
 #include "sys/vdso.h"
 #include "util/list.h"
 #include "util/object.h"
+#include <hydrogen/memory.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 static void replace_child(vmm_t *vmm, vmm_region_t *parent, vmm_region_t *from, vmm_region_t *to) {
@@ -462,11 +462,11 @@ vmm_t *vmm_switch(vmm_t *vmm) {
 }
 
 static void get_nonoverlap_bounds(
-        vmm_t *vmm,
-        uintptr_t head,
-        uintptr_t tail,
-        vmm_region_t **prev_out,
-        vmm_region_t **next_out
+    vmm_t *vmm,
+    uintptr_t head,
+    uintptr_t tail,
+    vmm_region_t **prev_out,
+    vmm_region_t **next_out
 ) {
     vmm_region_t *prev = NULL;
     vmm_region_t *next = LIST_HEAD(vmm->regions, vmm_region_t, node);
@@ -503,12 +503,12 @@ static bool need_reserve_memory(unsigned flags) {
 }
 
 static int remove_overlapping_regions(
-        vmm_t *vmm,
-        vmm_region_t **prev_inout,
-        vmm_region_t **next_inout,
-        uintptr_t head,
-        uintptr_t tail,
-        bool remove_instead_of_unmap
+    vmm_t *vmm,
+    vmm_region_t **prev_inout,
+    vmm_region_t **next_inout,
+    uintptr_t head,
+    uintptr_t tail,
+    bool remove_instead_of_unmap
 ) {
     vmm_region_t *prev = *prev_inout;
     vmm_region_t *next = *next_inout;
@@ -649,15 +649,15 @@ static vmm_region_t *merge_or_insert(vmm_t *vmm, vmm_region_t *prev, vmm_region_
 }
 
 static int do_map(
-        vmm_t *vmm,
-        uintptr_t head,
-        uintptr_t tail,
-        unsigned flags,
-        mem_object_t *object,
-        object_rights_t rights,
-        size_t offset,
-        vmm_region_t *prev,
-        vmm_region_t *next
+    vmm_t *vmm,
+    uintptr_t head,
+    uintptr_t tail,
+    unsigned flags,
+    mem_object_t *object,
+    object_rights_t rights,
+    size_t offset,
+    vmm_region_t *prev,
+    vmm_region_t *next
 ) {
     size_t pages = (tail - head + 1) >> PAGE_SHIFT;
 
@@ -711,13 +711,13 @@ static int do_map(
 }
 
 static int try_map_exact(
-        vmm_t *vmm,
-        uintptr_t head,
-        size_t size,
-        unsigned flags,
-        mem_object_t *object,
-        object_rights_t rights,
-        size_t offset
+    vmm_t *vmm,
+    uintptr_t head,
+    size_t size,
+    unsigned flags,
+    mem_object_t *object,
+    object_rights_t rights,
+    size_t offset
 ) {
     if (unlikely(head < PAGE_SIZE)) return ENOMEM;
 
@@ -742,12 +742,12 @@ static uintptr_t get_head(vmm_region_t *region) {
 }
 
 static int find_map_location(
-        vmm_t *vmm,
-        size_t size,
-        vmm_region_t **prev_out,
-        vmm_region_t **next_out,
-        uintptr_t *head_out,
-        uintptr_t *tail_out
+    vmm_t *vmm,
+    size_t size,
+    vmm_region_t **prev_out,
+    vmm_region_t **next_out,
+    uintptr_t *head_out,
+    uintptr_t *tail_out
 ) {
     vmm_region_t *prev = NULL;
     vmm_region_t *next = LIST_HEAD(vmm->regions, vmm_region_t, node);
@@ -783,13 +783,13 @@ static bool check_rights(object_rights_t rights, unsigned flags) {
 }
 
 hydrogen_ret_t vmm_map(
-        vmm_t *vmm,
-        uintptr_t hint,
-        size_t size,
-        unsigned flags,
-        mem_object_t *object,
-        object_rights_t rights,
-        size_t offset
+    vmm_t *vmm,
+    uintptr_t hint,
+    size_t size,
+    unsigned flags,
+    mem_object_t *object,
+    object_rights_t rights,
+    size_t offset
 ) {
     ASSERT(object != &vdso_object);
 
@@ -844,15 +844,15 @@ hydrogen_ret_t vmm_map_vdso(vmm_t *vmm) {
     if (unlikely(error)) goto ret;
 
     error = do_map(
-            vmm,
-            head,
-            tail,
-            HYDROGEN_MEM_READ | HYDROGEN_MEM_EXEC | HYDROGEN_MEM_SHARED,
-            &vdso_object,
-            HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_EXEC,
-            0,
-            prev,
-            next
+        vmm,
+        head,
+        tail,
+        HYDROGEN_MEM_READ | HYDROGEN_MEM_EXEC | HYDROGEN_MEM_SHARED,
+        &vdso_object,
+        HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_EXEC,
+        0,
+        prev,
+        next
     );
     if (likely(error == 0)) __atomic_store_n(&vmm->vdso_addr, head + vdso_image_offset, __ATOMIC_RELAXED);
 ret:
@@ -861,15 +861,15 @@ ret:
 }
 
 static int split_to_exact(
-        vmm_t *vmm,
-        vmm_region_t *prev,
-        vmm_region_t *next,
-        uintptr_t head,
-        uintptr_t tail,
-        int (*check_cb)(vmm_region_t *, void *), /* returns 1 if the region should be skipped. negative = error code */
-        bool (*skip_cb)(vmm_region_t *, void *), /* must return true if and only if check_cb returned 1 */
-        void (*final_cb)(vmm_t *, vmm_region_t *, void *),
-        void *ctx
+    vmm_t *vmm,
+    vmm_region_t *prev,
+    vmm_region_t *next,
+    uintptr_t head,
+    uintptr_t tail,
+    int (*check_cb)(vmm_region_t *, void *), /* returns 1 if the region should be skipped. negative = error code */
+    bool (*skip_cb)(vmm_region_t *, void *), /* must return true if and only if check_cb returned 1 */
+    void (*final_cb)(vmm_t *, vmm_region_t *, void *),
+    void *ctx
 ) {
     vmm_region_t *cur = get_next(vmm, prev);
     size_t extra_regions = 0;
@@ -1034,23 +1034,23 @@ static void remap_final_cb(vmm_t *vmm, vmm_region_t *region, void *ctx) {
 }
 
 static int do_remap(
-        vmm_t *vmm,
-        vmm_region_t *prev,
-        vmm_region_t *next,
-        uintptr_t head,
-        uintptr_t tail,
-        unsigned flags
+    vmm_t *vmm,
+    vmm_region_t *prev,
+    vmm_region_t *next,
+    uintptr_t head,
+    uintptr_t tail,
+    unsigned flags
 ) {
     return split_to_exact(
-            vmm,
-            prev,
-            next,
-            head,
-            tail,
-            remap_check_cb,
-            remap_skip_cb,
-            remap_final_cb,
-            (void *)(uintptr_t)flags
+        vmm,
+        prev,
+        next,
+        head,
+        tail,
+        remap_check_cb,
+        remap_skip_cb,
+        remap_final_cb,
+        (void *)(uintptr_t)flags
     );
 }
 
@@ -1096,12 +1096,12 @@ static void move_final_cb(vmm_t *vmm, vmm_region_t *region, void *ptr) {
 }
 
 hydrogen_ret_t vmm_move(
-        vmm_t *vmm,
-        uintptr_t addr,
-        size_t size,
-        vmm_t *dest_vmm,
-        uintptr_t dest_addr,
-        size_t dest_size
+    vmm_t *vmm,
+    uintptr_t addr,
+    size_t size,
+    vmm_t *dest_vmm,
+    uintptr_t dest_addr,
+    size_t dest_size
 ) {
     if (unlikely(((addr | dest_addr | size | dest_size) & PAGE_MASK) != 0)) return ret_error(EINVAL);
     if (unlikely(addr < PAGE_SIZE)) return ret_error(EINVAL);

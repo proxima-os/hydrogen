@@ -13,12 +13,12 @@ size_t vdso_image_offset;
 size_t vdso_size;
 
 static void vdso_post_map(
-        mem_object_t *ptr,
-        vmm_t *vmm,
-        uintptr_t head,
-        uintptr_t tail,
-        unsigned flags,
-        size_t offset
+    mem_object_t *ptr,
+    vmm_t *vmm,
+    uintptr_t head,
+    uintptr_t tail,
+    unsigned flags,
+    size_t offset
 ) {
     if (offset >= vdso_size) return;
 
@@ -30,11 +30,11 @@ static void vdso_post_map(
 }
 
 static const mem_object_ops_t vdso_object_ops = {
-        .post_map = vdso_post_map,
+    .post_map = vdso_post_map,
 };
 
 mem_object_t vdso_object = {
-        .base.ops = &vdso_object_ops.base,
+    .base.ops = &vdso_object_ops.base,
 };
 
 static void vdso_init(void) {

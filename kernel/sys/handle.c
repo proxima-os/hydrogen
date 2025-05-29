@@ -1,12 +1,12 @@
-#include "hydrogen/handle.h"
+#include "sys/handle.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
-#include "sys/handle.h"
 #include "util/handle.h"
 #include "util/object.h"
+#include <hydrogen/handle.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 #define NAMESPACE_RIGHTS THIS_NAMESPACE_RIGHTS
@@ -44,12 +44,12 @@ err:
 }
 
 hydrogen_ret_t hydrogen_namespace_add(
-        int src_ns_hnd,
-        int src_obj_hnd,
-        int dst_ns_hnd,
-        int dst_hnd,
-        uint32_t rights,
-        uint32_t flags
+    int src_ns_hnd,
+    int src_obj_hnd,
+    int dst_ns_hnd,
+    int dst_hnd,
+    uint32_t rights,
+    uint32_t flags
 ) {
     if (unlikely(src_obj_hnd < 0)) return ret_error(EBADF);
     if (dst_ns_hnd < 0 && unlikely(dst_ns_hnd != HYDROGEN_THIS_NAMESPACE)) return ret_error(EINVAL);

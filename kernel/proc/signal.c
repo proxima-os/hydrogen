@@ -1,7 +1,6 @@
 #include "proc/signal.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
-#include "hydrogen/signal.h"
 #include "kernel/compiler.h"
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
@@ -14,6 +13,7 @@
 #include "util/eventqueue.h"
 #include "util/list.h"
 #include "util/printk.h"
+#include <hydrogen/signal.h>
 
 static signal_disposition_t default_sig_disp(int signal) {
     switch (signal) {
@@ -98,11 +98,11 @@ static void do_remove_sig(signal_target_t *target, queued_signal_t *sig) {
 }
 
 int queue_signal(
-        process_t *process,
-        signal_target_t *target,
-        __siginfo_t *info,
-        unsigned flags,
-        queued_signal_t *buffer
+    process_t *process,
+    signal_target_t *target,
+    __siginfo_t *info,
+    unsigned flags,
+    queued_signal_t *buffer
 ) {
     ASSERT(info->__signo >= 1 && info->__signo < __NSIG);
 
@@ -146,11 +146,11 @@ ret:
 }
 
 void queue_signal_unlocked(
-        struct process *process,
-        signal_target_t *target,
-        __siginfo_t *info,
-        unsigned flags,
-        queued_signal_t *sig
+    struct process *process,
+    signal_target_t *target,
+    __siginfo_t *info,
+    unsigned flags,
+    queued_signal_t *sig
 ) {
     ASSERT(info->__signo >= 1 && info->__signo < __NSIG);
 
@@ -308,8 +308,8 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr, __sigset_t mask)
 
         // failed to set up the stack, handle a terminating sigsegv instead
         segv_sig = (queued_signal_t){
-                .info.__signo = __SIGSEGV,
-                .info.__errno = error,
+            .info.__signo = __SIGSEGV,
+            .info.__errno = error,
         };
         disp = SIGNAL_CORE_DUMP;
         sig = &segv_sig;
@@ -319,8 +319,8 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr, __sigset_t mask)
         if (signal != __SIGSTOP) {
             rcu_state_t state = rcu_read_lock();
             bool orphaned = __atomic_load_n(
-                                    &rcu_read(current_thread->process->group)->orphan_inhibitors,
-                                    __ATOMIC_ACQUIRE
+                                &rcu_read(current_thread->process->group)->orphan_inhibitors,
+                                __ATOMIC_ACQUIRE
                             ) == 0;
             rcu_read_unlock(state);
 

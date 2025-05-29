@@ -3,7 +3,6 @@
 #include "arch/irq.h"
 #include "cpu/cpudata.h"
 #include "cpu/smp.h"
-#include "hydrogen/signal.h"
 #include "kernel/compiler.h"
 #include "mem/pmap.h"
 #include "proc/process.h"
@@ -19,6 +18,7 @@
 #include "x86_64/msr.h"
 #include "x86_64/time.h"
 #include "x86_64/tss.h"
+#include <hydrogen/signal.h>
 #include <stdint.h>
 
 static struct {
@@ -53,59 +53,63 @@ void x86_64_idt_init(void) {
 }
 
 _Noreturn void x86_64_idt_handle_fatal(arch_context_t *context) {
-    panic("fatal interrupt %U at 0x%X\n"
-          "rax=%16X rbx=%16X rcx=%16X rdx=%16X\n"
-          "rsi=%16X rdi=%16X rbp=%16X rsp=%16X\n"
-          "r8 =%16X r9 =%16X r10=%16X r11=%16X\n"
-          "r12=%16X r13=%16X r14=%16X r15=%16X\n"
-          "rfl=%16X cr2=%16X cr3=%16X err=%16X\n"
-          "cr0=0x%X cr4=0x%X cr8=0x%X cs=0x%X ss=0x%X",
-          context->vector,
-          context->rip,
-          context->rax,
-          context->rbx,
-          context->rcx,
-          context->rdx,
-          context->rsi,
-          context->rdi,
-          context->rbp,
-          context->rsp,
-          context->r8,
-          context->r9,
-          context->r10,
-          context->r11,
-          context->r12,
-          context->r13,
-          context->r14,
-          context->r15,
-          context->rflags,
-          x86_64_read_cr2(),
-          x86_64_read_cr3(),
-          context->error,
-          x86_64_read_cr0(),
-          x86_64_read_cr4(),
-          x86_64_read_cr8(),
-          context->cs,
-          context->ss);
+    panic(
+        "fatal interrupt %U at 0x%X\n"
+        "rax=%16X rbx=%16X rcx=%16X rdx=%16X\n"
+        "rsi=%16X rdi=%16X rbp=%16X rsp=%16X\n"
+        "r8 =%16X r9 =%16X r10=%16X r11=%16X\n"
+        "r12=%16X r13=%16X r14=%16X r15=%16X\n"
+        "rfl=%16X cr2=%16X cr3=%16X err=%16X\n"
+        "cr0=0x%X cr4=0x%X cr8=0x%X cs=0x%X ss=0x%X",
+        context->vector,
+        context->rip,
+        context->rax,
+        context->rbx,
+        context->rcx,
+        context->rdx,
+        context->rsi,
+        context->rdi,
+        context->rbp,
+        context->rsp,
+        context->r8,
+        context->r9,
+        context->r10,
+        context->r11,
+        context->r12,
+        context->r13,
+        context->r14,
+        context->r15,
+        context->rflags,
+        x86_64_read_cr2(),
+        x86_64_read_cr3(),
+        context->error,
+        x86_64_read_cr0(),
+        x86_64_read_cr4(),
+        x86_64_read_cr8(),
+        context->cs,
+        context->ss
+    );
 }
 
 static void signal_or_fatal(arch_context_t *context, int signal, int code) {
     if ((context->cs & 3) == 0) x86_64_idt_handle_fatal(context);
 
     __siginfo_t info = {.__signo = signal, .__code = code, .__data.__sigsegv.__address = (void *)context->rip};
-    printk("idt: sending signal %d to thread %d (process %d) due to exception %U at 0x%Z (code: %d)\n",
-           signal,
-           current_thread->pid->id,
-           current_thread->process->pid->id,
-           context->vector,
-           context->rip,
-           code);
+    printk(
+        "idt: sending signal %d to thread %d (process %d) due to exception %U at 0x%Z (code: %d)\n",
+        signal,
+        current_thread->pid->id,
+        current_thread->process->pid->id,
+        context->vector,
+        context->rip,
+        code
+    );
     queue_signal(
-            current_thread->process,
-            &current_thread->sig_target,
-            &info,
-            QUEUE_SIGNAL_FORCE,
-            &current_thread->fault_sig
+        current_thread->process,
+        &current_thread->sig_target,
+        &info,
+        QUEUE_SIGNAL_FORCE,
+        &current_thread->fault_sig
     );
 }
 

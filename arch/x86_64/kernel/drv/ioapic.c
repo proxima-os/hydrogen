@@ -192,11 +192,11 @@ static void x86_64_ioapic_init(void) {
 }
 
 INIT_DEFINE_EARLY(
-        x86_64_ioapic,
-        x86_64_ioapic_init,
-        INIT_REFERENCE(memory),
-        INIT_REFERENCE(acpi_tables),
-        INIT_REFERENCE(x86_64_lapic)
+    x86_64_ioapic,
+    x86_64_ioapic_init,
+    INIT_REFERENCE(memory),
+    INIT_REFERENCE(acpi_tables),
+    INIT_REFERENCE(x86_64_lapic)
 );
 
 int gsi_install(gsi_handler_t *out, uint32_t gsi, bool (*handler)(void *), void *ctx, int flags) {

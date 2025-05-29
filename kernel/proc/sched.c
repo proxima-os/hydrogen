@@ -90,7 +90,7 @@ static void thread_free(object_t *ptr) {
 }
 
 static const object_ops_t thread_ops = {
-        .free = thread_free,
+    .free = thread_free,
 };
 
 static void sched_init(void) {
@@ -144,12 +144,12 @@ INIT_DEFINE(scheduler, sched_init_late);
 INIT_DEFINE_AP(scheduler_ap, sched_init_late);
 
 int sched_create_thread(
-        thread_t **out,
-        void (*func)(void *),
-        void *ctx,
-        cpu_t *cpu,
-        struct process *process,
-        unsigned flags
+    thread_t **out,
+    void (*func)(void *),
+    void *ctx,
+    cpu_t *cpu,
+    struct process *process,
+    unsigned flags
 ) {
     thread_t *thread = vmalloc(sizeof(*thread));
     if (unlikely(!thread)) return ENOMEM;
@@ -369,8 +369,10 @@ static void maybe_preempt(cpu_t *cpu) {
 
 static void do_wake(cpu_t *cpu, thread_t *thread, int status) {
     ASSERT(cpu == thread->cpu);
-    ASSERT(thread->state == THREAD_CREATED || thread->state == THREAD_BLOCKED ||
-           thread->state == THREAD_BLOCKED_INTERRUPTIBLE);
+    ASSERT(
+        thread->state == THREAD_CREATED || thread->state == THREAD_BLOCKED ||
+        thread->state == THREAD_BLOCKED_INTERRUPTIBLE
+    );
 
     if (thread->state == THREAD_CREATED) obj_ref(&thread->base);
 
@@ -629,9 +631,9 @@ _Noreturn void sched_idle(void) {
 
     // Without this, fully idle CPUs break RCU.
     rcu_quiet_task_t task = {
-            .base.func = queued_rcu_quiet,
-            .event.deadline = arch_read_time() + RCU_QUIET_INTERVAL,
-            .event.func = queue_rcu_quiet,
+        .base.func = queued_rcu_quiet,
+        .event.deadline = arch_read_time() + RCU_QUIET_INTERVAL,
+        .event.func = queue_rcu_quiet,
     };
     timer_queue_event(&task.event);
 

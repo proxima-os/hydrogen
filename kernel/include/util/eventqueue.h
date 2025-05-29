@@ -1,11 +1,11 @@
 #pragma once
 
-#include "hydrogen/eventqueue.h"
-#include "hydrogen/types.h"
 #include "proc/mutex.h"
 #include "util/hlist.h"
 #include "util/list.h"
 #include "util/object.h"
+#include <hydrogen/eventqueue.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 typedef struct {
@@ -43,13 +43,13 @@ typedef struct active_event {
 
 int event_queue_create(event_queue_t **out);
 int event_queue_add(
-        event_queue_t *queue,
-        object_t *object,
-        object_rights_t rights,
-        hydrogen_event_type_t type,
-        uint64_t data,
-        void *ctx,
-        uint32_t flags
+    event_queue_t *queue,
+    object_t *object,
+    object_rights_t rights,
+    hydrogen_event_type_t type,
+    uint64_t data,
+    void *ctx,
+    uint32_t flags
 );
 hydrogen_ret_t event_queue_remove(event_queue_t *queue, object_t *object, hydrogen_event_type_t type, uint64_t data);
 hydrogen_ret_t event_queue_wait(event_queue_t *queue, hydrogen_event_t *events, size_t count, uint64_t deadline);

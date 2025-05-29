@@ -1,9 +1,6 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
-#include "hydrogen/fcntl.h"
-#include "hydrogen/filesystem.h"
-#include "hydrogen/types.h"
 #include "init/main.h" /* IWYU pragma: keep */
 #include "init/task.h"
 #include "kernel/compiler.h"
@@ -17,6 +14,9 @@
 #include "util/object.h"
 #include "util/panic.h"
 #include "util/printk.h"
+#include <hydrogen/fcntl.h>
+#include <hydrogen/filesystem.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 typedef struct {
@@ -73,12 +73,14 @@ static file_t *open_directory(file_t *dest, void **name_buf, size_t *name_len, i
 
         int error = vfs_create(dest, name, complen, HYDROGEN_DIRECTORY, 0755, NULL);
         if (error != 0 && unlikely(error != EEXIST)) {
-            printk("initrd: failed to create parent directory %S for %S (%e)\n",
-                   name_start,
-                   name - name_start + complen,
-                   name_start,
-                   name - name_start + len,
-                   error);
+            printk(
+                "initrd: failed to create parent directory %S for %S (%e)\n",
+                name_start,
+                name - name_start + complen,
+                name_start,
+                name - name_start + len,
+                error
+            );
             obj_deref(&dest->base);
             return NULL;
         }
@@ -87,12 +89,14 @@ static file_t *open_directory(file_t *dest, void **name_buf, size_t *name_len, i
         error = vfs_open(&child, dest, name, complen, __O_DIRECTORY, 0, ident);
         obj_deref(&dest->base);
         if (unlikely(error)) {
-            printk("initrd: failed to open parent directory %S for %S (%e)\n",
-                   name_start,
-                   name - name_start + complen,
-                   name_start,
-                   name - name_start + len,
-                   error);
+            printk(
+                "initrd: failed to open parent directory %S for %S (%e)\n",
+                name_start,
+                name - name_start + complen,
+                name_start,
+                name - name_start + len,
+                error
+            );
             return NULL;
         }
 
@@ -173,23 +177,27 @@ static bool extract_single(file_t *dest, void *data, size_t size, ident_t *ident
                 int error = vfs_open(&file, parent, name, name_len, __O_WRONLY | __O_CREAT | __O_EXCL, mode, ident);
 
                 if (error != 0) {
-                    printk("initrd: failed to create regular file %S (%e)\n",
-                           path,
-                           path_len,
-                           header->linkname,
-                           strnlen(header->linkname, sizeof(header->linkname)),
-                           error);
+                    printk(
+                        "initrd: failed to create regular file %S (%e)\n",
+                        path,
+                        path_len,
+                        header->linkname,
+                        strnlen(header->linkname, sizeof(header->linkname)),
+                        error
+                    );
                     file = NULL;
                     errored = true;
                 } else {
                     int error = vfs_ftruncate(file, size);
 
                     if (unlikely(errored)) {
-                        printk("initrd: failed to set size of regular file %S to %U bytes (%e)\n",
-                               path,
-                               path_len,
-                               size,
-                               error);
+                        printk(
+                            "initrd: failed to set size of regular file %S to %U bytes (%e)\n",
+                            path,
+                            path_len,
+                            size,
+                            error
+                        );
                         errored = true;
                     } else {
                         uint64_t idx = 0;
@@ -200,10 +208,12 @@ static bool extract_single(file_t *dest, void *data, size_t size, ident_t *ident
 
                             hydrogen_ret_t ret = vfs_write(file, data + idx, cur);
                             if (unlikely(ret.error)) {
-                                printk("initrd: failed to write data to regular file %S (%e)\n",
-                                       path,
-                                       path_len,
-                                       ret.error);
+                                printk(
+                                    "initrd: failed to write data to regular file %S (%e)\n",
+                                    path,
+                                    path_len,
+                                    ret.error
+                                );
                                 errored = true;
                                 break;
                             }
@@ -224,22 +234,24 @@ static bool extract_single(file_t *dest, void *data, size_t size, ident_t *ident
 
             if (parent) {
                 int error = vfs_link(
-                        parent,
-                        name,
-                        name_len,
-                        dest,
-                        header->linkname,
-                        strnlen(header->linkname, sizeof(header->linkname)),
-                        0
+                    parent,
+                    name,
+                    name_len,
+                    dest,
+                    header->linkname,
+                    strnlen(header->linkname, sizeof(header->linkname)),
+                    0
                 );
 
                 if (error != 0) {
-                    printk("initrd: failed to create hard link %S to %S (%e)\n",
-                           path,
-                           path_len,
-                           header->linkname,
-                           strnlen(header->linkname, sizeof(header->linkname)),
-                           error);
+                    printk(
+                        "initrd: failed to create hard link %S to %S (%e)\n",
+                        path,
+                        path_len,
+                        header->linkname,
+                        strnlen(header->linkname, sizeof(header->linkname)),
+                        error
+                    );
                     file = NULL;
                     errored = true;
                 } else {
@@ -257,20 +269,22 @@ static bool extract_single(file_t *dest, void *data, size_t size, ident_t *ident
 
             if (parent) {
                 int error = vfs_symlink(
-                        parent,
-                        name,
-                        name_len,
-                        header->linkname,
-                        strnlen(header->linkname, sizeof(header->linkname))
+                    parent,
+                    name,
+                    name_len,
+                    header->linkname,
+                    strnlen(header->linkname, sizeof(header->linkname))
                 );
 
                 if (error != 0) {
-                    printk("initrd: failed to create symlink %S to %S (%e)\n",
-                           path,
-                           path_len,
-                           header->linkname,
-                           strnlen(header->linkname, sizeof(header->linkname)),
-                           error);
+                    printk(
+                        "initrd: failed to create symlink %S to %S (%e)\n",
+                        path,
+                        path_len,
+                        header->linkname,
+                        strnlen(header->linkname, sizeof(header->linkname)),
+                        error
+                    );
                     file = NULL;
                     errored = true;
                 } else {

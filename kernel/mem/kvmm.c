@@ -286,10 +286,10 @@ void kvmm_free(uintptr_t address, size_t size) {
     alloc_remove(range);
 
     if (try_merge(
-                HLIST_PREV(*range, kvmm_range_t, node),
-                HLIST_NEXT(*range, kvmm_range_t, node),
-                range->head,
-                range->size
+            HLIST_PREV(*range, kvmm_range_t, node),
+            HLIST_NEXT(*range, kvmm_range_t, node),
+            range->head,
+            range->size
         )) {
         list_remove(&kvmm_ranges, &range->node);
         kfree(range, sizeof(*range));

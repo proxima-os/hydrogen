@@ -1,6 +1,5 @@
 #include "mem/object/anonymous.h"
 #include "errno.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/return.h"
@@ -15,6 +14,7 @@
 #include "util/list.h"
 #include "util/object.h"
 #include "util/shlist.h"
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 #if __SIZEOF_POINTER__ == 8
@@ -91,11 +91,11 @@ static page_t *get_noalloc(anon_mem_object_t *self, uint64_t index, rcu_state_t 
 }
 
 static hydrogen_ret_t anon_mem_object_get_page(
-        mem_object_t *ptr,
-        vmm_region_t *region,
-        uint64_t index,
-        rcu_state_t *state_out,
-        bool write
+    mem_object_t *ptr,
+    vmm_region_t *region,
+    uint64_t index,
+    rcu_state_t *state_out,
+    bool write
 ) {
     anon_mem_object_t *self = (anon_mem_object_t *)ptr;
 
@@ -141,8 +141,8 @@ static hydrogen_ret_t anon_mem_object_get_page(
 }
 
 static const mem_object_ops_t ops = {
-        .base.free = anon_mem_object_free,
-        .get_page = anon_mem_object_get_page,
+    .base.free = anon_mem_object_free,
+    .get_page = anon_mem_object_get_page,
 };
 
 static size_t count_to_levels(size_t count) {

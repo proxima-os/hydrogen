@@ -1,9 +1,9 @@
 #pragma once
 
-#include "hydrogen/signal.h"
 #include "proc/mutex.h"
 #include "util/eventqueue.h"
 #include "util/list.h"
+#include <hydrogen/signal.h>
 #include <stdbool.h>
 
 struct process;
@@ -48,11 +48,11 @@ typedef enum {
 // the signal might cause the process to terminate instead
 // if `buffer` is provided, the operation cannot fail.
 int queue_signal(
-        struct process *process,
-        signal_target_t *target,
-        __siginfo_t *info,
-        unsigned flags,
-        queued_signal_t *buffer
+    struct process *process,
+    signal_target_t *target,
+    __siginfo_t *info,
+    unsigned flags,
+    queued_signal_t *buffer
 );
 bool check_signals(signal_target_t *target, bool was_sys_eintr, __sigset_t mask);
 signal_disposition_t get_sig_disp(int signal, struct __sigaction *action);
@@ -62,11 +62,11 @@ void unqueue_signal(queued_signal_t *signal);
 
 // these require target->lock to be held
 void queue_signal_unlocked(
-        struct process *process,
-        signal_target_t *target,
-        __siginfo_t *info,
-        unsigned flags,
-        queued_signal_t *buffer
+    struct process *process,
+    signal_target_t *target,
+    __siginfo_t *info,
+    unsigned flags,
+    queued_signal_t *buffer
 );
 queued_signal_t *get_queued_signal(signal_target_t *target, __sigset_t set, __sigset_t mask);
 void remove_queued_signal(signal_target_t *target, queued_signal_t *signal);

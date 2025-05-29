@@ -1,10 +1,10 @@
 #pragma once
 
 #include "cpu/cpudata.h"
-#include "hydrogen/thread.h"
 #include "proc/sched.h"
 #include "util/handle.h"
 #include "util/object.h"
+#include <hydrogen/thread.h>
 
 #define THIS_THREAD_RIGHTS 0
 

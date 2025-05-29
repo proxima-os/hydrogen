@@ -7,7 +7,7 @@
 #ifndef HYDROGEN_EVENTQUEUE_H
 #define HYDROGEN_EVENTQUEUE_H
 
-#include "hydrogen/types.h"
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -88,12 +88,12 @@ hydrogen_ret_t hydrogen_event_queue_create(uint32_t flags) __asm__("__hydrogen_e
  * \result 0, if successful; if not, an error code.
  */
 int hydrogen_event_queue_add(
-        int queue,
-        int object,
-        hydrogen_event_type_t event,
-        uint64_t data,
-        void *ctx,
-        uint32_t flags
+    int queue,
+    int object,
+    hydrogen_event_type_t event,
+    uint64_t data,
+    void *ctx,
+    uint32_t flags
 ) __asm__("__hydrogen_event_queue_add");
 
 /**
@@ -106,7 +106,7 @@ int hydrogen_event_queue_add(
  * \return The `ctx` parameter corresponding to the event (in `pointer`).
  */
 hydrogen_ret_t hydrogen_event_queue_remove(int queue, int object, hydrogen_event_type_t event, uint64_t data) __asm__(
-        "__hydrogen_event_queue_remove"
+    "__hydrogen_event_queue_remove"
 );
 
 /**
@@ -121,7 +121,7 @@ hydrogen_ret_t hydrogen_event_queue_remove(int queue, int object, hydrogen_event
  * \return The number of events that were returned (in `integer`).
  */
 hydrogen_ret_t hydrogen_event_queue_wait(int queue, hydrogen_event_t *events, size_t count, uint64_t deadline) __asm__(
-        "__hydrogen_event_queue_wait"
+    "__hydrogen_event_queue_wait"
 );
 
 #ifdef __cplusplus

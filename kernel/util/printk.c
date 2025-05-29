@@ -2,8 +2,6 @@
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "fs/vfs.h"
-#include "hydrogen/filesystem.h"
-#include "hydrogen/types.h"
 #include "init/main.h" /* IWYU pragma: keep */
 #include "init/task.h"
 #include "kernel/compiler.h"
@@ -16,6 +14,8 @@
 #include "util/panic.h"
 #include "util/refcount.h"
 #include "util/spinlock.h"
+#include <hydrogen/filesystem.h>
+#include <hydrogen/types.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -393,9 +393,9 @@ static hydrogen_ret_t klog_file_write(file_t *ptr, const void *buffer, size_t si
 }
 
 static const file_ops_t klog_file_ops = {
-        .base.free = klog_file_free,
-        .read = klog_file_read,
-        .write = klog_file_write,
+    .base.free = klog_file_free,
+    .read = klog_file_read,
+    .write = klog_file_write,
 };
 
 static hydrogen_ret_t klog_open(fs_device_t *ptr, inode_t *inode, dentry_t *path, int flags) {
@@ -417,7 +417,7 @@ static hydrogen_ret_t klog_open(fs_device_t *ptr, inode_t *inode, dentry_t *path
 }
 
 static const fs_device_ops_t klog_device_ops = {
-        .open = klog_open,
+    .open = klog_open,
 };
 
 static void create_klog_device(void) {

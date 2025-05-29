@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hydrogen/errno.h"
+#include <hydrogen/errno.h>
 
 #define E2BIG __E2BIG
 #define EACCES __EACCES

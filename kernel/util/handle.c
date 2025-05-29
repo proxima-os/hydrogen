@@ -1,8 +1,6 @@
 #include "util/handle.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
-#include "hydrogen/handle.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
@@ -12,6 +10,8 @@
 #include "string.h"
 #include "util/list.h"
 #include "util/object.h"
+#include <hydrogen/handle.h>
+#include <hydrogen/types.h>
 #include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -264,12 +264,12 @@ static void associate_handle(namespace_t *ns, int handle, handle_data_t *data) {
 }
 
 hydrogen_ret_t namespace_add(
-        namespace_t *ns,
-        object_rights_t ns_rights,
-        int handle,
-        object_t *object,
-        object_rights_t rights,
-        uint32_t flags
+    namespace_t *ns,
+    object_rights_t ns_rights,
+    int handle,
+    object_t *object,
+    object_rights_t rights,
+    uint32_t flags
 ) {
     ASSERT((flags & ~HANDLE_FLAGS) == 0);
     ASSERT(object->type != OBJECT_NAMESPACE || (flags & NS_ILL_FLAGS) == 0);
@@ -361,11 +361,11 @@ void hnd_unreserve(namespace_t *ns) {
 }
 
 int hnd_alloc_reserved(
-        namespace_t *ns,
-        object_t *object,
-        object_rights_t rights,
-        uint32_t flags,
-        handle_data_t *buffer
+    namespace_t *ns,
+    object_t *object,
+    object_rights_t rights,
+    uint32_t flags,
+    handle_data_t *buffer
 ) {
     memset(buffer, 0, sizeof(*buffer));
     buffer->object = object;

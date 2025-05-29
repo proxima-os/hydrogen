@@ -5,7 +5,6 @@
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
-#include "hydrogen/signal.h"
 #include "kernel/compiler.h"
 #include "proc/sched.h"
 #include "string.h"
@@ -16,6 +15,7 @@
 #include "x86_64/msr.h"
 #include "x86_64/segreg.h"
 #include "x86_64/xsave.h"
+#include <hydrogen/signal.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -24,11 +24,11 @@ _Noreturn void arch_enter_user_mode(uintptr_t pc, uintptr_t sp) {
     x86_64_xsave_reset(current_thread->arch.xsave);
 
     arch_context_t context = {
-            .rip = pc,
-            .cs = X86_64_USER_CS,
-            .rflags = 0x200,
-            .rsp = sp,
-            .ss = X86_64_USER_DS,
+        .rip = pc,
+        .cs = X86_64_USER_CS,
+        .rflags = 0x200,
+        .rsp = sp,
+        .ss = X86_64_USER_DS,
     };
 
     irq_state_t state = save_disable_irq();
@@ -74,29 +74,29 @@ int arch_setup_context_for_signal(struct __sigaction *handler, __siginfo_t *info
     if (unlikely(error)) return error;
 
     signal_frame_t frame = {
-            .info = *info,
-            .context.__link = NULL,
-            .context.__mcontext.__rax = current_thread->user_ctx->rax,
-            .context.__mcontext.__rbx = current_thread->user_ctx->rbx,
-            .context.__mcontext.__rcx = current_thread->user_ctx->rcx,
-            .context.__mcontext.__rdx = current_thread->user_ctx->rdx,
-            .context.__mcontext.__rsi = current_thread->user_ctx->rsi,
-            .context.__mcontext.__rdi = current_thread->user_ctx->rdi,
-            .context.__mcontext.__rbp = current_thread->user_ctx->rbp,
-            .context.__mcontext.__rsp = current_thread->user_ctx->rsp,
-            .context.__mcontext.__r8 = current_thread->user_ctx->r8,
-            .context.__mcontext.__r9 = current_thread->user_ctx->r9,
-            .context.__mcontext.__r10 = current_thread->user_ctx->r10,
-            .context.__mcontext.__r11 = current_thread->user_ctx->r11,
-            .context.__mcontext.__r12 = current_thread->user_ctx->r12,
-            .context.__mcontext.__r13 = current_thread->user_ctx->r13,
-            .context.__mcontext.__r14 = current_thread->user_ctx->r14,
-            .context.__mcontext.__r15 = current_thread->user_ctx->r15,
-            .context.__mcontext.__rip = current_thread->user_ctx->rip,
-            .context.__mcontext.__rflags = current_thread->user_ctx->rflags,
-            .context.__mcontext.__xsave_area = (void *)xsave_start,
-            .context.__mask = current_thread->sig_mask,
-            .context.__stack = current_thread->sig_stack,
+        .info = *info,
+        .context.__link = NULL,
+        .context.__mcontext.__rax = current_thread->user_ctx->rax,
+        .context.__mcontext.__rbx = current_thread->user_ctx->rbx,
+        .context.__mcontext.__rcx = current_thread->user_ctx->rcx,
+        .context.__mcontext.__rdx = current_thread->user_ctx->rdx,
+        .context.__mcontext.__rsi = current_thread->user_ctx->rsi,
+        .context.__mcontext.__rdi = current_thread->user_ctx->rdi,
+        .context.__mcontext.__rbp = current_thread->user_ctx->rbp,
+        .context.__mcontext.__rsp = current_thread->user_ctx->rsp,
+        .context.__mcontext.__r8 = current_thread->user_ctx->r8,
+        .context.__mcontext.__r9 = current_thread->user_ctx->r9,
+        .context.__mcontext.__r10 = current_thread->user_ctx->r10,
+        .context.__mcontext.__r11 = current_thread->user_ctx->r11,
+        .context.__mcontext.__r12 = current_thread->user_ctx->r12,
+        .context.__mcontext.__r13 = current_thread->user_ctx->r13,
+        .context.__mcontext.__r14 = current_thread->user_ctx->r14,
+        .context.__mcontext.__r15 = current_thread->user_ctx->r15,
+        .context.__mcontext.__rip = current_thread->user_ctx->rip,
+        .context.__mcontext.__rflags = current_thread->user_ctx->rflags,
+        .context.__mcontext.__xsave_area = (void *)xsave_start,
+        .context.__mask = current_thread->sig_mask,
+        .context.__stack = current_thread->sig_stack,
     };
 
     error = user_memcpy((void *)frame_start, &frame, sizeof(frame));

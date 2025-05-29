@@ -4,7 +4,7 @@
 #ifndef HYDROGEN_MEMORY_H
 #define HYDROGEN_MEMORY_H
 
-#include "hydrogen/types.h"
+#include <hydrogen/types.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -119,12 +119,12 @@ hydrogen_ret_t hydrogen_vmm_clone(int vmm, uint32_t flags) __asm__("__hydrogen_v
  * \return The address of the mapping (in `pointer`).
  */
 hydrogen_ret_t hydrogen_vmm_map(
-        int vmm,
-        uintptr_t hint,
-        size_t size,
-        uint32_t flags,
-        int object,
-        uint64_t offset
+    int vmm,
+    uintptr_t hint,
+    size_t size,
+    uint32_t flags,
+    int object,
+    uint64_t offset
 ) __asm__("__hydrogen_vmm_map");
 
 /**
@@ -158,12 +158,12 @@ int hydrogen_vmm_remap(int vmm, uintptr_t address, size_t size, uint32_t flags) 
  * \return The address of the mapping (in `pointer`).
  */
 hydrogen_ret_t hydrogen_vmm_move(
-        int src_vmm,
-        uintptr_t src_addr,
-        size_t src_size,
-        int dst_vmm,
-        uintptr_t dst_addr,
-        size_t dst_size
+    int src_vmm,
+    uintptr_t src_addr,
+    size_t src_size,
+    int dst_vmm,
+    uintptr_t dst_addr,
+    size_t dst_size
 ) __asm__("__hydrogen_vmm_move");
 
 /**
@@ -248,7 +248,7 @@ int hydrogen_mem_object_resize(int object, size_t size) __asm__("__hydrogen_mem_
  * \return 0, if successful; if not, an error code.
  */
 int hydrogen_mem_object_read(int object, void *buffer, size_t count, uint64_t position) __asm__(
-        "__hydrogen_mem_object_read"
+    "__hydrogen_mem_object_read"
 );
 
 /**
@@ -261,7 +261,7 @@ int hydrogen_mem_object_read(int object, void *buffer, size_t count, uint64_t po
  * \return 0, if successful; if not, an error code.
  */
 int hydrogen_mem_object_write(int object, const void *buffer, size_t count, uint64_t position) __asm__(
-        "__hydrogen_mem_object_write"
+    "__hydrogen_mem_object_write"
 );
 
 #ifdef __cplusplus

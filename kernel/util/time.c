@@ -77,8 +77,8 @@ timeconv_t timeconv_create(uint64_t src_freq, uint64_t dst_freq) {
     p -= 1;
 
     return (timeconv_t){
-            .multiplier = multiplier,
-            .shift = p,
+        .multiplier = multiplier,
+        .shift = p,
     };
 }
 

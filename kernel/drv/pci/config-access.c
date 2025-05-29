@@ -47,10 +47,10 @@ static void init_config_access(void) {
         range->bus_tail = entries[i].end_bus;
 
         int error = map_mmio(
-                &range->virt,
-                range->segment + ((uint64_t)range->bus_head << 20),
-                (uint64_t)(range->bus_tail - range->bus_head + 1) << 20,
-                PMAP_READABLE | PMAP_WRITABLE | PMAP_CACHE_UC
+            &range->virt,
+            range->segment + ((uint64_t)range->bus_head << 20),
+            (uint64_t)(range->bus_tail - range->bus_head + 1) << 20,
+            PMAP_READABLE | PMAP_WRITABLE | PMAP_CACHE_UC
         );
 
         if (unlikely(error)) {

@@ -1,7 +1,7 @@
 #ifndef HYDROGEN_HYDROGEN_H
 #define HYDROGEN_HYDROGEN_H
 
-#include "hydrogen/types.h"
+#include <hydrogen/types.h>
 #include <stddef.h>
 
 #ifdef __cplusplus

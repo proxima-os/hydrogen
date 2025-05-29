@@ -4,16 +4,6 @@
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
-#include "hydrogen/eventqueue.h"
-#include "hydrogen/filesystem.h"
-#include "hydrogen/handle.h"
-#include "hydrogen/hydrogen.h"
-#include "hydrogen/memory.h"
-#include "hydrogen/process.h"
-#include "hydrogen/signal.h"
-#include "hydrogen/thread.h"
-#include "hydrogen/time.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/filesystem.h"
 #include "kernel/return.h"
@@ -22,6 +12,16 @@
 #include "kernel/types.h"
 #include "sys/vdso.h"
 #include "util/printk.h"
+#include <hydrogen/eventqueue.h>
+#include <hydrogen/filesystem.h>
+#include <hydrogen/handle.h>
+#include <hydrogen/hydrogen.h>
+#include <hydrogen/memory.h>
+#include <hydrogen/process.h>
+#include <hydrogen/signal.h>
+#include <hydrogen/thread.h>
+#include <hydrogen/time.h>
+#include <hydrogen/types.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -42,11 +42,11 @@ bool prepare_syscall(uintptr_t pc) {
         printk("syscall: attempted to invoke syscall from outside vDSO (pc: %Z), sending SIGSYS\n", pc);
         __siginfo_t sig = {.__signo = __SIGSYS};
         queue_signal(
-                current_thread->process,
-                &current_thread->sig_target,
-                &sig,
-                QUEUE_SIGNAL_FORCE,
-                &current_thread->fault_sig
+            current_thread->process,
+            &current_thread->sig_target,
+            &sig,
+            QUEUE_SIGNAL_FORCE,
+            &current_thread->fault_sig
         );
         return false;
     }
@@ -149,7 +149,7 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
         if (unlikely(error)) return ret_error(error);
 
         return ret_error(
-                hydrogen_fs_link(args.rel, args.path, args.length, args.trel, args.target, args.tlength, args.flags)
+            hydrogen_fs_link(args.rel, args.path, args.length, args.trel, args.target, args.tlength, args.flags)
         );
     }
     case SYSCALL_FS_UNLINK: return ret_error(hydrogen_fs_unlink(a0, (const void *)a1, a2, a3));

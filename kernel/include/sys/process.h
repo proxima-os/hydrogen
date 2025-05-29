@@ -1,9 +1,9 @@
 #pragma once
 
 #include "cpu/cpudata.h"
-#include "hydrogen/process.h"
 #include "proc/process.h"
 #include "util/handle.h"
+#include <hydrogen/process.h>
 
 #define THIS_PROCESS_RIGHTS                                                                                     \
     (HYDROGEN_PROCESS_GET_IDENTITY | HYDROGEN_PROCESS_SET_IDENTITY | HYDROGEN_PROCESS_CHANGE_GROUP |            \

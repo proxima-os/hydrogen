@@ -1,13 +1,7 @@
-#include "hydrogen/filesystem.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
-#include "hydrogen/fcntl.h"
-#include "hydrogen/handle.h"
-#include "hydrogen/memory.h"
-#include "hydrogen/process.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
@@ -18,6 +12,12 @@
 #include "sys/syscall.h"
 #include "util/handle.h"
 #include "util/object.h"
+#include <hydrogen/fcntl.h>
+#include <hydrogen/filesystem.h>
+#include <hydrogen/handle.h>
+#include <hydrogen/memory.h>
+#include <hydrogen/process.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 static int file_for_rel(file_t **out, int rel) {
@@ -144,13 +144,13 @@ ret:
 }
 
 int hydrogen_fs_link(
-        int rel,
-        const void *path,
-        size_t length,
-        int trel,
-        const void *target,
-        size_t tlength,
-        int flags
+    int rel,
+    const void *path,
+    size_t length,
+    int trel,
+    const void *target,
+    size_t tlength,
+    int flags
 ) {
     file_t *frel;
     int error = file_for_rel(&frel, rel);
@@ -319,13 +319,13 @@ ret:
 }
 
 int hydrogen_fs_utime(
-        int rel,
-        const void *path,
-        size_t length,
-        __int128_t atime,
-        __int128_t ctime,
-        __int128_t mtime,
-        int flags
+    int rel,
+    const void *path,
+    size_t length,
+    __int128_t atime,
+    __int128_t ctime,
+    __int128_t mtime,
+    int flags
 ) {
     file_t *frel;
     int error = file_for_rel(&frel, rel);
@@ -399,11 +399,11 @@ hydrogen_ret_t hydrogen_fs_open(int rel, const void *path, size_t length, int fl
     if (unlikely(error)) goto err4;
 
     int handle = hnd_alloc_reserved(
-            current_thread->namespace,
-            &file->base,
-            get_open_rights(flags),
-            get_open_flags(flags),
-            data
+        current_thread->namespace,
+        &file->base,
+        get_open_rights(flags),
+        get_open_flags(flags),
+        data
     );
 
     vfree(kpath, length);
@@ -675,11 +675,11 @@ hydrogen_ret_t hydrogen_fs_fopen(int file, int flags) {
     if (fdesc != NULL) obj_deref(&fdesc->base);
 
     int handle = hnd_alloc_reserved(
-            current_thread->namespace,
-            &ret->base,
-            get_open_rights(flags),
-            get_open_flags(flags),
-            data
+        current_thread->namespace,
+        &ret->base,
+        get_open_rights(flags),
+        get_open_flags(flags),
+        data
     );
 
     obj_deref(&ret->base);

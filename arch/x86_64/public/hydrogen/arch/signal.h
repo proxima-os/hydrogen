@@ -1,4 +1,4 @@
-/* IWYU pragma: private, include "hydrogen/signal.h" */
+/* IWYU pragma: private, include <hydrogen/signal.h> */
 #ifndef __HYDROGEN_ARCH_SIGNAL_H
 #define __HYDROGEN_ARCH_SIGNAL_H
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hydrogen/types.h" /* IWYU pragma: keep */
+#include <hydrogen/types.h> /* IWYU pragma: keep */
 
 #define SYSCALL0(num)                                                             \
     ({                                                                            \

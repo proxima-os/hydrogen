@@ -214,12 +214,12 @@ static void acpi_init(void) {
     }
 
     status = uacpi_namespace_for_each_child(
-            uacpi_namespace_root(),
-            process_device,
-            NULL,
-            UACPI_OBJECT_DEVICE_BIT,
-            UACPI_MAX_DEPTH_ANY,
-            NULL
+        uacpi_namespace_root(),
+        process_device,
+        NULL,
+        UACPI_OBJECT_DEVICE_BIT,
+        UACPI_MAX_DEPTH_ANY,
+        NULL
     );
     if (uacpi_unlikely_error(status)) {
         printk("acpi: failed to iterate namespace: %s\n", uacpi_status_to_string(status));
@@ -232,12 +232,12 @@ static void acpi_init(void) {
 }
 
 INIT_DEFINE(
-        acpi,
-        acpi_init,
-        INIT_REFERENCE(scheduler),
-        INIT_REFERENCE(enable_interrupts),
-        INIT_REFERENCE(pci_config_access),
-        INIT_REFERENCE(mount_rootfs)
+    acpi,
+    acpi_init,
+    INIT_REFERENCE(scheduler),
+    INIT_REFERENCE(enable_interrupts),
+    INIT_REFERENCE(pci_config_access),
+    INIT_REFERENCE(mount_rootfs)
 );
 
 uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
@@ -493,10 +493,10 @@ static void acpi_irq_thread(void *ptr) {
 }
 
 uacpi_status uacpi_kernel_install_interrupt_handler(
-        uacpi_u32 irq,
-        uacpi_interrupt_handler handler,
-        uacpi_handle ctx,
-        uacpi_handle *out_irq_handle
+    uacpi_u32 irq,
+    uacpi_interrupt_handler handler,
+    uacpi_handle ctx,
+    uacpi_handle *out_irq_handle
 ) {
     acpi_irq_t *data = vmalloc(sizeof(*data));
     if (unlikely(!data)) return UACPI_STATUS_OUT_OF_MEMORY;
@@ -576,8 +576,8 @@ void uacpi_kernel_free_mutex(uacpi_handle handle) {
 uacpi_status uacpi_kernel_acquire_mutex(uacpi_handle handle, uacpi_u16 timeout) {
     if (timeout == 0) return mutex_try_acq(handle) ? UACPI_STATUS_OK : UACPI_STATUS_TIMEOUT;
     return likely(!mutex_acq(handle, timeout == 0xffff ? 0 : arch_read_time() + timeout * NS_PER_MS, false))
-                   ? UACPI_STATUS_OK
-                   : UACPI_STATUS_TIMEOUT;
+               ? UACPI_STATUS_OK
+               : UACPI_STATUS_TIMEOUT;
 }
 
 void uacpi_kernel_release_mutex(uacpi_handle handle) {

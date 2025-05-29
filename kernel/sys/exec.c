@@ -4,10 +4,6 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
-#include "hydrogen/filesystem.h"
-#include "hydrogen/memory.h"
-#include "hydrogen/signal.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/return.h"
@@ -20,6 +16,10 @@
 #include "sys/syscall.h"
 #include "util/handle.h"
 #include "util/object.h"
+#include <hydrogen/filesystem.h>
+#include <hydrogen/memory.h>
+#include <hydrogen/signal.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 #define USER_STACK_SIZE 0x800000
@@ -49,7 +49,7 @@ static int read_fully(file_t *file, void *buffer, size_t size, uint64_t position
 }
 
 static const unsigned char wanted_ident[] =
-        {ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3, ELFCLASSNATIVE, ELFDATANATIVE, EV_CURRENT};
+    {ELFMAG0, ELFMAG1, ELFMAG2, ELFMAG3, ELFCLASSNATIVE, ELFDATANATIVE, EV_CURRENT};
 
 static int load_image(image_info_t *out, vmm_t *vmm, file_t *file, ident_t *ident, bool is_interp) {
     if (unlikely(file->inode->type != HYDROGEN_REGULAR_FILE)) return EACCES;
@@ -184,13 +184,13 @@ static int load_image(image_info_t *out, vmm_t *vmm, file_t *file, ident_t *iden
                 }
 
                 ret = vfs_mmap(
-                        file,
-                        HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_EXEC,
-                        vmm,
-                        head,
-                        map_size,
-                        flags,
-                        file_offs
+                    file,
+                    HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_EXEC,
+                    vmm,
+                    head,
+                    map_size,
+                    flags,
+                    file_offs
                 );
                 error = ret.error;
                 if (unlikely(error)) goto err2;
@@ -201,13 +201,13 @@ static int load_image(image_info_t *out, vmm_t *vmm, file_t *file, ident_t *iden
 
             if (head < file_map_tail) {
                 ret = vfs_mmap(
-                        file,
-                        HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_EXEC,
-                        vmm,
-                        head,
-                        (file_map_tail - head) + 1,
-                        (flags & ~HYDROGEN_MEM_SHARED) | HYDROGEN_MEM_WRITE,
-                        file_offs
+                    file,
+                    HYDROGEN_MEM_OBJECT_READ | HYDROGEN_MEM_OBJECT_EXEC,
+                    vmm,
+                    head,
+                    (file_map_tail - head) + 1,
+                    (flags & ~HYDROGEN_MEM_SHARED) | HYDROGEN_MEM_WRITE,
+                    file_offs
                 );
                 error = ret.error;
                 if (unlikely(error)) goto err2;
@@ -221,10 +221,10 @@ static int load_image(image_info_t *out, vmm_t *vmm, file_t *file, ident_t *iden
 
             if (head < file_map_tail) {
                 error = vmm_remap(
-                        vmm,
-                        head,
-                        file_map_tail - head + 1,
-                        flags & (HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE | HYDROGEN_MEM_EXEC)
+                    vmm,
+                    head,
+                    file_map_tail - head + 1,
+                    flags & (HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE | HYDROGEN_MEM_EXEC)
                 );
                 if (unlikely(error)) goto err2;
                 head = file_map_tail + 1;
@@ -378,15 +378,15 @@ typedef struct {
 } auxv_t;
 
 static int build_stack(
-        stack_build_ctx_t *ctx,
-        vmm_t *src,
-        image_info_t *image,
-        uintptr_t vdso,
-        bool secure,
-        size_t argc,
-        const hydrogen_string_t *argv,
-        size_t envc,
-        const hydrogen_string_t *envp
+    stack_build_ctx_t *ctx,
+    vmm_t *src,
+    image_info_t *image,
+    uintptr_t vdso,
+    bool secure,
+    size_t argc,
+    const hydrogen_string_t *argv,
+    size_t envc,
+    const hydrogen_string_t *envp
 ) {
     hydrogen_ret_t ret = area_write(&ctx->main, &argc, sizeof(argc), _Alignof(size_t), NULL);
     if (unlikely(ret.error)) return ret.error;
@@ -419,16 +419,16 @@ static int build_stack(
 }
 
 static int create_stack(
-        uintptr_t *out,
-        vmm_t *vmm,
-        image_info_t *image,
-        uintptr_t vdso,
-        bool secure,
-        size_t argc,
-        const hydrogen_string_t *argv,
-        size_t envc,
-        const hydrogen_string_t *envp,
-        bool user_strings
+    uintptr_t *out,
+    vmm_t *vmm,
+    image_info_t *image,
+    uintptr_t vdso,
+    bool secure,
+    size_t argc,
+    const hydrogen_string_t *argv,
+    size_t envc,
+    const hydrogen_string_t *envp,
+    bool user_strings
 ) {
     vmm_t *old = vmm_switch(vmm);
 
@@ -460,10 +460,10 @@ static int create_stack(
 
     uintptr_t stack_pointer = stack_bottom - total_size;
     stack_build_ctx_t pass2 = {
-            .main.base = stack_pointer,
-            .main.remaining = pass1.main.total,
-            .blob.base = stack_pointer + blob_offset,
-            .blob.remaining = pass1.blob.total,
+        .main.base = stack_pointer,
+        .main.remaining = pass1.main.total,
+        .blob.base = stack_pointer + blob_offset,
+        .blob.remaining = pass1.blob.total,
     };
     error = build_stack(&pass2, user_strings ? old : NULL, image, vdso, secure, argc, argv, envc, envp);
     vmm_switch(old);
@@ -477,15 +477,15 @@ static int create_stack(
 }
 
 int create_exec_data(
-        exec_data_t *out,
-        process_t *process,
-        file_t *image,
-        ident_t *ident,
-        size_t argc,
-        const hydrogen_string_t *argv,
-        size_t envc,
-        const hydrogen_string_t *envp,
-        bool user_strings
+    exec_data_t *out,
+    process_t *process,
+    file_t *image,
+    ident_t *ident,
+    size_t argc,
+    const hydrogen_string_t *argv,
+    size_t envc,
+    const hydrogen_string_t *envp,
+    bool user_strings
 ) {
     vmm_t *vmm;
     int error = vmm_create(&vmm);

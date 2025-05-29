@@ -1,8 +1,6 @@
-#include "hydrogen/hydrogen.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
-#include "hydrogen/types.h"
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
@@ -12,6 +10,8 @@
 #include "string.h"
 #include "sys/syscall.h"
 #include "util/panic.h"
+#include <hydrogen/hydrogen.h>
+#include <hydrogen/types.h>
 
 static void *host_name;
 static size_t host_name_size;

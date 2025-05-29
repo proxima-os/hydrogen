@@ -1,12 +1,12 @@
-#include "hydrogen/time.h"
+#include "kernel/time.h"
 #include "arch/syscall.h"
 #include "kernel/compiler.h"
 #include "kernel/syscall.h"
-#include "kernel/time.h"
 #include "kernel/vdso.h"
 #include "kernel/x86_64/kvmclock.h"
 #include "kernel/x86_64/tsc.h"
 #include "vdso.h"
+#include <hydrogen/time.h>
 #include <stdint.h>
 
 static uint64_t boot_time_syscall(void) {

@@ -1,15 +1,10 @@
-#include "hydrogen/thread.h"
+#include "sys/thread.h"
 #include "arch/context.h"
 #include "arch/pmap.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
-#include "hydrogen/handle.h"
-#include "hydrogen/memory.h"
-#include "hydrogen/process.h"
-#include "hydrogen/signal.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
@@ -23,10 +18,15 @@
 #include "sys/memory.h"
 #include "sys/process.h"
 #include "sys/syscall.h"
-#include "sys/thread.h"
 #include "sys/transition.h"
 #include "util/handle.h"
 #include "util/object.h"
+#include <hydrogen/handle.h>
+#include <hydrogen/memory.h>
+#include <hydrogen/process.h>
+#include <hydrogen/signal.h>
+#include <hydrogen/thread.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 #define THREAD_RIGHTS THIS_THREAD_RIGHTS
@@ -85,12 +85,12 @@ static void launch_user_thread(void *ptr) {
 }
 
 hydrogen_ret_t hydrogen_thread_create(
-        int process,
-        int vmm_hnd,
-        int namespace,
-        uintptr_t pc,
-        uintptr_t sp,
-        uint32_t flags
+    int process,
+    int vmm_hnd,
+    int namespace,
+    uintptr_t pc,
+    uintptr_t sp,
+    uint32_t flags
 ) {
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
 
@@ -156,14 +156,14 @@ static _Noreturn void do_exec(void *ctx) {
 }
 
 hydrogen_ret_t hydrogen_thread_exec(
-        int process,
-        int namespace,
-        int image,
-        size_t argc,
-        const hydrogen_string_t *argv,
-        size_t envc,
-        const hydrogen_string_t *envp,
-        uint32_t flags
+    int process,
+    int namespace,
+    int image,
+    size_t argc,
+    const hydrogen_string_t *argv,
+    size_t envc,
+    const hydrogen_string_t *envp,
+    uint32_t flags
 ) {
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
 

@@ -2,7 +2,6 @@
 
 #include "arch/context.h"
 #include "arch/sched.h"
-#include "hydrogen/signal.h"
 #include "init/task.h"
 #include "proc/signal.h"
 #include "util/list.h"
@@ -10,6 +9,7 @@
 #include "util/slist.h"
 #include "util/spinlock.h"
 #include "util/time.h"
+#include <hydrogen/signal.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -92,12 +92,12 @@ INIT_DECLARE(scheduler_ap);
 // if `cpu` isn't `NULL`, the thread is pinned on the specified cpu
 // user-mode state will be copied from the current thread
 int sched_create_thread(
-        thread_t **out,
-        void (*func)(void *),
-        void *ctx,
-        struct cpu *cpu,
-        struct process *process,
-        unsigned flags
+    thread_t **out,
+    void (*func)(void *),
+    void *ctx,
+    struct cpu *cpu,
+    struct process *process,
+    unsigned flags
 );
 
 preempt_state_t preempt_lock(void);

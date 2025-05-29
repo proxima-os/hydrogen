@@ -1,8 +1,8 @@
-#include "hydrogen/x86_64/segments.h"
 #include "arch/pmap.h"
 #include "errno.h"
 #include "kernel/compiler.h"
 #include "x86_64/msr.h"
+#include <hydrogen/x86_64/segments.h>
 #include <stdint.h>
 
 uintptr_t hydrogen_x86_64_get_fs_base(void) {

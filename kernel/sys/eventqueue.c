@@ -1,13 +1,13 @@
-#include "hydrogen/eventqueue.h"
+#include "util/eventqueue.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "sys/syscall.h"
-#include "util/eventqueue.h"
 #include "util/handle.h"
 #include "util/object.h"
+#include <hydrogen/eventqueue.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 #define EVENT_QUEUE_RIGHTS (HYDROGEN_EVENT_QUEUE_ADD | HYDROGEN_EVENT_QUEUE_REMOVE | HYDROGEN_EVENT_QUEUE_WAIT)
@@ -25,12 +25,12 @@ hydrogen_ret_t hydrogen_event_queue_create(uint32_t flags) {
 }
 
 int hydrogen_event_queue_add(
-        int queue,
-        int object,
-        hydrogen_event_type_t event,
-        uint64_t data,
-        void *ctx,
-        uint32_t flags
+    int queue,
+    int object,
+    hydrogen_event_type_t event,
+    uint64_t data,
+    void *ctx,
+    uint32_t flags
 ) {
     handle_data_t qdata;
     int error = hnd_resolve(&qdata, queue, OBJECT_EVENT_QUEUE, HYDROGEN_EVENT_QUEUE_ADD);

@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hydrogen/types.h"
+#include <hydrogen/types.h>
 #include <stddef.h>
 
 typedef struct {

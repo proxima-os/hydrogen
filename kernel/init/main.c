@@ -5,9 +5,6 @@
 #include "drv/framebuffer.h" /* IWYU pragma: keep */
 #include "fs/ramfs.h"
 #include "fs/vfs.h"
-#include "hydrogen/filesystem.h"
-#include "hydrogen/handle.h"
-#include "hydrogen/types.h"
 #include "init/cmdline.h"
 #include "init/task.h"
 #include "kernel/compiler.h"
@@ -27,6 +24,9 @@
 #include "util/printk.h"
 #include "util/slist.h"
 #include "util/spinlock.h"
+#include <hydrogen/filesystem.h>
+#include <hydrogen/handle.h>
+#include <hydrogen/types.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -42,12 +42,12 @@ static spinlock_t kernel_tasks_lock;
 
 static void associate_std_handle(int handle, file_t *file) {
     hydrogen_ret_t ret = namespace_add(
-            current_thread->namespace,
-            HYDROGEN_FILE_WRITE,
-            handle,
-            &file->base,
-            OBJECT_FILE_DESCRIPTION,
-            HYDROGEN_HANDLE_CLONE_KEEP | HYDROGEN_HANDLE_EXEC_KEEP
+        current_thread->namespace,
+        HYDROGEN_FILE_WRITE,
+        handle,
+        &file->base,
+        OBJECT_FILE_DESCRIPTION,
+        HYDROGEN_HANDLE_CLONE_KEEP | HYDROGEN_HANDLE_EXEC_KEEP
     );
     if (unlikely(ret.error)) panic("failed to set up standard handle %d (%e)", handle, ret.error);
     ASSERT(ret.integer == (size_t)handle);
@@ -83,15 +83,15 @@ static void launch_init_process(void *ctx) {
 
     exec_data_t data;
     error = create_exec_data(
-            &data,
-            current_thread->process,
-            image,
-            ident,
-            1,
-            &filename_arg,
-            sizeof(envp) / sizeof(*envp),
-            envp_args,
-            false
+        &data,
+        current_thread->process,
+        image,
+        ident,
+        1,
+        &filename_arg,
+        sizeof(envp) / sizeof(*envp),
+        envp_args,
+        false
     );
     ident_deref(ident);
     if (unlikely(error)) panic("failed to launch init process (%e)", error);
@@ -163,10 +163,12 @@ static void kernel_init(void *ctx) {
     obj_deref(&current_thread->base);
 
     pmem_stats_t stats = pmem_get_stats();
-    printk("mem: %zK total, %zK available, %zK free\n",
-           stats.total * (PAGE_SIZE / 1024),
-           stats.available * (PAGE_SIZE / 1024),
-           stats.free * (PAGE_SIZE / 1024));
+    printk(
+        "mem: %zK total, %zK available, %zK free\n",
+        stats.total * (PAGE_SIZE / 1024),
+        stats.available * (PAGE_SIZE / 1024),
+        stats.free * (PAGE_SIZE / 1024)
+    );
 
     int error = proc_clone(&init_process);
     if (unlikely(error)) panic("failed to create init process (%e)", error);

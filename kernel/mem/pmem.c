@@ -191,10 +191,10 @@ page_t *pmem_alloc_slow_and_unreliable(uint64_t min, uint64_t max, uint64_t alig
     if (max_head < min_head) return NULL;
 
     struct alloc_slow_ctx ctx = {
-            .min_head = min_head,
-            .max_head = max_head,
-            .align_mask = align_mask,
-            .offset = offset,
+        .min_head = min_head,
+        .max_head = max_head,
+        .align_mask = align_mask,
+        .offset = offset,
     };
 
     mutex_acq(&pmem_lock, 0, false);

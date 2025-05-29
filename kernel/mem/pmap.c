@@ -7,9 +7,6 @@
 #include "cpu/cpudata.h"
 #include "cpu/smp.h"
 #include "errno.h"
-#include "hydrogen/memory.h"
-#include "hydrogen/signal.h"
-#include "hydrogen/types.h"
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
@@ -28,6 +25,9 @@
 #include "util/printk.h"
 #include "util/shlist.h"
 #include "util/spinlock.h"
+#include <hydrogen/memory.h>
+#include <hydrogen/signal.h>
+#include <hydrogen/types.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -484,7 +484,7 @@ static bool do_prepare_alloc(vmm_t *vmm, void *table, unsigned level, uintptr_t 
             ASSERT(pte != 0);
             ASSERT(pte != ARCH_PT_PREPARE_PTE);
             ASSERT(arch_pt_is_edge(level, pte));
-            
+
             page_t *page = virt_to_page(arch_pt_edge_target(level, pte));
 
             if (page->anon.references == 0) {
@@ -1089,13 +1089,13 @@ struct page *pmap_get_mapping(struct vmm *vmm, uintptr_t virt) {
 }
 
 static void do_early_map(
-        void *table,
-        unsigned level,
-        uintptr_t virt,
-        uint64_t phys,
-        size_t size,
-        int flags,
-        tlb_ctx_t *tlb
+    void *table,
+    unsigned level,
+    uintptr_t virt,
+    uint64_t phys,
+    size_t size,
+    int flags,
+    tlb_ctx_t *tlb
 ) {
     size_t index = arch_pt_get_index(virt, level);
     size_t entry_size = 1ul << arch_pt_entry_bits(level);
@@ -1279,13 +1279,13 @@ static bool is_access_allowed(unsigned level, pte_t pte, pmap_fault_type_t type)
 }
 
 static void user_fault_fail(
-        arch_context_t *context,
-        uintptr_t pc,
-        uintptr_t address,
-        unsigned flags,
-        int signal,
-        int code,
-        int error
+    arch_context_t *context,
+    uintptr_t pc,
+    uintptr_t address,
+    unsigned flags,
+    int signal,
+    int code,
+    int error
 ) {
     if ((flags & PMAP_FAULT_USER) == 0) {
         ASSERT(arch_is_user_copy(pc));
@@ -1293,26 +1293,28 @@ static void user_fault_fail(
         return;
     }
 
-    printk("pmap: sending signal %d to thread %d (process %d) due to fault on address 0x%Z (code: %d, error: %d)\n",
-           signal,
-           current_thread->pid->id,
-           current_thread->process->pid->id,
-           address,
-           code,
-           error);
+    printk(
+        "pmap: sending signal %d to thread %d (process %d) due to fault on address 0x%Z (code: %d, error: %d)\n",
+        signal,
+        current_thread->pid->id,
+        current_thread->process->pid->id,
+        address,
+        code,
+        error
+    );
 
     __siginfo_t sig = {
-            .__signo = __SIGSEGV,
-            .__code = code,
-            .__errno = error,
-            .__data.__sigsegv.__address = (void *)address,
+        .__signo = __SIGSEGV,
+        .__code = code,
+        .__errno = error,
+        .__data.__sigsegv.__address = (void *)address,
     };
     queue_signal(
-            current_thread->process,
-            &current_thread->sig_target,
-            &sig,
-            QUEUE_SIGNAL_FORCE,
-            &current_thread->fault_sig
+        current_thread->process,
+        &current_thread->sig_target,
+        &sig,
+        QUEUE_SIGNAL_FORCE,
+        &current_thread->fault_sig
     );
 }
 
@@ -1348,13 +1350,13 @@ static page_t *alloc_page_for_user_mapping(vmm_t *vmm, vmm_region_t *region) {
 }
 
 static void create_new_user_mapping(
-        arch_context_t *context,
-        vmm_t *vmm,
-        uintptr_t pc,
-        uintptr_t address,
-        pmap_fault_type_t type,
-        unsigned flags,
-        get_pte_result_t *result
+    arch_context_t *context,
+    vmm_t *vmm,
+    uintptr_t pc,
+    uintptr_t address,
+    pmap_fault_type_t type,
+    unsigned flags,
+    get_pte_result_t *result
 ) {
     vmm_region_t *region = vmm_get_region(vmm, address);
     if (unlikely(!region)) return user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_MAPERR, EFAULT);
@@ -1379,21 +1381,21 @@ static void create_new_user_mapping(
         }
 
         hydrogen_ret_t ret = ops->get_page(
-                region->object,
-                region,
-                (region->offset + (address - region->head)) >> PAGE_SHIFT,
-                NULL,
-                type == PMAP_FAULT_WRITE
+            region->object,
+            region,
+            (region->offset + (address - region->head)) >> PAGE_SHIFT,
+            NULL,
+            type == PMAP_FAULT_WRITE
         );
         if (unlikely(ret.error)) {
             return user_fault_fail(
-                    context,
-                    pc,
-                    address,
-                    flags,
-                    __SIGBUS,
-                    ret.error == ENXIO ? __BUS_ADRERR : __BUS_OBJERR,
-                    ret.error
+                context,
+                pc,
+                address,
+                flags,
+                __SIGBUS,
+                ret.error == ENXIO ? __BUS_ADRERR : __BUS_OBJERR,
+                ret.error
             );
         }
         target = page_to_phys(ret.pointer);
@@ -1467,12 +1469,12 @@ static int copy_mapping(vmm_t *vmm, vmm_region_t *region, page_t **out, uint64_t
 }
 
 static void do_handle_user_fault(
-        arch_context_t *context,
-        vmm_t *vmm,
-        uintptr_t pc,
-        uintptr_t address,
-        pmap_fault_type_t type,
-        unsigned flags
+    arch_context_t *context,
+    vmm_t *vmm,
+    uintptr_t pc,
+    uintptr_t address,
+    pmap_fault_type_t type,
+    unsigned flags
 ) {
     get_pte_result_t result = {};
 
@@ -1541,10 +1543,10 @@ static void do_handle_user_fault(
         tlb_commit(&tlb, vmm);
 
         arch_pt_write(
-                result.table,
-                result.level,
-                result.index,
-                arch_pt_create_leaf(result.level, page_to_phys(new_page), pte_flags)
+            result.table,
+            result.level,
+            result.index,
+            arch_pt_create_leaf(result.level, page_to_phys(new_page), pte_flags)
         );
 
         if (arch_pt_new_leaf_needs_flush()) {
@@ -1559,11 +1561,11 @@ static void do_handle_user_fault(
 }
 
 static void handle_user_fault(
-        arch_context_t *context,
-        uintptr_t pc,
-        uintptr_t address,
-        pmap_fault_type_t type,
-        unsigned flags
+    arch_context_t *context,
+    uintptr_t pc,
+    uintptr_t address,
+    pmap_fault_type_t type,
+    unsigned flags
 ) {
     if (!arch_pt_is_canonical(address) || is_kernel_address(address)) {
         return user_fault_fail(context, pc, address, flags, __SIGSEGV, __SEGV_MAPERR, EFAULT);
@@ -1579,22 +1581,24 @@ static void handle_user_fault(
 }
 
 void pmap_handle_page_fault(
-        arch_context_t *context,
-        uintptr_t pc,
-        uintptr_t address,
-        pmap_fault_type_t type,
-        unsigned flags
+    arch_context_t *context,
+    uintptr_t pc,
+    uintptr_t address,
+    pmap_fault_type_t type,
+    unsigned flags
 ) {
     if (flags & PMAP_FAULT_USER) return handle_user_fault(context, pc, address, type, flags);
 
     if (!is_kernel_address(address)) {
         if (arch_is_user_copy(pc)) return handle_user_fault(context, pc, address, type, flags);
 
-        panic("kernel code tried to %s user memory at 0x%Z (pc: 0x%Z, flags: %u)",
-              type_to_string(type),
-              address,
-              pc,
-              flags);
+        panic(
+            "kernel code tried to %s user memory at 0x%Z (pc: 0x%Z, flags: %u)",
+            type_to_string(type),
+            address,
+            pc,
+            flags
+        );
     }
 
     // Kernel page fault handling must not take any locks, since the fault might have come
@@ -1613,20 +1617,24 @@ void pmap_handle_page_fault(
     disable_irq();
 
     if (!arch_pt_is_canonical(address)) {
-        panic("kernel code tried to %s non-canonical memory at 0x%Z (pc: 0x%Z, flags: %u)",
-              type_to_string(type),
-              address,
-              pc,
-              flags);
+        panic(
+            "kernel code tried to %s non-canonical memory at 0x%Z (pc: 0x%Z, flags: %u)",
+            type_to_string(type),
+            address,
+            pc,
+            flags
+        );
     }
 
     get_pte_result_t result = {};
     if (unlikely(!get_pte(&result, kernel_page_table, address))) {
-        panic("kernel code tried to %s unmapped memory at 0x%Z (pc: 0x%Z, flags: %u)",
-              type_to_string(type),
-              address,
-              pc,
-              flags);
+        panic(
+            "kernel code tried to %s unmapped memory at 0x%Z (pc: 0x%Z, flags: %u)",
+            type_to_string(type),
+            address,
+            pc,
+            flags
+        );
     }
 
     pmap_t *cur_pmap = this_cpu_read_tl(pmap.current);
@@ -1668,11 +1676,13 @@ void pmap_handle_page_fault(
         return;
     }
 
-    panic("kernel code tried to %s memory that disallows such accesses at 0x%Z (pc: 0x%Z, flags: %u)",
-          type_to_string(type),
-          address,
-          pc,
-          flags);
+    panic(
+        "kernel code tried to %s memory that disallows such accesses at 0x%Z (pc: 0x%Z, flags: %u)",
+        type_to_string(type),
+        address,
+        pc,
+        flags
+    );
 }
 
 unsigned vmm_to_pmap_flags(unsigned flags) {

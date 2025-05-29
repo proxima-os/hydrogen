@@ -1,9 +1,9 @@
-#include "hydrogen/process.h"
 #include "arch/syscall.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/syscall.h"
 #include "vdso.h"
+#include <hydrogen/process.h>
+#include <hydrogen/types.h>
 
 EXPORT hydrogen_ret_t hydrogen_process_find(int id, uint32_t flags) {
     return SYSCALL2(SYSCALL_PROCESS_FIND, id, flags);
@@ -102,10 +102,10 @@ EXPORT int hydrogen_process_setgroups(int process, const uint32_t *groups, size_
 }
 
 EXPORT int hydrogen_process_sigaction(
-        int process,
-        int signal,
-        const struct __sigaction *action,
-        struct __sigaction *old
+    int process,
+    int signal,
+    const struct __sigaction *action,
+    struct __sigaction *old
 ) {
     return SYSCALL4(SYSCALL_PROCESS_SIGACTION, process, signal, action, old).error;
 }

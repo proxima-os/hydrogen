@@ -1,6 +1,6 @@
 #pragma once
 
-#include "hydrogen/types.h" /* IWYU */
+#include <hydrogen/types.h> /* IWYU */
 
 static inline hydrogen_ret_t ret_error(int error) {
     return (hydrogen_ret_t){.error = error};

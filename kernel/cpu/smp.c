@@ -14,14 +14,9 @@ void smp_call_remote(cpu_t *dest, void (*func)(void *), void *ctx) {
 
 static void trigger_call(cpu_t *cpu, smp_call_id_t id, void (*func)(void *), void *ctx) {
     smp_call_id_t wanted = 0;
-    while (!__atomic_compare_exchange_n(
-            &cpu->remote_call.current,
-            &wanted,
-            id,
-            true,
-            __ATOMIC_ACQUIRE,
-            __ATOMIC_RELAXED
-    )) {
+    while (
+        !__atomic_compare_exchange_n(&cpu->remote_call.current, &wanted, id, true, __ATOMIC_ACQUIRE, __ATOMIC_RELAXED)
+    ) {
         cpu_relax();
         wanted = 0;
     }

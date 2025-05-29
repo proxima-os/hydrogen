@@ -5,7 +5,7 @@
 #ifndef __HYDROGEN_SIGNAL_H
 #define __HYDROGEN_SIGNAL_H
 
-#include "hydrogen/arch/signal.h" /* IWYU pragma: export */
+#include <hydrogen/arch/signal.h> /* IWYU pragma: export */
 
 #ifdef __cplusplus
 extern "C" {

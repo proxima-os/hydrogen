@@ -3,8 +3,6 @@
 #include "arch/irq.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
-#include "hydrogen/types.h"
-#include "hydrogen/x86_64/segments.h"
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
@@ -14,6 +12,8 @@
 #include "sys/transition.h"
 #include "x86_64/cpu.h"
 #include "x86_64/msr.h"
+#include <hydrogen/types.h>
+#include <hydrogen/x86_64/segments.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -33,13 +33,13 @@ INIT_DEFINE_EARLY(x86_64_syscall, syscall_init_local);
 INIT_DEFINE_EARLY_AP(x86_64_syscall_ap, syscall_init_local);
 
 static hydrogen_ret_t dispatch_arch_syscall(
-        ssize_t id,
-        size_t a0,
-        size_t a1,
-        size_t a2,
-        size_t a3,
-        size_t a4,
-        size_t a5
+    ssize_t id,
+    size_t a0,
+    size_t a1,
+    size_t a2,
+    size_t a3,
+    size_t a4,
+    size_t a5
 ) {
     switch (id) {
     case X86_64_SYSCALL_SIGRETURN: return ret_error(x86_64_sigreturn(a0));

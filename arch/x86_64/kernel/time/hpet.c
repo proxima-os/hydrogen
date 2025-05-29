@@ -62,10 +62,10 @@ void x86_64_hpet_init(void) {
     }
 
     int error = map_mmio(
-            &hpet_regs,
-            ((struct acpi_hpet *)table.ptr)->address.address,
-            HPET_REGS_SIZE,
-            PMAP_READABLE | PMAP_WRITABLE | PMAP_CACHE_UC
+        &hpet_regs,
+        ((struct acpi_hpet *)table.ptr)->address.address,
+        HPET_REGS_SIZE,
+        PMAP_READABLE | PMAP_WRITABLE | PMAP_CACHE_UC
     );
     uacpi_table_unref(&table);
     if (unlikely(error)) {

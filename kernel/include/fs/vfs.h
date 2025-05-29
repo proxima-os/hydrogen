@@ -1,10 +1,6 @@
 #pragma once
 
 #include "fs/fifo.h"
-#include "hydrogen/fcntl.h"
-#include "hydrogen/filesystem.h"
-#include "hydrogen/stat.h"
-#include "hydrogen/types.h"
 #include "init/task.h"
 #include "mem/vmm.h"
 #include "proc/mutex.h"
@@ -13,6 +9,10 @@
 #include "util/list.h"
 #include "util/object.h"
 #include "util/refcount.h"
+#include <hydrogen/fcntl.h>
+#include <hydrogen/filesystem.h>
+#include <hydrogen/stat.h>
+#include <hydrogen/types.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -75,13 +75,13 @@ typedef struct {
     hydrogen_ret_t (*readdir)(file_t *self, void *buffer, size_t size);
     hydrogen_ret_t (*write)(file_t *self, const void *buffer, size_t size, uint64_t position, bool rpos);
     hydrogen_ret_t (*mmap)(
-            file_t *self,
-            object_rights_t rights,
-            struct vmm *vmm,
-            uintptr_t hint,
-            size_t size,
-            uint32_t flags,
-            uint64_t offset
+        file_t *self,
+        object_rights_t rights,
+        struct vmm *vmm,
+        uintptr_t hint,
+        size_t size,
+        uint32_t flags,
+        uint64_t offset
     );
     hydrogen_ret_t (*ioctl)(file_t *self, int request, void *buffer, size_t size);
 } file_ops_t;
@@ -124,12 +124,12 @@ typedef struct {
             hydrogen_ret_t (*open)(inode_t *self, dentry_t *path, int flags);
             int (*lookup)(inode_t *self, dentry_t *entry);
             int (*create)(
-                    inode_t *self,
-                    dentry_t *entry,
-                    hydrogen_file_type_t type,
-                    struct ident *ident,
-                    uint32_t mode,
-                    fs_device_t *device
+                inode_t *self,
+                dentry_t *entry,
+                hydrogen_file_type_t type,
+                struct ident *ident,
+                uint32_t mode,
+                fs_device_t *device
             );
             int (*symlink)(inode_t *self, dentry_t *entry, const void *target, size_t size, struct ident *ident);
             int (*link)(inode_t *self, dentry_t *entry, inode_t *target);
@@ -186,12 +186,12 @@ int vfs_fchroot(struct process *process, file_t *file);
 uint32_t vfs_umask(struct process *process, uint32_t mask);
 
 int vfs_create(
-        file_t *rel,
-        const void *path,
-        size_t length,
-        hydrogen_file_type_t type,
-        uint32_t mode,
-        fs_device_t *device
+    file_t *rel,
+    const void *path,
+    size_t length,
+    hydrogen_file_type_t type,
+    uint32_t mode,
+    fs_device_t *device
 );
 int vfs_symlink(file_t *rel, const void *path, size_t length, const void *tpath, size_t tlength);
 int vfs_link(file_t *rel, const void *path, size_t length, file_t *trel, const void *tpath, size_t tlength, int flags);
@@ -207,13 +207,13 @@ int vfs_fchmod(file_t *file, uint32_t mode);
 int vfs_chown(file_t *rel, const void *path, size_t length, uint32_t uid, uint32_t gid, int flags);
 int vfs_fchown(file_t *file, uint32_t uid, uint32_t gid);
 int vfs_utime(
-        file_t *rel,
-        const void *path,
-        size_t length,
-        __int128_t atime,
-        __int128_t ctime,
-        __int128_t mtime,
-        int flags
+    file_t *rel,
+    const void *path,
+    size_t length,
+    __int128_t atime,
+    __int128_t ctime,
+    __int128_t mtime,
+    int flags
 );
 int vfs_futime(file_t *file, __int128_t atime, __int128_t ctime, __int128_t mtime);
 int vfs_truncate(file_t *rel, const void *path, size_t length, uint64_t size);
@@ -222,13 +222,13 @@ int vfs_ftruncate(file_t *file, uint64_t size);
 int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int flags, uint32_t mode, ident_t *ident);
 int vfs_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ident_t *ident);
 hydrogen_ret_t vfs_mmap(
-        file_t *file,
-        object_rights_t rights,
-        struct vmm *vmm,
-        uintptr_t hint,
-        size_t size,
-        uint32_t flags,
-        uint64_t offset
+    file_t *file,
+    object_rights_t rights,
+    struct vmm *vmm,
+    uintptr_t hint,
+    size_t size,
+    uint32_t flags,
+    uint64_t offset
 );
 hydrogen_ret_t vfs_pread(file_t *file, void *buffer, size_t size, uint64_t position);
 hydrogen_ret_t vfs_pwrite(file_t *file, const void *buffer, size_t size, uint64_t position);

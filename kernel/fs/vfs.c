@@ -3,11 +3,6 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/fifo.h"
-#include "hydrogen/eventqueue.h"
-#include "hydrogen/fcntl.h"
-#include "hydrogen/filesystem.h"
-#include "hydrogen/limits.h"
-#include "hydrogen/types.h"
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
@@ -24,6 +19,11 @@
 #include "util/object.h"
 #include "util/refcount.h"
 #include "util/time.h"
+#include <hydrogen/eventqueue.h>
+#include <hydrogen/fcntl.h>
+#include <hydrogen/filesystem.h>
+#include <hydrogen/limits.h>
+#include <hydrogen/types.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -492,16 +492,16 @@ static void use_umask(uint32_t *mode) {
 }
 
 int vfs_create(
-        file_t *rel,
-        const void *path,
-        size_t length,
-        hydrogen_file_type_t type,
-        uint32_t mode,
-        fs_device_t *device
+    file_t *rel,
+    const void *path,
+    size_t length,
+    hydrogen_file_type_t type,
+    uint32_t mode,
+    fs_device_t *device
 ) {
     if (unlikely(
-                type != HYDROGEN_REGULAR_FILE && type != HYDROGEN_DIRECTORY && type != HYDROGEN_CHARACTER_DEVICE &&
-                type != HYDROGEN_BLOCK_DEVICE && type != HYDROGEN_FIFO
+            type != HYDROGEN_REGULAR_FILE && type != HYDROGEN_DIRECTORY && type != HYDROGEN_CHARACTER_DEVICE &&
+            type != HYDROGEN_BLOCK_DEVICE && type != HYDROGEN_FIFO
         )) {
         return EINVAL;
     }
@@ -512,12 +512,12 @@ int vfs_create(
     ident_t *ident = ident_get(current_thread->process);
     dentry_t *entry;
     int error = flookup(
-            &entry,
-            rel,
-            path,
-            length,
-            ident,
-            LOOKUP_ALLOW_TRAILING | LOOKUP_MUST_NOT_EXIST | LOOKUP_WRITABLE_FS
+        &entry,
+        rel,
+        path,
+        length,
+        ident,
+        LOOKUP_ALLOW_TRAILING | LOOKUP_MUST_NOT_EXIST | LOOKUP_WRITABLE_FS
     );
     if (unlikely(error)) goto ret;
 
@@ -553,12 +553,12 @@ int vfs_symlink(file_t *rel, const void *path, size_t length, const void *tpath,
     ident_t *ident = ident_get(current_thread->process);
     dentry_t *entry;
     int error = flookup(
-            &entry,
-            rel,
-            path,
-            length,
-            ident,
-            LOOKUP_ALLOW_TRAILING | LOOKUP_MUST_NOT_EXIST | LOOKUP_WRITABLE_FS
+        &entry,
+        rel,
+        path,
+        length,
+        ident,
+        LOOKUP_ALLOW_TRAILING | LOOKUP_MUST_NOT_EXIST | LOOKUP_WRITABLE_FS
     );
     if (unlikely(error)) goto ret;
 
@@ -785,12 +785,12 @@ int vfs_rename(file_t *rel, const void *path, size_t length, file_t *trel, const
 
     for (;;) {
         error = flookup(
-                &source,
-                rel,
-                path,
-                length,
-                ident,
-                LOOKUP_MUST_EXIST | LOOKUP_WRITABLE_FS | LOOKUP_NO_TRAILING_DOT
+            &source,
+            rel,
+            path,
+            length,
+            ident,
+            LOOKUP_MUST_EXIST | LOOKUP_WRITABLE_FS | LOOKUP_NO_TRAILING_DOT
         );
         if (unlikely(error)) goto ret;
 
@@ -1190,13 +1190,13 @@ ret:
 }
 
 int vfs_utime(
-        file_t *rel,
-        const void *path,
-        size_t length,
-        __int128_t atime,
-        __int128_t ctime,
-        __int128_t mtime,
-        int flags
+    file_t *rel,
+    const void *path,
+    size_t length,
+    __int128_t atime,
+    __int128_t ctime,
+    __int128_t mtime,
+    int flags
 ) {
     if (unlikely((flags & ~__AT_SYMLINK_NOFOLLOW)) != 0) return EINVAL;
 
@@ -1234,12 +1234,12 @@ int vfs_truncate(file_t *rel, const void *path, size_t length, uint64_t size) {
     ident_t *ident = ident_get(current_thread->process);
     dentry_t *entry;
     int error = flookup(
-            &entry,
-            rel,
-            path,
-            length,
-            ident,
-            LOOKUP_MUST_EXIST | LOOKUP_FOLLOW_SYMLINKS | LOOKUP_WRITABLE_FS
+        &entry,
+        rel,
+        path,
+        length,
+        ident,
+        LOOKUP_MUST_EXIST | LOOKUP_FOLLOW_SYMLINKS | LOOKUP_WRITABLE_FS
     );
     if (unlikely(error)) goto ret;
 
@@ -1340,7 +1340,7 @@ static hydrogen_ret_t regular_file_read(file_t *self, void *buffer, size_t size,
     }
 
     int error = self->inode->ops
-                        ->utime(self->inode, HYDROGEN_FILE_TIME_NOW, HYDROGEN_FILE_TIME_OMIT, HYDROGEN_FILE_TIME_OMIT);
+                    ->utime(self->inode, HYDROGEN_FILE_TIME_NOW, HYDROGEN_FILE_TIME_OMIT, HYDROGEN_FILE_TIME_OMIT);
     if (unlikely(error)) {
         mutex_rel(&self->inode->lock);
         return ret_error(error);
@@ -1373,7 +1373,7 @@ static hydrogen_ret_t regular_file_write(file_t *self, const void *buffer, size_
         error = self->inode->ops->regular.truncate(self->inode, wanted_size);
     } else {
         error = self->inode->ops
-                        ->utime(self->inode, HYDROGEN_FILE_TIME_OMIT, HYDROGEN_FILE_TIME_NOW, HYDROGEN_FILE_TIME_NOW);
+                    ->utime(self->inode, HYDROGEN_FILE_TIME_OMIT, HYDROGEN_FILE_TIME_NOW, HYDROGEN_FILE_TIME_NOW);
     }
 
     if (unlikely(error)) {
@@ -1395,25 +1395,25 @@ static hydrogen_ret_t regular_file_write(file_t *self, const void *buffer, size_
 }
 
 static hydrogen_ret_t regular_file_mmap(
-        file_t *self,
-        object_rights_t rights,
-        vmm_t *vmm,
-        uintptr_t hint,
-        size_t size,
-        uint32_t flags,
-        uint64_t offset
+    file_t *self,
+    object_rights_t rights,
+    vmm_t *vmm,
+    uintptr_t hint,
+    size_t size,
+    uint32_t flags,
+    uint64_t offset
 ) {
     return vmm_map(vmm, hint, size, flags, self->inode->regular, rights, offset);
 }
 
 static const file_ops_t regular_file_ops = {
-        .base.free = regular_file_free,
-        .base.event_add = regular_file_event_add,
-        .base.event_del = regular_file_event_del,
-        .seek = regular_file_seek,
-        .read = regular_file_read,
-        .write = regular_file_write,
-        .mmap = regular_file_mmap,
+    .base.free = regular_file_free,
+    .base.event_add = regular_file_event_add,
+    .base.event_del = regular_file_event_del,
+    .seek = regular_file_seek,
+    .read = regular_file_read,
+    .write = regular_file_write,
+    .mmap = regular_file_mmap,
 };
 
 static void open_regular_file(file_t *file, dentry_t *entry, int flags) {
@@ -1566,13 +1566,13 @@ int vfs_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ident_t *
 }
 
 hydrogen_ret_t vfs_mmap(
-        file_t *file,
-        object_rights_t rights,
-        struct vmm *vmm,
-        uintptr_t hint,
-        size_t size,
-        uint32_t flags,
-        uint64_t offset
+    file_t *file,
+    object_rights_t rights,
+    struct vmm *vmm,
+    uintptr_t hint,
+    size_t size,
+    uint32_t flags,
+    uint64_t offset
 ) {
     const file_ops_t *ops = (const file_ops_t *)file->base.ops;
     if (unlikely(!ops->mmap)) return ret_error(ENODEV);
@@ -1902,9 +1902,9 @@ static int anon_inode_utime(inode_t *self, __int128_t atime, __int128_t ctime, _
 }
 
 static const inode_ops_t anon_inode_ops = {
-        .free = anon_inode_free,
-        .chmodown = anon_inode_chmodown,
-        .utime = anon_inode_utime,
+    .free = anon_inode_free,
+    .chmodown = anon_inode_chmodown,
+    .utime = anon_inode_utime,
 };
 
 int vfs_create_anonymous(inode_t **out, hydrogen_file_type_t type, uint32_t mode, fs_device_t *device, ident_t *ident) {

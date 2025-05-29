@@ -48,12 +48,12 @@ int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible) {
                 // we do not own the mutex itself
                 unsigned char wanted = MUTEX_CONTESTED;
                 __atomic_compare_exchange_n(
-                        &mutex->state,
-                        &wanted,
-                        MUTEX_LOCKED,
-                        false,
-                        __ATOMIC_RELAXED,
-                        __ATOMIC_RELAXED
+                    &mutex->state,
+                    &wanted,
+                    MUTEX_LOCKED,
+                    false,
+                    __ATOMIC_RELAXED,
+                    __ATOMIC_RELAXED
                 );
             }
         }
@@ -75,12 +75,12 @@ bool mutex_try_acq(mutex_t *mutex) {
 void mutex_rel(mutex_t *mutex) {
     unsigned char value = MUTEX_LOCKED;
     if (likely(__atomic_compare_exchange_n(
-                &mutex->state,
-                &value,
-                MUTEX_UNLOCKED,
-                false,
-                __ATOMIC_RELEASE,
-                __ATOMIC_RELAXED
+            &mutex->state,
+            &value,
+            MUTEX_UNLOCKED,
+            false,
+            __ATOMIC_RELEASE,
+            __ATOMIC_RELAXED
         ))) {
         return;
     }

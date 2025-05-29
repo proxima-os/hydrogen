@@ -1,10 +1,10 @@
-#include "hydrogen/thread.h"
+#include "kernel/thread.h"
 #include "arch/syscall.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/syscall.h"
-#include "kernel/thread.h"
 #include "vdso.h"
+#include <hydrogen/thread.h>
+#include <hydrogen/types.h>
 
 EXPORT hydrogen_ret_t
 hydrogen_thread_create(int process, int vmm, int namespace, uintptr_t pc, uintptr_t sp, uint32_t flags) {
@@ -12,14 +12,14 @@ hydrogen_thread_create(int process, int vmm, int namespace, uintptr_t pc, uintpt
 }
 
 EXPORT hydrogen_ret_t hydrogen_thread_exec(
-        int process,
-        int namespace,
-        int image,
-        size_t argc,
-        const hydrogen_string_t *argv,
-        size_t envc,
-        const hydrogen_string_t *envp,
-        uint32_t flags
+    int process,
+    int namespace,
+    int image,
+    size_t argc,
+    const hydrogen_string_t *argv,
+    size_t envc,
+    const hydrogen_string_t *envp,
+    uint32_t flags
 ) {
     exec_syscall_args_t args = {argv, envp, argc, envc};
     return SYSCALL5(SYSCALL_THREAD_EXEC, process, namespace, image, &args, flags);

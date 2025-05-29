@@ -57,10 +57,10 @@ static void init_timers(void) {
 INIT_DEFINE_EARLY(arch_time, init_timers, INIT_REFERENCE(memory), INIT_REFERENCE(enable_interrupts));
 
 void x86_64_switch_timer(
-        uint64_t (*read)(void),
-        uint64_t (*get_tsc)(uint64_t),
-        void (*cleanup)(void),
-        void (*confirm)(bool)
+    uint64_t (*read)(void),
+    uint64_t (*get_tsc)(uint64_t),
+    void (*cleanup)(void),
+    void (*confirm)(bool)
 ) {
     if (x86_64_timer_cleanup) x86_64_timer_cleanup();
 

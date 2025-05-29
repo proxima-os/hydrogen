@@ -1,13 +1,9 @@
-#include "hydrogen/process.h"
+#include "proc/process.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
-#include "hydrogen/handle.h"
-#include "hydrogen/signal.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "proc/mutex.h"
-#include "proc/process.h"
 #include "proc/rcu.h"
 #include "proc/sched.h"
 #include "proc/signal.h"
@@ -16,6 +12,10 @@
 #include "util/handle.h"
 #include "util/list.h"
 #include "util/object.h"
+#include <hydrogen/handle.h>
+#include <hydrogen/process.h>
+#include <hydrogen/signal.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 #define PROCESS_RIGHTS (THIS_PROCESS_RIGHTS | HYDROGEN_PROCESS_WAIT_SIGNAL)
@@ -414,10 +414,10 @@ int hydrogen_process_get_cpu_time(hydrogen_process_cpu_time_t *time) {
 
     process_t *process = current_thread->process;
     hydrogen_process_cpu_time_t value = {
-            .self.user = __atomic_load_n(&process->user_time, __ATOMIC_RELAXED),
-            .self.kernel = __atomic_load_n(&process->kern_time, __ATOMIC_RELAXED),
-            .children.user = __atomic_load_n(&process->child_user_time, __ATOMIC_RELAXED),
-            .children.kernel = __atomic_load_n(&process->child_kern_time, __ATOMIC_RELAXED),
+        .self.user = __atomic_load_n(&process->user_time, __ATOMIC_RELAXED),
+        .self.kernel = __atomic_load_n(&process->kern_time, __ATOMIC_RELAXED),
+        .children.user = __atomic_load_n(&process->child_user_time, __ATOMIC_RELAXED),
+        .children.kernel = __atomic_load_n(&process->child_kern_time, __ATOMIC_RELAXED),
     };
     return user_memcpy(time, &value, sizeof(*time));
 }

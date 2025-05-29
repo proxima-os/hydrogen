@@ -151,10 +151,10 @@ static bool create_temp_page_tables(mp_data_t *data, uint64_t phys) {
     if (!add_mapping(table, phys, phys, PMAP_READABLE | PMAP_EXECUTABLE)) goto err;
 
     if (!add_mapping(
-                table,
-                (uintptr_t)&x86_64_smp_trampoline,
-                sym_to_phys(&x86_64_smp_trampoline),
-                PMAP_READABLE | PMAP_EXECUTABLE
+            table,
+            (uintptr_t)&x86_64_smp_trampoline,
+            sym_to_phys(&x86_64_smp_trampoline),
+            PMAP_READABLE | PMAP_EXECUTABLE
         )) {
         goto err;
     }
@@ -422,13 +422,13 @@ static void mp_wakeup_cleanup(void *ptr) {
 static event_t smp_current_online;
 
 static void launch_cpu(
-        uint32_t acpi_id,
-        uint32_t apic_id,
-        uint32_t flags,
-        struct acpi_madt *madt,
-        size_t *num_extra,
-        launch_func_t func,
-        void *ctx
+    uint32_t acpi_id,
+    uint32_t apic_id,
+    uint32_t flags,
+    struct acpi_madt *madt,
+    size_t *num_extra,
+    launch_func_t func,
+    void *ctx
 ) {
     if (apic_id == this_cpu_read(arch.apic_id)) return;
 

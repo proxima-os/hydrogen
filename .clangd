@@ -1,2 +1,4 @@
 CompileFlags:
   Add: [-nostdlibinc]
+Style:
+  AngledHeaders: ["hydrogen/.*"]

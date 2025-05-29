@@ -1,12 +1,12 @@
 #pragma once
 
-#include "hydrogen/memory.h"
-#include "hydrogen/types.h"
 #include "mem/pmap.h"
 #include "proc/mutex.h"
 #include "proc/rcu.h"
 #include "util/list.h"
 #include "util/object.h"
+#include <hydrogen/memory.h>
+#include <hydrogen/types.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -27,11 +27,11 @@ typedef struct {
     // if state_out isn't null, this function locks rcu without unlocking it, and writes the state to state_out.
     // this is done in such a way that the returned page stays valid until rcu is unlocked.
     hydrogen_ret_t (*get_page)(
-            mem_object_t *self,
-            vmm_region_t *region,
-            uint64_t index,
-            rcu_state_t *state_out,
-            bool write
+        mem_object_t *self,
+        vmm_region_t *region,
+        uint64_t index,
+        rcu_state_t *state_out,
+        bool write
     );
 } mem_object_ops_t;
 
@@ -84,23 +84,23 @@ int vmm_clone(vmm_t **out, vmm_t *src);
 vmm_t *vmm_switch(vmm_t *vmm);
 
 hydrogen_ret_t vmm_map(
-        vmm_t *vmm,
-        uintptr_t hint,
-        size_t size,
-        unsigned flags,
-        mem_object_t *object,
-        object_rights_t rights,
-        uint64_t offset
+    vmm_t *vmm,
+    uintptr_t hint,
+    size_t size,
+    unsigned flags,
+    mem_object_t *object,
+    object_rights_t rights,
+    uint64_t offset
 );
 hydrogen_ret_t vmm_map_vdso(vmm_t *vmm);
 int vmm_remap(vmm_t *vmm, uintptr_t address, size_t size, unsigned flags);
 hydrogen_ret_t vmm_move(
-        vmm_t *vmm,
-        uintptr_t addr,
-        size_t size,
-        vmm_t *dest_vmm,
-        uintptr_t dest_addr,
-        size_t dest_size
+    vmm_t *vmm,
+    uintptr_t addr,
+    size_t size,
+    vmm_t *dest_vmm,
+    uintptr_t dest_addr,
+    size_t dest_size
 );
 int vmm_unmap(vmm_t *vmm, uintptr_t address, size_t size);
 

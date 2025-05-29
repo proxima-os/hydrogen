@@ -1,7 +1,5 @@
 #pragma once
 
-#include "hydrogen/signal.h"
-#include "hydrogen/types.h"
 #include "proc/mutex.h"
 #include "proc/sched.h"
 #include "proc/signal.h"
@@ -11,6 +9,8 @@
 #include "util/refcount.h"
 #include "util/spinlock.h"
 #include "util/time.h"
+#include <hydrogen/signal.h>
+#include <hydrogen/types.h>
 #include <stddef.h>
 #include <stdint.h>
 

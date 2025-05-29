@@ -66,11 +66,11 @@ typedef enum {
 
 // NOTE: This might disable IRQs!
 void pmap_handle_page_fault(
-        arch_context_t *context,
-        uintptr_t pc,
-        uintptr_t address,
-        pmap_fault_type_t type,
-        unsigned flags
+    arch_context_t *context,
+    uintptr_t pc,
+    uintptr_t address,
+    pmap_fault_type_t type,
+    unsigned flags
 );
 
 unsigned vmm_to_pmap_flags(unsigned flags);

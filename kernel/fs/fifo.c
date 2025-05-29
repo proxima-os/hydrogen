@@ -3,11 +3,6 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
-#include "hydrogen/eventqueue.h"
-#include "hydrogen/fcntl.h"
-#include "hydrogen/limits.h"
-#include "hydrogen/signal.h"
-#include "hydrogen/types.h"
 #include "kernel/compiler.h"
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
@@ -16,6 +11,11 @@
 #include "proc/signal.h"
 #include "util/eventqueue.h"
 #include "util/list.h"
+#include <hydrogen/eventqueue.h>
+#include <hydrogen/fcntl.h>
+#include <hydrogen/limits.h>
+#include <hydrogen/signal.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -158,7 +158,7 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
         if (fifo->num_readers == 0) {
             mutex_rel(&fifo->lock);
             __siginfo_t sig = {
-                    .__signo = __SIGPIPE,
+                .__signo = __SIGPIPE,
             };
             queue_signal(current_thread->process, &current_thread->sig_target, &sig, 0, &current_thread->pipe_sig);
             return ret_error(EPIPE);
@@ -233,11 +233,11 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
 }
 
 static const file_ops_t fifo_file_ops = {
-        .base.free = fifo_file_free,
-        .base.event_add = fifo_file_event_add,
-        .base.event_del = fifo_file_event_del,
-        .read = fifo_file_read,
-        .write = fifo_file_write,
+    .base.free = fifo_file_free,
+    .base.event_add = fifo_file_event_add,
+    .base.event_del = fifo_file_event_del,
+    .read = fifo_file_read,
+    .write = fifo_file_write,
 };
 
 hydrogen_ret_t fifo_open(fifo_t *fifo, inode_t *inode, dentry_t *path, int flags) {

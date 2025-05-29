@@ -6,10 +6,6 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
-#include "hydrogen/eventqueue.h"
-#include "hydrogen/process.h"
-#include "hydrogen/signal.h"
-#include "hydrogen/types.h"
 #include "init/main.h"
 #include "init/task.h"
 #include "kernel/compiler.h"
@@ -27,6 +23,10 @@
 #include "util/refcount.h"
 #include "util/spinlock.h"
 #include "util/time.h"
+#include <hydrogen/eventqueue.h>
+#include <hydrogen/process.h>
+#include <hydrogen/signal.h>
+#include <hydrogen/types.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -76,9 +76,9 @@ static int expand_pids(void) {
     if (new_cap <= pids_capacity) return EAGAIN;
 
     pid_table_entry_t *new_table = vrealloc(
-            pid_table,
-            pids_capacity * sizeof(*pid_table),
-            new_cap * sizeof(*pid_table)
+        pid_table,
+        pids_capacity * sizeof(*pid_table),
+        new_cap * sizeof(*pid_table)
     );
     if (unlikely(!new_table)) return ENOMEM;
 
@@ -229,10 +229,10 @@ static void process_event_del(object_t *ptr, active_event_t *event) {
 }
 
 static const object_ops_t process_ops = {
-        .free = process_free,
-        .event_add = process_event_add,
-        .event_get = process_event_get,
-        .event_del = process_event_del,
+    .free = process_free,
+    .event_add = process_event_add,
+    .event_get = process_event_get,
+    .event_del = process_event_del,
 };
 
 static void alarm_trigger(timer_event_t *timer) {
@@ -612,11 +612,11 @@ static void reparent_children(process_t *process) {
             if ((code != __CLD_CONTINUED && code != __CLD_STOPPED) ||
                 (init_process->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDSTOP) == 0) {
                 queue_signal_unlocked(
-                        init_process,
-                        &init_process->sig_target,
-                        &process->chld_sig.info,
-                        0,
-                        &process->chld_sig
+                    init_process,
+                    &init_process->sig_target,
+                    &process->chld_sig.info,
+                    0,
+                    &process->chld_sig
                 );
             }
 
@@ -738,11 +738,11 @@ static void handle_process_exit(process_t *process) {
     pgroup_deref(cgroup);
 
     __siginfo_t info = {
-            .__signo = __SIGCHLD,
-            .__code = __CLD_EXITED,
-            .__data.__user_or_sigchld.__pid = getpid(process),
-            .__data.__user_or_sigchld.__status = process->exit_status,
-            .__data.__user_or_sigchld.__uid = getuid(process),
+        .__signo = __SIGCHLD,
+        .__code = __CLD_EXITED,
+        .__data.__user_or_sigchld.__pid = getpid(process),
+        .__data.__user_or_sigchld.__status = process->exit_status,
+        .__data.__user_or_sigchld.__uid = getuid(process),
     };
 
     mutex_acq(&process->status_lock, 0, false);
@@ -796,11 +796,11 @@ void proc_thread_exit(process_t *process, struct thread *thread, int status) {
 
 void handle_process_terminated(process_t *process, int signal, bool dump) {
     __siginfo_t info = {
-            .__signo = __SIGCHLD,
-            .__code = dump ? __CLD_DUMPED : __CLD_KILLED,
-            .__data.__user_or_sigchld.__pid = getpid(process),
-            .__data.__user_or_sigchld.__status = signal,
-            .__data.__user_or_sigchld.__uid = getuid(process),
+        .__signo = __SIGCHLD,
+        .__code = dump ? __CLD_DUMPED : __CLD_KILLED,
+        .__data.__user_or_sigchld.__pid = getpid(process),
+        .__data.__user_or_sigchld.__status = signal,
+        .__data.__user_or_sigchld.__uid = getuid(process),
     };
 
     mutex_acq(&process->status_lock, 0, false);
@@ -826,11 +826,11 @@ void handle_process_terminated(process_t *process, int signal, bool dump) {
 
 void handle_process_stopped(process_t *process, int signal) {
     __siginfo_t info = {
-            .__signo = __SIGCHLD,
-            .__code = __CLD_STOPPED,
-            .__data.__user_or_sigchld.__pid = getpid(process),
-            .__data.__user_or_sigchld.__status = signal,
-            .__data.__user_or_sigchld.__uid = getuid(process),
+        .__signo = __SIGCHLD,
+        .__code = __CLD_STOPPED,
+        .__data.__user_or_sigchld.__pid = getpid(process),
+        .__data.__user_or_sigchld.__status = signal,
+        .__data.__user_or_sigchld.__uid = getuid(process),
     };
 
     mutex_acq(&process->status_lock, 0, false);
@@ -855,11 +855,11 @@ void handle_process_stopped(process_t *process, int signal) {
 
 void handle_process_continued(process_t *process, int signal) {
     __siginfo_t info = {
-            .__signo = __SIGCHLD,
-            .__code = __CLD_CONTINUED,
-            .__data.__user_or_sigchld.__pid = getpid(process),
-            .__data.__user_or_sigchld.__status = signal,
-            .__data.__user_or_sigchld.__uid = getuid(process),
+        .__signo = __SIGCHLD,
+        .__code = __CLD_CONTINUED,
+        .__data.__user_or_sigchld.__pid = getpid(process),
+        .__data.__user_or_sigchld.__status = signal,
+        .__data.__user_or_sigchld.__uid = getuid(process),
     };
 
     mutex_acq(&process->status_lock, 0, false);
@@ -899,14 +899,14 @@ static void handle_got_status(process_t *process, unsigned flags, bool own_waiti
 
         if (process->exit_signal_sent) {
             __atomic_fetch_add(
-                    &parent->child_kern_time,
-                    process->kern_time + process->child_kern_time,
-                    __ATOMIC_RELAXED
+                &parent->child_kern_time,
+                process->kern_time + process->child_kern_time,
+                __ATOMIC_RELAXED
             );
             __atomic_fetch_add(
-                    &parent->child_user_time,
-                    process->user_time + process->child_user_time,
-                    __ATOMIC_RELAXED
+                &parent->child_user_time,
+                process->user_time + process->child_user_time,
+                __ATOMIC_RELAXED
             );
         }
 
@@ -1085,8 +1085,8 @@ int sigaction(process_t *process, int signal, const struct __sigaction *action, 
 
         if (new_act.__func.__handler != __SIG_DFL) {
             if ((signal == __SIGKILL || signal == __SIGSTOP) ||
-                (new_act.__func.__handler != __SIG_IGN &&
-                 (uintptr_t)new_act.__func.__handler > arch_pt_max_user_addr())) {
+                (new_act.__func.__handler != __SIG_IGN && (uintptr_t)new_act.__func.__handler > arch_pt_max_user_addr()
+                )) {
                 mutex_rel(&process->sig_lock);
                 return EINVAL;
             }
@@ -1235,10 +1235,10 @@ bool can_send_signal(process_t *process, __siginfo_t *info) {
 
 void create_user_siginfo(__siginfo_t *out, int signal) {
     *out = (__siginfo_t){
-            .__signo = signal,
-            .__code = __SI_USER,
-            .__data.__user_or_sigchld.__pid = getpid(current_thread->process),
-            .__data.__user_or_sigchld.__uid = getuid(current_thread->process),
+        .__signo = signal,
+        .__code = __SI_USER,
+        .__data.__user_or_sigchld.__pid = getpid(current_thread->process),
+        .__data.__user_or_sigchld.__uid = getuid(current_thread->process),
     };
 }
 
@@ -1734,77 +1734,71 @@ int seteuid(process_t *process, uint32_t euid) {
 
 int setregid(process_t *process, uint32_t gid, uint32_t egid) {
     update_identity(
-            (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->sgid) &&
-                    (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid ||
-                     egid == old_ident->sgid),
-            ({
-                if (egid != (uint32_t)-1) {
-                    new_ident->egid = egid;
-                    if (egid != new_ident->gid) new_ident->sgid = egid;
-                }
+        (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->sgid) &&
+            (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid || egid == old_ident->sgid),
+        ({
+            if (egid != (uint32_t)-1) {
+                new_ident->egid = egid;
+                if (egid != new_ident->gid) new_ident->sgid = egid;
+            }
 
-                if (gid != (uint32_t)-1) {
-                    new_ident->gid = gid;
-                    new_ident->sgid = new_ident->egid;
-                }
+            if (gid != (uint32_t)-1) {
+                new_ident->gid = gid;
+                new_ident->sgid = new_ident->egid;
+            }
 
-                0;
-            })
+            0;
+        })
     );
 }
 
 int setreuid(process_t *process, uint32_t uid, uint32_t euid) {
     update_identity(
-            (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->suid) &&
-                    (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid ||
-                     euid == old_ident->suid),
-            ({
-                if (euid != (uint32_t)-1) {
-                    new_ident->euid = euid;
-                    if (euid != new_ident->uid) new_ident->suid = euid;
-                }
+        (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->suid) &&
+            (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid || euid == old_ident->suid),
+        ({
+            if (euid != (uint32_t)-1) {
+                new_ident->euid = euid;
+                if (euid != new_ident->uid) new_ident->suid = euid;
+            }
 
-                if (uid != (uint32_t)-1) {
-                    new_ident->uid = uid;
-                    new_ident->suid = new_ident->euid;
-                }
+            if (uid != (uint32_t)-1) {
+                new_ident->uid = uid;
+                new_ident->suid = new_ident->euid;
+            }
 
-                0;
-            })
+            0;
+        })
     );
 }
 
 int setresgid(process_t *process, uint32_t gid, uint32_t egid, uint32_t sgid) {
     update_identity(
-            (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->egid || gid == old_ident->sgid) &&
-                    (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid ||
-                     egid == old_ident->sgid) &&
-                    (sgid == (uint32_t)-1 || gid == old_ident->gid || sgid == old_ident->egid ||
-                     sgid == old_ident->sgid),
-            ({
-                if (gid != (uint32_t)-1) new_ident->gid = gid;
-                if (egid != (uint32_t)-1) new_ident->egid = egid;
-                if (sgid != (uint32_t)-1) new_ident->sgid = sgid;
+        (gid == (uint32_t)-1 || gid == old_ident->gid || gid == old_ident->egid || gid == old_ident->sgid) &&
+            (egid == (uint32_t)-1 || egid == old_ident->gid || egid == old_ident->egid || egid == old_ident->sgid) &&
+            (sgid == (uint32_t)-1 || gid == old_ident->gid || sgid == old_ident->egid || sgid == old_ident->sgid),
+        ({
+            if (gid != (uint32_t)-1) new_ident->gid = gid;
+            if (egid != (uint32_t)-1) new_ident->egid = egid;
+            if (sgid != (uint32_t)-1) new_ident->sgid = sgid;
 
-                0;
-            })
+            0;
+        })
     );
 }
 
 int setresuid(process_t *process, uint32_t uid, uint32_t euid, uint32_t suid) {
     update_identity(
-            (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->euid || uid == old_ident->suid) &&
-                    (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid ||
-                     euid == old_ident->suid) &&
-                    (suid == (uint32_t)-1 || uid == old_ident->uid || suid == old_ident->euid ||
-                     suid == old_ident->suid),
-            ({
-                if (uid != (uint32_t)-1) new_ident->uid = uid;
-                if (euid != (uint32_t)-1) new_ident->euid = euid;
-                if (suid != (uint32_t)-1) new_ident->suid = suid;
+        (uid == (uint32_t)-1 || uid == old_ident->uid || uid == old_ident->euid || uid == old_ident->suid) &&
+            (euid == (uint32_t)-1 || euid == old_ident->uid || euid == old_ident->euid || euid == old_ident->suid) &&
+            (suid == (uint32_t)-1 || uid == old_ident->uid || suid == old_ident->euid || suid == old_ident->suid),
+        ({
+            if (uid != (uint32_t)-1) new_ident->uid = uid;
+            if (euid != (uint32_t)-1) new_ident->euid = euid;
+            if (suid != (uint32_t)-1) new_ident->suid = suid;
 
-                0;
-            })
+            0;
+        })
     );
 }
 

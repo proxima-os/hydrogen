@@ -4,8 +4,8 @@
 #ifndef HYDROGEN_PROCESS_H
 #define HYDROGEN_PROCESS_H
 
-#include "hydrogen/signal.h"
-#include "hydrogen/types.h"
+#include <hydrogen/signal.h>
+#include <hydrogen/types.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -178,7 +178,7 @@ int hydrogen_process_getresuid(int process, uint32_t ids[3]) __asm__("__hydrogen
  *         than `count`; if so, the first `count` group IDs have been placed in `buffer`.
  */
 hydrogen_ret_t hydrogen_process_getgroups(int process, uint32_t *buffer, size_t count) __asm__(
-        "__hydrogen_process_getgroups"
+    "__hydrogen_process_getgroups"
 );
 
 /** See the POSIX manual on setgid. */
@@ -201,12 +201,12 @@ int hydrogen_process_setreuid(int process, uint32_t ruid, uint32_t euid) __asm__
 
 /** See the POSIX manual on setresgid. */
 int hydrogen_process_setresgid(int process, uint32_t rgid, uint32_t egid, uint32_t sgid) __asm__(
-        "__hydrogen_process_setresgid"
+    "__hydrogen_process_setresgid"
 );
 
 /** See the POSIX manual on setresuid. */
 int hydrogen_process_setresuid(int process, uint32_t ruid, uint32_t euid, uint32_t suid) __asm__(
-        "__hydrogen_process_setresuid"
+    "__hydrogen_process_setresuid"
 );
 
 /**
@@ -218,8 +218,7 @@ int hydrogen_process_setresuid(int process, uint32_t ruid, uint32_t euid, uint32
  * \param[in] count The number of groups in the new group list.
  * \return 0, if successful; if not, an error code.
  */
-int hydrogen_process_setgroups(int process, const uint32_t *groups, size_t count) __asm__(
-        "__hydrogen_process_setgroups"
+int hydrogen_process_setgroups(int process, const uint32_t *groups, size_t count) __asm__("__hydrogen_process_setgroups"
 );
 
 /**
@@ -232,10 +231,10 @@ int hydrogen_process_setgroups(int process, const uint32_t *groups, size_t count
  * \return 0, if succcessful; if not, an error code.
  */
 int hydrogen_process_sigaction(
-        int process,
-        int signal,
-        const struct __sigaction *action,
-        struct __sigaction *old
+    int process,
+    int signal,
+    const struct __sigaction *action,
+    struct __sigaction *old
 ) __asm__("__hydrogen_process_sigaction");
 
 /** See the POSIX manual on kill. Note that `process` is a handle here, not an ID.
@@ -258,7 +257,7 @@ int hydrogen_process_group_send_signal(int group_id, int signal) __asm__("__hydr
  * \return 0, if successful; if not, an error code.
  */
 int hydrogen_process_sigwait(int process, __sigset_t set, __siginfo_t *info, uint64_t deadline) __asm__(
-        "__hydrogen_process_sigwait"
+    "__hydrogen_process_sigwait"
 );
 
 /**
@@ -281,7 +280,7 @@ __attribute__((__noreturn__)) void hydrogen_process_exit(int status) __asm__("__
  * \return 0, if successful; if not, an error code.
  */
 int hydrogen_process_wait(int process, unsigned flags, __siginfo_t *info, uint64_t deadline) __asm__(
-        "__hydrogen_process_wait"
+    "__hydrogen_process_wait"
 );
 
 /**
@@ -298,7 +297,7 @@ int hydrogen_process_wait(int process, unsigned flags, __siginfo_t *info, uint64
  * \return The ID of the process whose state changed (in `integer`).
  */
 hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned flags, __siginfo_t *info, uint64_t deadline) __asm__(
-        "__hydrogen_process_wait_id"
+    "__hydrogen_process_wait_id"
 );
 
 /**
