@@ -285,9 +285,11 @@ retry: {
             }
         }
 
-        if (parent->balance != 0) break;
+        if (parent->balance != 0 || !parent->parent) break;
 
-        parent = parent->parent;
+        vmm_region_t *grandparent = parent->parent;
+        field = parent == grandparent->left ? &grandparent->left : &grandparent->right;
+        parent = grandparent;
     }
 }
 }
