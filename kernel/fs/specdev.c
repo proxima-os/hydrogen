@@ -421,7 +421,7 @@ static hydrogen_ret_t mem_ioctl(file_t *self, int request, void *buffer, size_t 
         hydrogen_ioctl_mem_allocate_t data;
         if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
 
-        int error = user_memcpy(&data, buffer, size);
+        int error = user_memcpy(&data, buffer, sizeof(data));
         if (unlikely(error)) return ret_error(error);
 
         if (unlikely(data.input.min > data.input.max)) return ret_error(EINVAL);
@@ -462,6 +462,20 @@ static hydrogen_ret_t mem_ioctl(file_t *self, int request, void *buffer, size_t 
         ret = hnd_alloc(&file->base, HYDROGEN_FILE_READ | HYDROGEN_FILE_WRITE, handle_flags);
         obj_deref(&file->base);
         return ret;
+    }
+    case __IOCTL_MEM_IS_RAM: {
+        hydrogen_ioctl_mem_is_ram_t data;
+        if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
+
+        int error = user_memcpy(&data, buffer, sizeof(data));
+        if (unlikely(error)) return ret_error(error);
+
+        if (unlikely(data.size == 0)) return ret_error(EINVAL);
+
+        uint64_t tail = data.start + (data.size - 1);
+        if (tail < data.start) tail = UINT64_MAX;
+
+        return ret_integer(is_area_ram(data.start, tail));
     }
     default: return ret_error(ENOTTY);
     }

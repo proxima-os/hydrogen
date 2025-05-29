@@ -20,6 +20,11 @@ typedef union {
     } output;
 } hydrogen_ioctl_mem_allocate_t;
 
+typedef struct {
+    uint64_t start;
+    uint64_t size;
+} hydrogen_ioctl_mem_is_ram_t;
+
 #ifdef __cplusplus
 };
 #endif
