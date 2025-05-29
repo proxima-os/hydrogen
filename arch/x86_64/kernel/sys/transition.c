@@ -171,5 +171,7 @@ int x86_64_sigreturn(uintptr_t ctx) {
     regs->rip = mctx->__rip;
     regs->rflags = (mctx->__rflags & 0x10dd5) | 0x200; // get RF, OF, DF, TF, SF, ZF, AF, PF, and CF from user
 
+    if (current_thread->arch.io_access) regs->rflags |= 3ul << 12;
+
     arch_enter_user_mode_context(regs);
 }

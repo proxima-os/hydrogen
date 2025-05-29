@@ -12,4 +12,5 @@ typedef struct {
     uintptr_t fs_base, gs_base;
     size_t orig_rax, orig_rdx;
     bool restarted;
+    bool io_access;
 } arch_thread_t;
