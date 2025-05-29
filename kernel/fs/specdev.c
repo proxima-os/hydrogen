@@ -418,6 +418,10 @@ static hydrogen_ret_t create_alloc_file(page_t *head, size_t count, int flags) {
 static hydrogen_ret_t mem_ioctl(file_t *self, int request, void *buffer, size_t size) {
     switch (request) {
     case __IOCTL_MEM_ALLOCATE: {
+        if (unlikely((self->flags & (__O_RDONLY | __O_WRONLY)) != (__O_RDONLY | __O_WRONLY))) {
+            return ret_error(EBADF);
+        }
+
         hydrogen_ioctl_mem_allocate_t data;
         if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
 
@@ -459,11 +463,41 @@ static hydrogen_ret_t mem_ioctl(file_t *self, int request, void *buffer, size_t 
         if (!(data.input.flags & __O_CLOEXEC)) handle_flags |= HYDROGEN_HANDLE_EXEC_KEEP;
         if (!(data.input.flags & __O_CLOFORK)) handle_flags |= HYDROGEN_HANDLE_CLONE_KEEP;
 
-        ret = hnd_alloc(&file->base, HYDROGEN_FILE_READ | HYDROGEN_FILE_WRITE, handle_flags);
+        error = hnd_reserve(current_thread->namespace);
+        if (unlikely(error)) {
+            obj_deref(&file->base);
+            return ret_error(error);
+        }
+
+        handle_data_t *hdata = vmalloc(sizeof(*hdata));
+        if (unlikely(error)) {
+            hnd_unreserve(current_thread->namespace);
+            obj_deref(&file->base);
+            return ret_error(error);
+        }
+
+        data.output.address = page_to_phys(page);
+        error = user_memcpy(buffer, &data, sizeof(data));
+        if (unlikely(error)) {
+            vfree(hdata, sizeof(*hdata));
+            hnd_unreserve(current_thread->namespace);
+            obj_deref(&file->base);
+            return ret_error(error);
+        }
+
+        int fd = hnd_alloc_reserved(
+            current_thread->namespace,
+            &file->base,
+            HYDROGEN_FILE_READ | HYDROGEN_FILE_WRITE,
+            handle_flags,
+            hdata
+        );
         obj_deref(&file->base);
-        return ret;
+        return ret_integer(fd);
     }
     case __IOCTL_MEM_IS_RAM: {
+        if (unlikely(!(self->flags & __O_RDONLY))) return ret_error(EBADF);
+
         hydrogen_ioctl_mem_is_ram_t data;
         if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
 
@@ -476,6 +510,25 @@ static hydrogen_ret_t mem_ioctl(file_t *self, int request, void *buffer, size_t 
         if (tail < data.start) tail = UINT64_MAX;
 
         return ret_integer(is_area_ram(data.start, tail));
+    }
+    case __IOCTL_MEM_NEXT_RAM_RANGE: {
+        if (unlikely(!(self->flags & __O_RDONLY))) return ret_error(EBADF);
+
+        hydrogen_ioctl_mem_next_ram_range_t data;
+        if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
+
+        int error = user_memcpy(&data, buffer, sizeof(data));
+        if (unlikely(error)) return ret_error(error);
+
+        uint64_t head, tail;
+        bool owned;
+        if (!next_ram_range(data.input.address, &head, &tail, &owned)) return ret_error(EEXIST);
+
+        data.output.start = head;
+        data.output.size = tail - head + 1;
+        data.output.kernel_owned = owned;
+
+        return ret_error(user_memcpy(buffer, &data, sizeof(data)));
     }
     default: return ret_error(ENOTTY);
     }

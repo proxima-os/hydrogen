@@ -631,6 +631,23 @@ bool is_area_ram(uint64_t head, uint64_t tail) {
     return false;
 }
 
+bool next_ram_range(uint64_t addr, uint64_t *head, uint64_t *tail, bool *owned) {
+    ram_range_t *cur = LIST_HEAD(ram_list, ram_range_t, node);
+
+    while (cur) {
+        if (cur->tail >= addr) {
+            *head = cur->head;
+            *tail = cur->tail;
+            *owned = cur->kernel_owned;
+            return true;
+        }
+
+        cur = LIST_NEXT(*cur, ram_range_t, node);
+    }
+
+    return false;
+}
+
 bool memmap_iter(bool (*func)(uint64_t, uint64_t, bool, void *), void *ctx) {
     ram_range_t *cur = LIST_HEAD(ram_list, ram_range_t, node);
 
