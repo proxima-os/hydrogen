@@ -277,7 +277,7 @@ hydrogen_ret_t gsi_open(uint32_t gsi, int flags) {
         irq->active_low = flags & GSI_ACTIVE_LOW;
         irq->level_triggered = flags & GSI_LEVEL_TRIGGERED;
         irq->shareable = flags & GSI_SHAREABLE;
-        ioapic_write(apic, gsi, apic_value(irq));
+        ioapic_write(apic, IOREDTBL(gsi), apic_value(irq));
     }
 
     spin_rel(&irq->base.lock, state);
