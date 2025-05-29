@@ -284,9 +284,12 @@ void pmap_switch(pmap_t *target) {
         arch_pt_switch(target->table, target->asid, target->table == asid->table);
     }
 
-    asid->table = target->table;
+    if (target->table != asid->table) {
+        asid->table = target->table;
+        hlist_insert_head(&target->cpus, &asid->node);
+    }
+
     cpu->pmap.current = target;
-    hlist_insert_head(&target->cpus, &asid->node);
     spin_rel_noirq(&target->cpus_lock);
 
     restore_irq(state);
