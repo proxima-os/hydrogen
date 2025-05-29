@@ -655,7 +655,6 @@ _Static_assert(KERNEL_STACK_SIZE >= KERNEL_STACK_ALIGN, "stack must be larger th
 _Static_assert(KERNEL_STACK_ALIGN <= PAGE_SIZE, "stack must not be aligned to multi-page boundary");
 
 void *alloc_kernel_stack(void) {
-#if HYDROGEN_ASSERTIONS
     uintptr_t addr = kvmm_alloc(KERNEL_STACK_SIZE + PAGE_SIZE);
     if (unlikely(!addr)) return NULL;
 
@@ -670,17 +669,10 @@ void *alloc_kernel_stack(void) {
 
     pmap_alloc(NULL, addr + PAGE_SIZE, KERNEL_STACK_SIZE, PMAP_READABLE | PMAP_WRITABLE);
     return (void *)(addr + PAGE_SIZE);
-#else
-    return vmalloc(KERNEL_STACK_SIZE);
-#endif
 }
 
 void free_kernel_stack(void *stack) {
-#if HYDROGEN_ASSERTIONS
     pmap_unmap(NULL, (uintptr_t)stack, KERNEL_STACK_SIZE);
     pmem_unreserve(KERNEL_STACK_SIZE >> PAGE_SHIFT);
     kvmm_free((uintptr_t)stack - PAGE_SIZE, KERNEL_STACK_SIZE + PAGE_SIZE);
-#else
-    vfree(stack, KERNEL_STACK_SIZE);
-#endif
 }
