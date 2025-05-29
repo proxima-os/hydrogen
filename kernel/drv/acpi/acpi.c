@@ -82,6 +82,8 @@ static void gsi_device_file_free(object_t *ptr) {
 static hydrogen_ret_t gsi_device_file_ioctl(file_t *self, int request, void *buffer, size_t size) {
     switch (request) {
     case __IOCTL_IRQ_OPEN: {
+        if (unlikely((self->flags & (__O_RDONLY | __O_WRONLY)) != (__O_RDONLY | __O_WRONLY))) return ret_error(EBADF);
+
         hydrogen_ioctl_irq_open_t data;
         if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
 
