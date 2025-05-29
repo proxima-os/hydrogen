@@ -215,7 +215,7 @@ static int load_image(image_info_t *out, vmm_t *vmm, file_t *file, ident_t *iden
 
             if (file_tail != zero_tail) {
                 uintptr_t max = file_map_tail < zero_tail ? file_map_tail : zero_tail;
-                error = user_memset((void *)file_tail, 0, max - file_tail);
+                error = user_memset((void *)(file_tail + 1), 0, max - file_tail);
                 if (unlikely(error)) goto err2;
             }
 
