@@ -401,6 +401,7 @@ static const file_ops_t klog_file_ops = {
 static hydrogen_ret_t klog_open(fs_device_t *ptr, inode_t *inode, dentry_t *path, int flags, ident_t *ident) {
     klog_file_t *file = vmalloc(sizeof(*file));
     if (unlikely(!file)) return ret_error(ENOMEM);
+    memset(file, 0, sizeof(*file));
 
     init_file(&file->base, &klog_file_ops, inode, path, flags);
 

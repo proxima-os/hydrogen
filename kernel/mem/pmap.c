@@ -1687,8 +1687,17 @@ void pmap_handle_page_fault(
 
 unsigned vmm_to_pmap_flags(unsigned flags) {
     unsigned pmap_flags = 0;
+
     if (flags & HYDROGEN_MEM_READ) pmap_flags |= PMAP_READABLE;
     if (flags & HYDROGEN_MEM_WRITE) pmap_flags |= PMAP_WRITABLE;
     if (flags & HYDROGEN_MEM_EXEC) pmap_flags |= PMAP_EXECUTABLE;
+
+    // TODO: Add better memory type pmap flags.
+    switch (flags & HYDROGEN_MEM_TYPE_MASK) {
+    case HYDROGEN_MEM_TYPE_NORMAL: flags |= PMAP_CACHE_WB; break;
+    case HYDROGEN_MEM_TYPE_DEVICE: flags |= PMAP_CACHE_WC; break;
+    default: flags |= PMAP_CACHE_UC; break;
+    }
+
     return pmap_flags;
 }

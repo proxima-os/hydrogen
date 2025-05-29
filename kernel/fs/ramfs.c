@@ -90,7 +90,7 @@ static void ramfs_inode_regular_data_free(object_t *ptr) {
     ramfs_inode_t *self = CONTAINER(ramfs_inode_t, data.base.base, ptr);
     mutex_acq(&self->base.lock, 0, false);
 
-    if (!self->have_data_ref) {
+    if (self->have_data_ref) {
         self->have_data_ref = false;
         inode_deref(&self->base);
     }

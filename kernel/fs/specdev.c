@@ -1,15 +1,18 @@
 #include "arch/memmap.h"
 #include "arch/pmap.h"
 #include "arch/usercopy.h"
+#include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
 #include "init/main.h" /* IWYU pragma: keep */
 #include "init/task.h"
 #include "kernel/compiler.h"
+#include "kernel/pgsize.h"
 #include "kernel/return.h"
 #include "mem/kvmm.h"
 #include "mem/memmap.h"
 #include "mem/pmap.h"
+#include "mem/pmem.h"
 #include "mem/vmalloc.h"
 #include "mem/vmm.h"
 #include "proc/process.h"
@@ -21,6 +24,8 @@
 #include <hydrogen/fcntl.h>
 #include <hydrogen/filesystem.h>
 #include <hydrogen/handle.h>
+#include <hydrogen/ioctl-data.h>
+#include <hydrogen/ioctl.h>
 #include <hydrogen/memory.h>
 #include <hydrogen/types.h>
 #include <stddef.h>
@@ -227,19 +232,7 @@ static void mem_object_map(
     unsigned flags,
     uint64_t offset
 ) {
-    struct mem_map_ctx ctx = {.vmm = vmm, .vhead = head, .phead = offset};
-
-    if (flags & HYDROGEN_MEM_READ) flags |= PMAP_READABLE;
-    if (flags & HYDROGEN_MEM_WRITE) flags |= PMAP_WRITABLE;
-    if (flags & HYDROGEN_MEM_EXEC) flags |= PMAP_EXECUTABLE;
-
-    // TODO: Add better memory type pmap flags.
-    switch (flags & HYDROGEN_MEM_TYPE_MASK) {
-    case HYDROGEN_MEM_TYPE_NORMAL: flags |= PMAP_CACHE_WB; break;
-    case HYDROGEN_MEM_TYPE_DEVICE: flags |= PMAP_CACHE_WC; break;
-    default: flags |= PMAP_CACHE_UC; break;
-    }
-
+    struct mem_map_ctx ctx = {.vmm = vmm, .vhead = head, .phead = offset, .flags = vmm_to_pmap_flags(flags)};
     mem_iter(offset, tail - head + 1, mem_map_cb, &ctx);
 }
 
@@ -258,12 +251,229 @@ static hydrogen_ret_t mem_mmap(
     return vmm_map(vmm, hint, size, flags, &mem_object, rights, offset);
 }
 
+typedef struct {
+    fs_device_t base;
+    mem_object_t mem;
+    page_t *head;
+    size_t count;
+    bool have_mem_ref;
+} alloc_device_t;
+
+static hydrogen_ret_t alloc_seek(file_t *self, hydrogen_seek_anchor_t anchor, int64_t offset) {
+    alloc_device_t *device = (alloc_device_t *)self->inode->device;
+    uint64_t position;
+
+    switch (anchor) {
+    case HYDROGEN_SEEK_BEGIN: position = 0; break;
+    case HYDROGEN_SEEK_CURRENT: position = self->position; break;
+    case HYDROGEN_SEEK_END: position = (uint64_t)device->count << PAGE_SHIFT; break;
+    default: return ret_error(EINVAL);
+    }
+
+    uint64_t rpos = position + offset;
+
+    if (offset >= 0) {
+        if (rpos < position || rpos > INT64_MAX) return ret_error(EOVERFLOW);
+    } else if (rpos > position) {
+        return ret_error(EINVAL);
+    }
+
+    return ret_integer(rpos);
+}
+
+static hydrogen_ret_t alloc_read(file_t *self, void *buffer, size_t count, uint64_t position) {
+    alloc_device_t *device = (alloc_device_t *)self->inode->device;
+    uint64_t size = (uint64_t)device->count << PAGE_SHIFT;
+    if (size > INT64_MAX) size = INT64_MAX;
+    if (position >= size) return ret_integer(0);
+    uint64_t avail = size - position;
+
+    size_t cur = avail < count ? avail : count;
+    int error = user_memcpy(buffer, page_to_virt(device->head) + position, cur);
+    return RET_MAYBE(integer, error, cur);
+}
+
+static hydrogen_ret_t alloc_write(file_t *self, const void *buffer, size_t count, uint64_t position, bool rpos) {
+    alloc_device_t *device = (alloc_device_t *)self->inode->device;
+    uint64_t size = (uint64_t)device->count << PAGE_SHIFT;
+    if (size > INT64_MAX) size = INT64_MAX;
+    if (position >= size) return ret_integer(0);
+    uint64_t avail = size - position;
+
+    size_t cur = avail < count ? avail : count;
+    int error = user_memcpy(page_to_virt(device->head) + position, buffer, cur);
+    return RET_MAYBE(integer, error, cur);
+}
+
+static hydrogen_ret_t alloc_mmap(
+    file_t *self,
+    object_rights_t rights,
+    struct vmm *vmm,
+    uintptr_t hint,
+    size_t size,
+    uint32_t flags,
+    uint64_t offset
+) {
+    alloc_device_t *device = (alloc_device_t *)self->inode->device;
+    return vmm_map(vmm, hint, size, flags, &device->mem, rights, offset);
+}
+
+static const file_ops_t alloc_file_ops = {
+    .base.free = special_file_free,
+    .seek = alloc_seek,
+    .read = alloc_read,
+    .write = alloc_write,
+    .mmap = alloc_mmap,
+};
+
+static void alloc_device_free(fs_device_t *ptr) {
+    alloc_device_t *self = (alloc_device_t *)ptr;
+    pmem_free_multiple_now(self->head, self->count);
+    vfree(self, sizeof(*self));
+}
+
+static hydrogen_ret_t alloc_device_open(fs_device_t *self, inode_t *inode, dentry_t *path, int flags, ident_t *ident) {
+    file_t *file = vmalloc(sizeof(*file));
+    if (unlikely(!file)) return ret_error(ENOMEM);
+    memset(file, 0, sizeof(*file));
+
+    init_file(file, &alloc_file_ops, inode, path, flags);
+
+    return ret_pointer(file);
+}
+
+static void alloc_device_mem_free(object_t *ptr) {
+    alloc_device_t *self = CONTAINER(alloc_device_t, mem.base, ptr);
+
+    if (__atomic_exchange_n(&self->have_mem_ref, false, __ATOMIC_ACQ_REL)) {
+        fsdev_deref(&self->base);
+    }
+}
+
+static void alloc_device_mem_map(
+    mem_object_t *ptr,
+    vmm_t *vmm,
+    uintptr_t head,
+    uintptr_t tail,
+    unsigned flags,
+    uint64_t offset
+) {
+    alloc_device_t *self = CONTAINER(alloc_device_t, mem, ptr);
+
+    if (!__atomic_exchange_n(&self->have_mem_ref, true, __ATOMIC_ACQ_REL)) {
+        fsdev_ref(&self->base);
+    }
+
+    uint64_t size = (uint64_t)self->count << PAGE_SHIFT;
+    if (offset >= size) return;
+    uint64_t avail = size - offset;
+    size_t wanted = tail - head + 1;
+    size_t cur = avail < wanted ? avail : wanted;
+
+    pmap_map(vmm, head, page_to_phys(self->head) + offset, cur, vmm_to_pmap_flags(flags));
+}
+
+static const fs_device_ops_t alloc_device_ops = {
+    .free = alloc_device_free,
+    .open = alloc_device_open,
+};
+
+static const mem_object_ops_t alloc_device_mem_ops = {
+    .base.free = alloc_device_mem_free,
+    .post_map = alloc_device_mem_map,
+};
+
+static hydrogen_ret_t create_alloc_file(page_t *head, size_t count, int flags) {
+    alloc_device_t *device = vmalloc(sizeof(*device));
+    if (unlikely(!device)) return ret_error(ENOMEM);
+    memset(device, 0, sizeof(*device));
+
+    device->base.ops = &alloc_device_ops;
+    device->base.references = REF_INIT(1);
+    device->mem.base.ops = &alloc_device_mem_ops.base;
+    device->head = head;
+    device->count = count;
+
+    mem_object_init(&device->mem);
+    obj_deref(&device->mem.base);
+
+    inode_t *inode;
+    ident_t *ident = ident_get(current_thread->process);
+    int error = vfs_create_anonymous(&inode, HYDROGEN_CHARACTER_DEVICE, __S_IRUSR | __S_IWUSR, &device->base, ident);
+    fsdev_deref(&device->base);
+    if (unlikely(error)) {
+        ident_deref(ident);
+        return ret_error(error);
+    }
+
+    file_t *file;
+    error = vfs_fopen(&file, NULL, inode, flags | __O_RDONLY | __O_WRONLY, ident);
+    inode_deref(inode);
+    ident_deref(ident);
+    if (unlikely(error)) return ret_error(error);
+
+    return ret_pointer(file);
+}
+
+static hydrogen_ret_t mem_ioctl(file_t *self, int request, void *buffer, size_t size) {
+    switch (request) {
+    case __IOCTL_MEM_ALLOCATE: {
+        hydrogen_ioctl_mem_allocate_t data;
+        if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
+
+        int error = user_memcpy(&data, buffer, size);
+        if (unlikely(error)) return ret_error(error);
+
+        if (unlikely(data.input.min > data.input.max)) return ret_error(EINVAL);
+        if (unlikely(data.input.size == 0)) return ret_error(EINVAL);
+        if (unlikely(data.input.align == 0)) return ret_error(EINVAL);
+        if (unlikely(data.input.align & (data.input.align - 1))) return ret_error(EINVAL);
+        if (unlikely(data.input.flags & ~(__O_CLOEXEC | __O_CLOFORK))) return ret_error(EINVAL);
+
+        uint64_t limit = data.input.size - 1;
+        if (unlikely(limit > data.input.max - data.input.min)) return ret_error(EINVAL);
+
+        uint64_t min = (data.input.min + PAGE_MASK) & ~PAGE_MASK;
+        uint64_t max = (data.input.max - PAGE_MASK) | PAGE_MASK;
+
+        if (unlikely(min < data.input.min)) return ret_error(ENOMEM);
+        if (unlikely(max > data.input.max)) return ret_error(ENOMEM);
+        if (unlikely(min > max)) return ret_error(ENOMEM);
+
+        limit |= PAGE_MASK;
+        if (unlikely(limit > max - min)) return ret_error(ENOMEM);
+        size_t pages = (limit >> PAGE_SHIFT) + 1;
+
+        page_t *page = pmem_alloc_slow_and_unreliable_now(min, max, data.input.align, pages);
+        if (unlikely(!page)) return ret_error(ENOMEM);
+
+        hydrogen_ret_t ret = create_alloc_file(page, pages, data.input.flags);
+        if (unlikely(ret.error)) {
+            pmem_free_multiple_now(page, pages);
+            return ret;
+        }
+        file_t *file = ret.pointer;
+
+        uint32_t handle_flags = 0;
+
+        if (!(data.input.flags & __O_CLOEXEC)) handle_flags |= HYDROGEN_HANDLE_EXEC_KEEP;
+        if (!(data.input.flags & __O_CLOFORK)) handle_flags |= HYDROGEN_HANDLE_CLONE_KEEP;
+
+        ret = hnd_alloc(&file->base, HYDROGEN_FILE_READ | HYDROGEN_FILE_WRITE, handle_flags);
+        obj_deref(&file->base);
+        return ret;
+    }
+    default: return ret_error(ENOTTY);
+    }
+}
+
 static const file_ops_t mem_ops = {
     .base.free = special_file_free,
     .seek = mem_seek,
     .read = mem_read,
     .write = mem_write,
     .mmap = mem_mmap,
+    .ioctl = mem_ioctl,
 };
 
 typedef struct {
@@ -275,6 +485,7 @@ static hydrogen_ret_t special_device_open(fs_device_t *ptr, inode_t *inode, dent
     special_device_t *self = (special_device_t *)ptr;
     file_t *file = vmalloc(sizeof(*file));
     if (unlikely(!file)) return ret_error(ENOMEM);
+    memset(file, 0, sizeof(*file));
 
     init_file(file, self->ops, inode, path, flags);
     return ret_pointer(file);
