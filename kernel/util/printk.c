@@ -398,7 +398,7 @@ static const file_ops_t klog_file_ops = {
     .write = klog_file_write,
 };
 
-static hydrogen_ret_t klog_open(fs_device_t *ptr, inode_t *inode, dentry_t *path, int flags) {
+static hydrogen_ret_t klog_open(fs_device_t *ptr, inode_t *inode, dentry_t *path, int flags, ident_t *ident) {
     klog_file_t *file = vmalloc(sizeof(*file));
     if (unlikely(!file)) return ret_error(ENOMEM);
 

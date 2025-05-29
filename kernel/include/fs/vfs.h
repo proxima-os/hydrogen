@@ -113,7 +113,7 @@ typedef struct fs_device fs_device_t;
 
 typedef struct {
     void (*free)(fs_device_t *self);
-    hydrogen_ret_t (*open)(fs_device_t *self, inode_t *inode, dentry_t *path, int flags);
+    hydrogen_ret_t (*open)(fs_device_t *self, inode_t *inode, dentry_t *path, int flags, struct ident *ident);
 } fs_device_ops_t;
 
 typedef struct fs_device {

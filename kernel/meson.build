@@ -14,6 +14,7 @@ kernel_sources += files(
     'drv/framebuffer.c',
     'fs/fifo.c',
     'fs/ramfs.c',
+    'fs/specdev.c',
     'fs/vfs.c',
     'init/cmdline.c',
     'init/initrd.c',

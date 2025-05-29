@@ -1467,7 +1467,7 @@ static int do_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ide
     case HYDROGEN_CHARACTER_DEVICE:
     case HYDROGEN_BLOCK_DEVICE:
         if (inode->device) {
-            ret = inode->device->ops->open(inode->device, inode, path, flags);
+            ret = inode->device->ops->open(inode->device, inode, path, flags, ident);
         } else {
             ret = ret_error(ENXIO);
         }
