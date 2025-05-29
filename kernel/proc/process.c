@@ -171,6 +171,7 @@ static void process_free(object_t *ptr) {
         ident_deref(process->identity);
 
         signal_cleanup(&process->sig_target);
+        event_source_cleanup(&process->status_event);
         vfree(process, sizeof(*process));
 
         if (parent != NULL && ref_sub(&parent->base.references, 2)) {

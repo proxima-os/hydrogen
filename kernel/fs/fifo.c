@@ -311,5 +311,8 @@ hydrogen_ret_t fifo_open(fifo_t *fifo, inode_t *inode, dentry_t *path, int flags
 }
 
 void fifo_free(fifo_t *fifo) {
+    event_source_cleanup(&fifo->readable_event);
+    event_source_cleanup(&fifo->writable_event);
+    event_source_cleanup(&fifo->disconnect_event);
     vfree(fifo->buffer, __PIPE_BUF);
 }

@@ -422,4 +422,6 @@ void signal_cleanup(signal_target_t *target) {
 
         map &= ~1;
     }
+
+    event_source_cleanup(&target->event_source);
 }
