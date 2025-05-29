@@ -432,7 +432,7 @@ static int create_stack(
 ) {
     vmm_t *old = vmm_switch(vmm);
 
-    stack_build_ctx_t pass1 = {};
+    stack_build_ctx_t pass1 = {.main.align = 1, .blob.align = 1};
     int error = build_stack(&pass1, user_strings ? old : NULL, image, vdso, secure, argc, argv, envc, envp);
     if (unlikely(error)) {
         vmm_switch(old);
