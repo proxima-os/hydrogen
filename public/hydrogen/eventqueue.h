@@ -21,7 +21,6 @@ extern "C" {
 typedef enum {
     /**
      * Active when a process has a pending signal. Requires #HYDROGEN_PROCESS_WAIT_SIGNAL.
-     * The input data is the signal mask, the output data is the pending set.
      */
     HYDROGEN_EVENT_PROCESS_SIGNAL,
     /**
@@ -54,12 +53,15 @@ typedef enum {
      * Active when the a file description has been disconnected. See the POSIX manual on poll (POLLHUP).
      */
     HYDROGEN_EVENT_FILE_DESCRIPTION_DISCONNECTED,
+    /**
+     * Active when an interrupt is pending. Requires #HYDROGEN_INTERRUPT_WAIT.
+     */
+    HYDROGEN_EVENT_INTERRUPT_PENDING,
 } hydrogen_event_type_t;
 
 typedef struct {
     hydrogen_event_type_t type; /**< The type of the event. */
     uint32_t flags;             /**< The event output flags. */
-    uint64_t data;              /**< Event-specific data. */
     void *ctx;                  /**< The `ctx` parameter that was passed to #hydrogen_event_queue_add. */
 } hydrogen_event_t;
 

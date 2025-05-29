@@ -4,6 +4,7 @@
 #include "util/hlist.h"
 #include "util/list.h"
 #include "util/object.h"
+#include "util/spinlock.h"
 #include <hydrogen/eventqueue.h>
 #include <hydrogen/types.h>
 #include <stdint.h>
@@ -15,7 +16,7 @@ typedef struct {
     size_t table_capacity;
     size_t table_count;
     list_t events;
-    mutex_t pending_lock;
+    spinlock_t pending_lock;
     list_t pending;
     list_t waiting;
     size_t num_waking; // The number of pending events that can wake up waiters.
@@ -55,7 +56,7 @@ hydrogen_ret_t event_queue_remove(event_queue_t *queue, object_t *object, hydrog
 hydrogen_ret_t event_queue_wait(event_queue_t *queue, hydrogen_event_t *events, size_t count, uint64_t deadline);
 
 typedef struct {
-    mutex_t lock;
+    spinlock_t lock;
     list_t events;
     bool pending;
 } event_source_t;

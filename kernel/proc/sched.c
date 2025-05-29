@@ -605,7 +605,7 @@ void sched_queue_task(task_t *task) {
     restore_irq(state);
 }
 
-#define RCU_QUIET_INTERVAL (10 * NS_PER_MS)
+#define RCU_QUIET_INTERVAL (1 * NS_PER_MS)
 
 typedef struct {
     task_t base;

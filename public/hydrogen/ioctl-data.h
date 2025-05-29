@@ -37,6 +37,14 @@ typedef union {
     } output;
 } hydrogen_ioctl_mem_next_ram_range_t;
 
+typedef struct {
+    uint32_t irq;
+    uint32_t flags;
+    bool active_low : 1;
+    bool level_triggered : 1;
+    bool shareable : 1;
+} hydrogen_ioctl_irq_open_t;
+
 #ifdef __cplusplus
 };
 #endif

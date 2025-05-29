@@ -5,6 +5,7 @@ install_headers(
     'hydrogen/filesystem.h',
     'hydrogen/handle.h',
     'hydrogen/hydrogen.h',
+    'hydrogen/interrupt.h',
     'hydrogen/ioctl-data.h',
     'hydrogen/ioctl.h',
     'hydrogen/limits.h',

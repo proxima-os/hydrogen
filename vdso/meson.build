@@ -13,6 +13,7 @@ vdso_sources += files(
     'filesystem.c',
     'handle.c',
     'hydrogen.c',
+    'interrupt.c',
     'memory.c',
     'process.c',
     'thread.c',

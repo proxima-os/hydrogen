@@ -1,4 +1,5 @@
 #include "util/eventqueue.h"
+#include "arch/irq.h"
 #include "arch/time.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
@@ -13,6 +14,7 @@
 #include "util/hlist.h"
 #include "util/list.h"
 #include "util/object.h"
+#include "util/spinlock.h"
 #include <hydrogen/eventqueue.h>
 #include <stdint.h>
 
@@ -176,24 +178,24 @@ hydrogen_ret_t event_queue_remove(event_queue_t *queue, object_t *object, hydrog
 }
 
 hydrogen_ret_t event_queue_wait(event_queue_t *queue, hydrogen_event_t *events, size_t count, uint64_t deadline) {
-    mutex_acq(&queue->pending_lock, 0, false);
+    irq_state_t state = spin_acq(&queue->pending_lock);
 
 retry:
     while (queue->num_waking == 0) {
         if (deadline != 0 && deadline <= arch_read_time()) {
-            mutex_rel(&queue->pending_lock);
+            spin_rel(&queue->pending_lock, state);
             return ret_error(EAGAIN);
         }
 
         list_insert_tail(&queue->waiting, &current_thread->wait_node);
         sched_prepare_wait(true);
-        mutex_rel(&queue->pending_lock);
+        spin_rel(&queue->pending_lock, state);
         int error = sched_perform_wait(deadline);
-        mutex_acq(&queue->pending_lock, 0, false);
+        state = spin_acq(&queue->pending_lock);
         list_remove(&queue->waiting, &current_thread->wait_node);
 
         if (unlikely(error)) {
-            mutex_rel(&queue->pending_lock);
+            spin_rel(&queue->pending_lock, state);
             return ret_error(error == ETIMEDOUT ? EAGAIN : error);
         }
     }
@@ -203,17 +205,10 @@ retry:
 
     while (event != NULL && num_returned < count) {
         hydrogen_event_t data = {.type = event->source.type, .ctx = event->ctx};
-
-        if (event->source.object->ops->event_get != NULL) {
-            if (!event->source.object->ops->event_get(event->source.object, event, &data)) {
-                continue;
-            }
-        }
-
         int error = user_memcpy(&events[num_returned], &data, sizeof(data));
 
         if (unlikely(error)) {
-            mutex_rel(&queue->pending_lock);
+            spin_rel(&queue->pending_lock, state);
             return ret_error(error);
         }
 
@@ -223,17 +218,18 @@ retry:
 
     if (num_returned == 0 && count != 0) goto retry;
 
-    mutex_rel(&queue->pending_lock);
+    spin_rel(&queue->pending_lock, state);
     return ret_integer(num_returned);
 }
 
 int event_source_add(event_source_t *source, active_event_t *event) {
-    mutex_acq(&source->lock, 0, false);
+    preempt_state_t pstate = preempt_lock();
+    irq_state_t state = spin_acq(&source->lock);
 
     list_insert_tail(&source->events, &event->source_node);
 
     if (source->pending) {
-        mutex_acq(&event->queue->pending_lock, 0, false);
+        spin_acq_noirq(&event->queue->pending_lock);
 
         list_insert_tail(&event->queue->pending, &event->pending_node);
 
@@ -245,30 +241,32 @@ int event_source_add(event_source_t *source, active_event_t *event) {
             }
         }
 
-        mutex_rel(&event->queue->pending_lock);
+        spin_rel_noirq(&event->queue->pending_lock);
     }
 
-    mutex_rel(&source->lock);
+    spin_rel(&source->lock, state);
+    preempt_unlock(pstate);
     return 0;
 }
 
 void event_source_del(event_source_t *source, active_event_t *event) {
-    mutex_acq(&source->lock, 0, false);
+    irq_state_t state = spin_acq(&source->lock);
 
     list_remove(&source->events, &event->source_node);
 
     if (source->pending) {
-        mutex_acq(&event->queue->pending_lock, 0, false);
+        spin_acq_noirq(&event->queue->pending_lock);
         list_remove(&event->queue->pending, &event->pending_node);
         if (!(event->flags & HYDROGEN_EVENT_QUEUE_REMOVE)) event->queue->num_waking -= 1;
-        mutex_rel(&event->queue->pending_lock);
+        spin_rel_noirq(&event->queue->pending_lock);
     }
 
-    mutex_rel(&source->lock);
+    spin_rel(&source->lock, state);
 }
 
 void event_source_cleanup(event_source_t *source) {
-    mutex_acq(&source->lock, 0, false);
+    preempt_state_t pstate = preempt_lock();
+    irq_state_t state = spin_acq(&source->lock);
 
     for (;;) {
         active_event_t *event = LIST_HEAD(source->events, active_event_t, source_node);
@@ -277,11 +275,13 @@ void event_source_cleanup(event_source_t *source) {
         while (!mutex_try_acq(&event->queue->lock)) {
             event_queue_t *queue = event->queue;
             obj_ref(&queue->base);
-            mutex_rel(&source->lock);
+            spin_rel(&source->lock, state);
+            preempt_unlock(pstate);
             mutex_acq(&queue->lock, 0, false);
             mutex_rel(&queue->lock);
             obj_deref(&queue->base);
-            mutex_acq(&source->lock, 0, false);
+            pstate = preempt_lock();
+            state = spin_acq(&source->lock);
             event = LIST_HEAD(source->events, active_event_t, source_node);
             if (!event) break;
         }
@@ -295,31 +295,34 @@ void event_source_cleanup(event_source_t *source) {
         mutex_rel(&event->queue->lock);
 
         if (source->pending) {
-            mutex_acq(&event->queue->pending_lock, 0, false);
+            spin_acq_noirq(&event->queue->pending_lock);
             list_remove(&event->queue->pending, &event->pending_node);
             if (!(event->flags & HYDROGEN_EVENT_NO_WAKE)) event->queue->num_waking -= 1;
-            mutex_rel(&event->queue->pending_lock);
+            spin_rel_noirq(&event->queue->pending_lock);
         }
 
         list_remove(&source->events, &event->node);
         vfree(event, sizeof(*event));
     }
 
-    mutex_rel(&source->lock);
+    spin_rel(&source->lock, state);
+    preempt_unlock(pstate);
 }
 
 void event_source_signal(event_source_t *source) {
     if (__atomic_load_n(&source->pending, __ATOMIC_ACQUIRE)) return;
 
-    mutex_acq(&source->lock, 0, false);
+    preempt_state_t pstate = preempt_lock();
+    irq_state_t state = spin_acq(&source->lock);
 
     if (source->pending) {
-        mutex_rel(&source->lock);
+        spin_rel(&source->lock, state);
+        preempt_unlock(pstate);
         return;
     }
 
     LIST_FOREACH(source->events, active_event_t, source_node, event) {
-        mutex_acq(&event->queue->pending_lock, 0, false);
+        spin_acq_noirq(&event->queue->pending_lock);
 
         list_insert_tail(&event->queue->pending, &event->pending_node);
 
@@ -331,30 +334,31 @@ void event_source_signal(event_source_t *source) {
             }
         }
 
-        mutex_rel(&event->queue->pending_lock);
+        spin_rel_noirq(&event->queue->pending_lock);
     }
 
     __atomic_store_n(&source->pending, true, __ATOMIC_RELEASE);
-    mutex_rel(&source->lock);
+    spin_rel(&source->lock, state);
+    preempt_unlock(pstate);
 }
 
 void event_source_reset(event_source_t *source) {
     if (!__atomic_load_n(&source->pending, __ATOMIC_ACQUIRE)) return;
 
-    mutex_acq(&source->lock, 0, false);
+    irq_state_t state = spin_acq(&source->lock);
 
     if (!source->pending) {
-        mutex_rel(&source->lock);
+        spin_rel(&source->lock, state);
         return;
     }
 
     LIST_FOREACH(source->events, active_event_t, source_node, event) {
-        mutex_acq(&event->queue->pending_lock, 0, false);
+        spin_acq_noirq(&event->queue->pending_lock);
         list_remove(&event->queue->pending, &event->pending_node);
         if (!(event->flags & HYDROGEN_EVENT_NO_WAKE)) event->queue->num_waking -= 1;
-        mutex_rel(&event->queue->pending_lock);
+        spin_rel_noirq(&event->queue->pending_lock);
     }
 
     __atomic_store_n(&source->pending, false, __ATOMIC_RELEASE);
-    mutex_rel(&source->lock);
+    spin_rel(&source->lock, state);
 }

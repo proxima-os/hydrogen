@@ -196,29 +196,6 @@ static int process_event_add(object_t *ptr, uint32_t rights, active_event_t *eve
     }
 }
 
-static bool process_event_get(object_t *ptr, active_event_t *event, hydrogen_event_t *out) {
-    process_t *self = (process_t *)ptr;
-
-    switch (event->source.type) {
-    case HYDROGEN_EVENT_PROCESS_SIGNAL:
-        out->data = __atomic_load_n(&self->sig_target.queue_map, __ATOMIC_ACQUIRE) & event->source.data;
-        return out->data != 0;
-    case HYDROGEN_EVENT_PROCESS_STATUS:
-        mutex_acq(&self->status_lock, 0, false);
-
-        if (!self->have_status) {
-            mutex_rel(&self->status_lock);
-            return false;
-        }
-
-        out->data = ((uint64_t)self->chld_sig.info.__code << 32) |
-                    self->chld_sig.info.__data.__user_or_sigchld.__status;
-        mutex_rel(&self->status_lock);
-        return true;
-    default: UNREACHABLE();
-    }
-}
-
 static void process_event_del(object_t *ptr, active_event_t *event) {
     process_t *self = (process_t *)ptr;
 
@@ -232,7 +209,6 @@ static void process_event_del(object_t *ptr, active_event_t *event) {
 static const object_ops_t process_ops = {
     .free = process_free,
     .event_add = process_event_add,
-    .event_get = process_event_get,
     .event_del = process_event_del,
 };
 

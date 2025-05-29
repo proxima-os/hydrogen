@@ -40,7 +40,5 @@ static inline void restore_irq(irq_state_t state) {
     if (state & 0x200) enable_irq();
 }
 
-int arch_irq_allocate(irq_t *out);
-void arch_irq_add_handler(irq_t *irq, irq_handler_t *handler);
-void arch_irq_remove_handler(irq_t *irq, irq_handler_t *handler);
+int arch_irq_allocate(irq_t *out, void (*func)(void *), void *ctx);
 void arch_irq_free(const irq_t *irq);

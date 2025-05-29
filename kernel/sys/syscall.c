@@ -16,6 +16,7 @@
 #include <hydrogen/filesystem.h>
 #include <hydrogen/handle.h>
 #include <hydrogen/hydrogen.h>
+#include <hydrogen/interrupt.h>
 #include <hydrogen/memory.h>
 #include <hydrogen/process.h>
 #include <hydrogen/signal.h>
@@ -219,6 +220,8 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_FS_FCHDIR: return ret_error(hydrogen_fs_fchdir(a0, a1));
     case SYSCALL_FS_FCHROOT: return ret_error(hydrogen_fs_fchroot(a0, a1));
     case SYSCALL_THREAD_GET_CPU_TIME: return ret_error(hydrogen_thread_get_cpu_time((hydrogen_cpu_time_t *)a0));
+    case SYSCALL_INTERRUPT_WAIT: return hydrogen_interrupt_wait(a0, a1, a2);
+    case SYSCALL_INTERRUPT_CLAIM: return ret_error(hydrogen_interrupt_claim(a0, a1));
     default: return ret_error(ENOSYS);
     }
 }

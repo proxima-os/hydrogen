@@ -12,8 +12,6 @@
 #include "uacpi/acpi.h"
 #include "uacpi/status.h"
 #include "uacpi/tables.h"
-#include "util/hlist.h"
-#include "util/list.h"
 #include "util/panic.h"
 #include "util/printk.h"
 #include "util/spinlock.h"
@@ -269,7 +267,8 @@ void x86_64_lapic_irq_spurious(void) {
 }
 
 typedef struct {
-    hlist_t handlers;
+    void (*func)(void *);
+    void *ctx;
 } irq_data_t;
 
 #define NUM_IRQS (X86_64_IDT_IRQ_MAX - X86_64_IDT_IRQ_MIN + 1)
@@ -284,19 +283,18 @@ void x86_64_lapic_irq_handle(uint8_t vector) {
     irq_state_t state = spin_acq(&irqs_lock);
     irq_data_t *data = &irqs[vector - X86_64_IDT_IRQ_MIN];
 
-    LIST_FOREACH(data->handlers, irq_handler_t, node, handler) {
-        if (handler->func(handler->ctx)) goto done;
+    if (likely(data->func)) {
+        data->func(data->ctx);
+    } else {
+        printk("lapic: unhandled irq %u on cpu %z\n", vector, this_cpu_read(id));
     }
 
-    printk("lapic: unhandled irq %u on cpu %z\n", vector, this_cpu_read(id));
-
-done:
     spin_rel(&irqs_lock, state);
     x86_64_lapic_eoi();
     preempt_unlock(pstate);
 }
 
-int arch_irq_allocate(irq_t *out) {
+int arch_irq_allocate(irq_t *out, void (*func)(void *), void *ctx) {
     irq_state_t state = spin_acq(&irqs_lock);
     uint64_t *map = irq_map;
 
@@ -309,6 +307,10 @@ int arch_irq_allocate(irq_t *out) {
         if (irq_idx >= NUM_IRQS) break;
 
         map[-1] |= 1ull << offset;
+
+        irqs[irq_idx].func = func;
+        irqs[irq_idx].ctx = ctx;
+
         spin_rel(&irqs_lock, state);
         out->vector = X86_64_IDT_IRQ_MIN + irq_idx;
         return 0;
@@ -318,23 +320,11 @@ int arch_irq_allocate(irq_t *out) {
     return EBUSY;
 }
 
-void arch_irq_add_handler(irq_t *irq, irq_handler_t *handler) {
-    irq_state_t state = spin_acq(&irqs_lock);
-    hlist_insert_head(&irqs[irq->vector - X86_64_IDT_IRQ_MIN].handlers, &handler->node);
-    spin_rel(&irqs_lock, state);
-}
-
-void arch_irq_remove_handler(irq_t *irq, irq_handler_t *handler) {
-    irq_state_t state = spin_acq(&irqs_lock);
-    hlist_remove(&irqs[irq->vector - X86_64_IDT_IRQ_MIN].handlers, &handler->node);
-    spin_rel(&irqs_lock, state);
-}
-
 void arch_irq_free(const irq_t *irq) {
     size_t index = irq->vector - X86_64_IDT_IRQ_MIN;
     irq_state_t state = spin_acq(&irqs_lock);
 
-    ASSERT(hlist_empty(&irqs[index].handlers));
+    irqs[index].func = NULL;
     irq_map[index / 64] &= ~(1ull << (index % 64));
 
     spin_rel(&irqs_lock, state);
