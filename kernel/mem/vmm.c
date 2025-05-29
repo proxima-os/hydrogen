@@ -102,11 +102,11 @@ static vmm_region_t *rotate_left_right(vmm_t *vmm, vmm_region_t *root, vmm_regio
         root->balance = 0;
         left->balance = 0;
     } else if (new_root->balance > 0) {
-        root->balance = 1;
-        left->balance = 0;
-    } else {
         root->balance = 0;
         left->balance = -1;
+    } else {
+        root->balance = 1;
+        left->balance = 0;
     }
 
     new_root->balance = 0;
