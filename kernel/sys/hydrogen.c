@@ -12,7 +12,6 @@
 #include "string.h"
 #include "sys/syscall.h"
 #include "util/panic.h"
-#include <stdint.h>
 
 static void *host_name;
 static size_t host_name_size;
@@ -29,7 +28,7 @@ static void host_name_init(void) {
 INIT_DEFINE(hostname, host_name_init);
 
 hydrogen_ret_t hydrogen_get_host_name(void *buffer, size_t size) {
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return ret_error(error);
 
     mutex_acq(&host_name_lock, 0, false);
@@ -42,7 +41,7 @@ hydrogen_ret_t hydrogen_get_host_name(void *buffer, size_t size) {
 }
 
 int hydrogen_set_host_name(const void *name, size_t size) {
-    int error = verify_user_buffer((uintptr_t)name, size);
+    int error = verify_user_buffer(name, size);
     if (unlikely(error)) return error;
 
     if (unlikely(getuid(current_thread->process) != 0)) return EPERM;

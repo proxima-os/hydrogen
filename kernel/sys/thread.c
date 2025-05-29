@@ -167,10 +167,10 @@ hydrogen_ret_t hydrogen_thread_exec(
 ) {
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
 
-    int error = verify_user_buffer((uintptr_t)argv, argc * sizeof(*argv));
+    int error = verify_user_buffer(argv, argc * sizeof(*argv));
     if (unlikely(error)) return ret_error(error);
 
-    error = verify_user_buffer((uintptr_t)envp, envc * sizeof(*envp));
+    error = verify_user_buffer(envp, envc * sizeof(*envp));
     if (unlikely(error)) return ret_error(error);
 
     process_t *proc;
@@ -366,7 +366,7 @@ int hydrogen_thread_sleep(uint64_t deadline) {
 
 int hydrogen_thread_sigmask(int how, const __sigset_t *set, __sigset_t *oset) {
     if (oset) {
-        int error = verify_user_buffer((uintptr_t)oset, sizeof(*oset));
+        int error = verify_user_buffer(oset, sizeof(*oset));
         if (unlikely(error)) return error;
 
         error = user_memcpy(oset, &current_thread->sig_mask, sizeof(*oset));
@@ -374,7 +374,7 @@ int hydrogen_thread_sigmask(int how, const __sigset_t *set, __sigset_t *oset) {
     }
 
     if (set) {
-        int error = verify_user_buffer((uintptr_t)set, sizeof(*set));
+        int error = verify_user_buffer(set, sizeof(*set));
         if (unlikely(error)) return error;
 
         __sigset_t param;
@@ -394,7 +394,7 @@ int hydrogen_thread_sigmask(int how, const __sigset_t *set, __sigset_t *oset) {
 
 int hydrogen_thread_sigaltstack(const __stack_t *ss, __stack_t *oss) {
     if (oss) {
-        int error = verify_user_buffer((uintptr_t)oss, sizeof(*oss));
+        int error = verify_user_buffer(oss, sizeof(*oss));
         if (unlikely(error)) return error;
 
         error = user_memcpy(oss, &current_thread->sig_stack, sizeof(*oss));
@@ -404,7 +404,7 @@ int hydrogen_thread_sigaltstack(const __stack_t *ss, __stack_t *oss) {
     if (ss) {
         if (unlikely(current_thread->sig_stack.__flags & __SS_ONSTACK)) return EPERM;
 
-        int error = verify_user_buffer((uintptr_t)ss, sizeof(*ss));
+        int error = verify_user_buffer(ss, sizeof(*ss));
         if (unlikely(error)) return error;
 
         __stack_t stack;
@@ -416,7 +416,7 @@ int hydrogen_thread_sigaltstack(const __stack_t *ss, __stack_t *oss) {
         if ((stack.__flags & __SS_DISABLE) == 0) {
             if (unlikely(stack.__size < __MINSIGSTKSZ)) return ENOMEM;
 
-            error = verify_user_buffer((uintptr_t)stack.__pointer, stack.__size);
+            error = verify_user_buffer(stack.__pointer, stack.__size);
             if (unlikely(error)) return error;
         }
 
@@ -525,7 +525,7 @@ err:
 }
 
 int hydrogen_thread_get_cpu_time(hydrogen_cpu_time_t *time) {
-    int error = verify_user_buffer((uintptr_t)time, sizeof(*time));
+    int error = verify_user_buffer(time, sizeof(*time));
     if (unlikely(error)) return error;
 
     sched_commit_time_accounting();

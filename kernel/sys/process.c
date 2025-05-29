@@ -156,7 +156,7 @@ hydrogen_ret_t hydrogen_process_geteuid(int process) {
 }
 
 int hydrogen_process_getresgid(int process, uint32_t ids[3]) {
-    int error = verify_user_buffer((uintptr_t)ids, sizeof(*ids) * 3);
+    int error = verify_user_buffer(ids, sizeof(*ids) * 3);
     if (unlikely(error)) return error;
 
     process_t *proc;
@@ -169,7 +169,7 @@ int hydrogen_process_getresgid(int process, uint32_t ids[3]) {
 }
 
 int hydrogen_process_getresuid(int process, uint32_t ids[3]) {
-    int error = verify_user_buffer((uintptr_t)ids, sizeof(*ids) * 3);
+    int error = verify_user_buffer(ids, sizeof(*ids) * 3);
     if (unlikely(error)) return error;
 
     process_t *proc;
@@ -182,7 +182,7 @@ int hydrogen_process_getresuid(int process, uint32_t ids[3]) {
 }
 
 hydrogen_ret_t hydrogen_process_getgroups(int process, uint32_t *buffer, size_t count) {
-    int error = verify_user_buffer((uintptr_t)buffer, sizeof(*buffer) * count);
+    int error = verify_user_buffer(buffer, sizeof(*buffer) * count);
     if (unlikely(error)) return ret_error(error);
 
     process_t *proc;
@@ -275,7 +275,7 @@ int hydrogen_process_setresuid(int process, uint32_t ruid, uint32_t euid, uint32
 }
 
 int hydrogen_process_setgroups(int process, const uint32_t *groups, size_t count) {
-    int error = verify_user_buffer((uintptr_t)groups, sizeof(*groups) * count);
+    int error = verify_user_buffer(groups, sizeof(*groups) * count);
     if (unlikely(error)) return error;
 
     process_t *proc;
@@ -291,12 +291,12 @@ int hydrogen_process_sigaction(int process, int signal, const struct __sigaction
     if (unlikely(signal < 1) || unlikely(signal >= __NSIG)) return EINVAL;
 
     if (action) {
-        int error = verify_user_buffer((uintptr_t)action, sizeof(*action));
+        int error = verify_user_buffer(action, sizeof(*action));
         if (unlikely(error)) return error;
     }
 
     if (old) {
-        int error = verify_user_buffer((uintptr_t)old, sizeof(*action));
+        int error = verify_user_buffer(old, sizeof(*action));
         if (unlikely(error)) return error;
     }
 
@@ -350,7 +350,7 @@ int hydrogen_process_group_send_signal(int group_id, int signal) {
 }
 
 int hydrogen_process_sigwait(int process, __sigset_t set, __siginfo_t *info, uint64_t deadline) {
-    int error = verify_user_buffer((uintptr_t)info, sizeof(*info));
+    int error = verify_user_buffer(info, sizeof(*info));
     if (unlikely(error)) return error;
 
     process_t *proc;
@@ -384,7 +384,7 @@ void hydrogen_process_exit(int status) {
 int hydrogen_process_wait(int process, unsigned flags, __siginfo_t *info, uint64_t deadline) {
     if (unlikely((flags & ~WAIT_FLAGS) != 0)) return EINVAL;
 
-    int error = verify_user_buffer((uintptr_t)info, sizeof(*info));
+    int error = verify_user_buffer(info, sizeof(*info));
     if (unlikely(error)) return error;
 
     handle_data_t data;
@@ -400,14 +400,14 @@ hydrogen_ret_t hydrogen_process_wait_id(int process, unsigned flags, __siginfo_t
     if (unlikely(process < 0)) return ret_error(EINVAL);
     if (unlikely((flags & ~WAIT_FLAGS) != 0)) return ret_error(EINVAL);
 
-    int error = verify_user_buffer((uintptr_t)info, sizeof(*info));
+    int error = verify_user_buffer(info, sizeof(*info));
     if (unlikely(error)) return ret_error(error);
 
     return proc_waitid(process, flags, info, deadline);
 }
 
 int hydrogen_process_get_cpu_time(hydrogen_process_cpu_time_t *time) {
-    int error = verify_user_buffer((uintptr_t)time, sizeof(*time));
+    int error = verify_user_buffer(time, sizeof(*time));
     if (unlikely(error)) return error;
 
     sched_commit_time_accounting();

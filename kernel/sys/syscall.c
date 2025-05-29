@@ -140,11 +140,12 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_FS_CREATE: return ret_error(hydrogen_fs_create(a0, (const void *)a1, a2, a3, a4));
     case SYSCALL_FS_SYMLINK: return ret_error(hydrogen_fs_symlink(a0, (const void *)a1, a2, (const void *)a3, a4));
     case SYSCALL_FS_LINK: {
+        const link_syscall_args_t *ptr = (const void *)a0;
         link_syscall_args_t args;
-        int error = verify_user_buffer(a0, sizeof(args));
+        int error = verify_user_buffer(ptr, sizeof(*ptr));
         if (unlikely(error)) return ret_error(error);
 
-        error = user_memcpy(&args, (const void *)a0, sizeof(args));
+        error = user_memcpy(&args, ptr, sizeof(*ptr));
         if (unlikely(error)) return ret_error(error);
 
         return ret_error(
@@ -160,11 +161,12 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_FS_CHMOD: return ret_error(hydrogen_fs_chmod(a0, (const void *)a1, a2, a3, a4));
     case SYSCALL_FS_CHOWN: return ret_error(hydrogen_fs_chown(a0, (const void *)a1, a2, a3, a4, a5));
     case SYSCALL_FS_UTIME: {
+        const utime_syscall_args_t *ptr = (const void *)a3;
         utime_syscall_args_t args;
-        int error = verify_user_buffer(a3, sizeof(args));
+        int error = verify_user_buffer(ptr, sizeof(*ptr));
         if (unlikely(error)) return ret_error(error);
 
-        error = user_memcpy(&args, (const void *)a3, sizeof(args));
+        error = user_memcpy(&args, ptr, sizeof(*ptr));
         if (unlikely(error)) return ret_error(error);
 
         return ret_error(hydrogen_fs_utime(a0, (const void *)a1, a2, args.atime, args.ctime, args.mtime, a4));
@@ -181,11 +183,12 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_FS_FFLAGS: return hydrogen_fs_fflags(a0, a1);
     case SYSCALL_FS_FPATH: return hydrogen_fs_fpath(a0, (void *)a1, a2);
     case SYSCALL_THREAD_EXEC: {
+        const exec_syscall_args_t *ptr = (const void *)a3;
         exec_syscall_args_t args;
-        int error = verify_user_buffer(a3, sizeof(args));
+        int error = verify_user_buffer(ptr, sizeof(*ptr));
         if (unlikely(error)) return ret_error(error);
 
-        error = user_memcpy(&args, (const void *)a3, sizeof(args));
+        error = user_memcpy(&args, ptr, sizeof(*ptr));
         if (unlikely(error)) return ret_error(error);
 
         return hydrogen_thread_exec(a0, a1, a2, args.argc, args.argv, args.envc, args.envp, a4);
@@ -194,11 +197,12 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_FS_FCHMOD: return ret_error(hydrogen_fs_fchmod(a0, a1));
     case SYSCALL_FS_FCHOWN: return ret_error(hydrogen_fs_fchown(a0, a1, a2));
     case SYSCALL_FS_FUTIME: {
+        const utime_syscall_args_t *ptr = (const void *)a1;
         utime_syscall_args_t args;
-        int error = verify_user_buffer(a1, sizeof(args));
+        int error = verify_user_buffer(ptr, sizeof(*ptr));
         if (unlikely(error)) return ret_error(error);
 
-        error = user_memcpy(&args, (const void *)a1, sizeof(args));
+        error = user_memcpy(&args, ptr, sizeof(*ptr));
         if (unlikely(error)) return ret_error(error);
 
         return ret_error(hydrogen_fs_futime(a0, args.atime, args.ctime, args.mtime));
@@ -223,11 +227,12 @@ void do_syscall(ssize_t id, size_t a0, size_t a1, size_t a2, size_t a3, size_t a
     arch_context_set_syscall_return(current_thread->user_ctx, dispatch(id, a0, a1, a2, a3, a4, a5));
 }
 
-int verify_user_buffer(uintptr_t start, size_t size) {
+int verify_user_buffer(const void *ptr, size_t size) {
     if (unlikely(size == 0)) return 0;
 
-    uintptr_t tail = start + (size - 1);
-    if (unlikely(tail < start)) return EFAULT;
+    uintptr_t head = (uintptr_t)ptr;
+    uintptr_t tail = head + (size - 1);
+    if (unlikely(tail < head)) return EFAULT;
     if (unlikely(tail > arch_pt_max_user_addr())) return EFAULT;
 
     return 0;

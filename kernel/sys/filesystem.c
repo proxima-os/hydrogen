@@ -34,7 +34,7 @@ static int file_for_rel(file_t **out, int rel) {
 }
 
 static int copy_string(void **buf_out, const void *src, size_t len) {
-    int error = verify_user_buffer((uintptr_t)src, len);
+    int error = verify_user_buffer(src, len);
     if (unlikely(error)) return error;
 
     void *buf = vmalloc(len);
@@ -244,7 +244,7 @@ ret:
 }
 
 int hydrogen_fs_stat(int rel, const void *path, size_t length, hydrogen_file_information_t *info, int flags) {
-    int error = verify_user_buffer((uintptr_t)info, sizeof(*info));
+    int error = verify_user_buffer(info, sizeof(*info));
     if (unlikely(error)) return error;
 
     file_t *frel;
@@ -264,7 +264,7 @@ ret:
 }
 
 hydrogen_ret_t hydrogen_fs_readlink(int rel, const void *path, size_t length, void *buffer, size_t size) {
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return ret_error(error);
 
     file_t *frel;
@@ -457,7 +457,7 @@ static int file_resolve(file_t **out, int file, object_rights_t rights) {
 }
 
 hydrogen_ret_t hydrogen_fs_pread(int file, void *buffer, size_t size, uint64_t position) {
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return ret_error(error);
 
     file_t *fdesc;
@@ -470,7 +470,7 @@ hydrogen_ret_t hydrogen_fs_pread(int file, void *buffer, size_t size, uint64_t p
 }
 
 hydrogen_ret_t hydrogen_fs_pwrite(int file, const void *buffer, size_t size, uint64_t position) {
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return ret_error(error);
 
     file_t *fdesc;
@@ -493,7 +493,7 @@ hydrogen_ret_t hydrogen_fs_seek(int file, hydrogen_seek_anchor_t anchor, int64_t
 }
 
 hydrogen_ret_t hydrogen_fs_readdir(int file, void *buffer, size_t size) {
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return ret_error(error);
 
     file_t *fdesc;
@@ -506,7 +506,7 @@ hydrogen_ret_t hydrogen_fs_readdir(int file, void *buffer, size_t size) {
 }
 
 hydrogen_ret_t hydrogen_fs_read(int file, void *buffer, size_t size) {
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return ret_error(error);
 
     file_t *fdesc;
@@ -519,7 +519,7 @@ hydrogen_ret_t hydrogen_fs_read(int file, void *buffer, size_t size) {
 }
 
 hydrogen_ret_t hydrogen_fs_write(int file, const void *buffer, size_t size) {
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return ret_error(error);
 
     file_t *fdesc;
@@ -542,7 +542,7 @@ hydrogen_ret_t hydrogen_fs_fflags(int file, int flags) {
 }
 
 hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) {
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return ret_error(error);
 
     file_t *fdesc;
@@ -588,7 +588,7 @@ hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) {
 }
 
 int hydrogen_fs_fstat(int file, hydrogen_file_information_t *info) {
-    int error = verify_user_buffer((uintptr_t)info, sizeof(*info));
+    int error = verify_user_buffer(info, sizeof(*info));
     if (unlikely(error)) return error;
 
     file_t *fdesc;
@@ -750,7 +750,7 @@ err:
 }
 
 hydrogen_ret_t hydrogen_fs_ioctl(int file, int request, void *buffer, size_t size) {
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return ret_error(error);
 
     file_t *fdesc;

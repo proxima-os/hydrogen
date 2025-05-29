@@ -123,7 +123,8 @@ int arch_setup_context_for_signal(struct __sigaction *handler, __siginfo_t *info
 }
 
 int x86_64_sigreturn(uintptr_t ctx) {
-    int error = verify_user_buffer(ctx, sizeof(signal_frame_t));
+    const signal_frame_t *ptr = (const void *)ctx;
+    int error = verify_user_buffer(ptr, sizeof(*ptr));
     if (unlikely(error)) return error;
 
     signal_frame_t frame;
@@ -134,7 +135,7 @@ int x86_64_sigreturn(uintptr_t ctx) {
 
     if (unlikely(mctx->__rip > arch_pt_max_user_addr())) return EINVAL;
 
-    error = verify_user_buffer((uintptr_t)mctx->__xsave_area, x86_64_xsave_size);
+    error = verify_user_buffer(mctx->__xsave_area, x86_64_xsave_size);
     if (unlikely(error)) return error;
 
     error = user_memcpy(current_thread->arch.xsave, mctx->__xsave_area, x86_64_xsave_size);

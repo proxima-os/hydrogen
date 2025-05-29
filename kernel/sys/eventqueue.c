@@ -66,7 +66,7 @@ hydrogen_ret_t hydrogen_event_queue_remove(int queue, int object, hydrogen_event
 }
 
 hydrogen_ret_t hydrogen_event_queue_wait(int queue, hydrogen_event_t *events, size_t count, uint64_t deadline) {
-    int error = verify_user_buffer((uintptr_t)events, sizeof(*events) * count);
+    int error = verify_user_buffer(events, sizeof(*events) * count);
     if (unlikely(error)) return ret_error(error);
 
     handle_data_t qdata;

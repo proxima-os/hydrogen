@@ -345,7 +345,7 @@ static int build_string_list(stack_build_ctx_t *ctx, vmm_t *src, size_t count, c
             vmm_switch(prev);
             if (unlikely(error)) return error;
 
-            error = verify_user_buffer((uintptr_t)string.data, string.size);
+            error = verify_user_buffer(string.data, string.size);
             if (unlikely(error)) return error;
 
             ret = area_write(&ctx->blob, string.data, string.size, 1, src);

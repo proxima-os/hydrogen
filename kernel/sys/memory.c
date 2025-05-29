@@ -162,10 +162,10 @@ int hydrogen_vmm_unmap(int vmm_hnd, uintptr_t address, size_t size) {
 int hydrogen_vmm_read(int vmm_hnd, void *buffer, uintptr_t address, size_t size) {
     if (unlikely(size == 0)) return 0;
 
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return error;
 
-    error = verify_user_buffer(address, size);
+    error = verify_user_buffer((const void *)address, size);
     if (unlikely(error)) return error;
 
     if (vmm_hnd == HYDROGEN_THIS_VMM) {
@@ -199,10 +199,10 @@ int hydrogen_vmm_read(int vmm_hnd, void *buffer, uintptr_t address, size_t size)
 int hydrogen_vmm_write(int vmm_hnd, const void *buffer, uintptr_t address, size_t size) {
     if (unlikely(size == 0)) return 0;
 
-    int error = verify_user_buffer((uintptr_t)buffer, size);
+    int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return error;
 
-    error = verify_user_buffer(address, size);
+    error = verify_user_buffer((void *)address, size);
     if (unlikely(error)) return error;
 
     if (vmm_hnd == HYDROGEN_THIS_VMM) {
@@ -242,10 +242,9 @@ typedef struct {
 // on success, the current vmm is locked
 static int get_futex_address(futex_address_t *out, uint32_t *location) {
     uintptr_t address = (uintptr_t)location;
-
     if (unlikely((address & 3) != 0)) return EINVAL;
 
-    int error = verify_user_buffer(address, sizeof(*location));
+    int error = verify_user_buffer(location, sizeof(*location));
     if (unlikely(error)) return error;
 
     vmm_t *vmm = current_thread->vmm;
@@ -490,7 +489,7 @@ ret:
 int hydrogen_mem_object_read(int object_hnd, void *buffer, size_t count, uint64_t position) {
     if (unlikely(count == 0)) return 0;
 
-    int error = verify_user_buffer((uintptr_t)buffer, count);
+    int error = verify_user_buffer(buffer, count);
     if (unlikely(error)) return error;
 
     handle_data_t data;
@@ -506,7 +505,7 @@ int hydrogen_mem_object_read(int object_hnd, void *buffer, size_t count, uint64_
 int hydrogen_mem_object_write(int object_hnd, const void *buffer, size_t count, uint64_t position) {
     if (unlikely(count == 0)) return 0;
 
-    int error = verify_user_buffer((uintptr_t)buffer, count);
+    int error = verify_user_buffer(buffer, count);
     if (unlikely(error)) return error;
 
     handle_data_t data;
