@@ -11,7 +11,7 @@
 #include <stdint.h>
 
 #define VMM_PERM_FLAGS (HYDROGEN_MEM_READ | HYDROGEN_MEM_WRITE | HYDROGEN_MEM_EXEC)
-#define VMM_REGION_FLAGS (VMM_PERM_FLAGS | HYDROGEN_MEM_LAZY_RESERVE | HYDROGEN_MEM_SHARED)
+#define VMM_REGION_FLAGS (VMM_PERM_FLAGS | HYDROGEN_MEM_LAZY_RESERVE | HYDROGEN_MEM_SHARED | HYDROGEN_MEM_TYPE_MASK)
 #define VMM_MAP_FLAGS (VMM_REGION_FLAGS | HYDROGEN_MEM_EXACT | HYDROGEN_MEM_OVERWRITE)
 
 struct dentry;
@@ -23,6 +23,7 @@ typedef struct vmm vmm_t;
 
 typedef struct {
     object_ops_t base;
+    bool mem_type_allowed;
     void (*post_map)(mem_object_t *self, vmm_t *vmm, uintptr_t head, uintptr_t tail, unsigned flags, uint64_t offset);
     // if state_out isn't null, this function locks rcu without unlocking it, and writes the state to state_out.
     // this is done in such a way that the returned page stays valid until rcu is unlocked.

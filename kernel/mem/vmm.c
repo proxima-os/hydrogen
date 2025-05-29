@@ -800,6 +800,15 @@ hydrogen_ret_t vmm_map(
         return ret_error(EINVAL);
     }
 
+    switch (flags & HYDROGEN_MEM_TYPE_MASK) {
+    case HYDROGEN_MEM_TYPE_NORMAL:
+    case HYDROGEN_MEM_TYPE_DEVICE:
+    case HYDROGEN_MEM_TYPE_DEVICE_NO_COMBINE:
+    case HYDROGEN_MEM_TYPE_DEVICE_NO_COMBINE_REORDER:
+    case HYDROGEN_MEM_TYPE_DEVICE_NO_COMBINE_REORDER_EARLY: break;
+    default: return ret_error(EINVAL);
+    }
+
     if (object != NULL) {
         if (unlikely((offset & PAGE_MASK) != 0)) return ret_error(EINVAL);
         if (unlikely(offset > offset + (size - 1))) return ret_error(EINVAL);
@@ -807,10 +816,12 @@ hydrogen_ret_t vmm_map(
 
         const mem_object_ops_t *ops = (const mem_object_ops_t *)object->base.ops;
 
+        if ((flags & HYDROGEN_MEM_TYPE_MASK) != 0 && unlikely(!ops->mem_type_allowed)) return ret_error(EPERM);
+
         if (ops->get_page == NULL) {
             if (unlikely((flags & HYDROGEN_MEM_SHARED) == 0)) return ret_error(EINVAL);
         }
-    } else if (unlikely((flags & HYDROGEN_MEM_SHARED) != 0)) {
+    } else if (unlikely((flags & (HYDROGEN_MEM_SHARED | HYDROGEN_MEM_TYPE_MASK)) != 0)) {
         return ret_error(EINVAL);
     }
 

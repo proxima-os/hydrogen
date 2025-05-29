@@ -46,6 +46,8 @@ void *early_alloc_page(void);
 bool next_owned_ram_gap(uint64_t addr, uint64_t *head, uint64_t *tail);
 bool is_area_ram(uint64_t head, uint64_t tail);
 
+bool memmap_iter(bool (*func)(uint64_t, uint64_t, bool, void *), void *ctx);
+
 // stops iteration if the function returns false.
 // returns false if iteration was stopped.
 bool memmap_iter_reversed(bool (*func)(uint64_t, uint64_t, void *), void *ctx);

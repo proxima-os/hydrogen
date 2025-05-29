@@ -81,6 +81,57 @@ extern "C" {
 #define HYDROGEN_MEM_SHARED (1u << 6)
 
 /**
+ * The mask for the memory type flags. Note that any memory type flags except #HYDROGEN_MEM_TYPE_NORMAL are illegal on
+ * anonymous mappings and most object mappings.
+ */
+#define HYDROGEN_MEM_TYPE_MASK (7u << 7)
+
+/**
+ * Map this memory as regular RAM.
+ * Equivalent to the following platform-specific memory types:
+ * - x86: WB
+ * - ARM: Normal
+ * - RISC-V: PMA
+ */
+#define HYDROGEN_MEM_TYPE_NORMAL (0u << 7)
+
+/**
+ * Map this memory as device memory, accesses to which can be combined, reordered, or completed early.
+ * Equivalent to the following platform-specific memory types:
+ * - x86: WC
+ * - ARM: Device-GRE
+ * - RISC-V: NC
+ */
+#define HYDROGEN_MEM_TYPE_DEVICE (1u << 7)
+
+/**
+ * Map this memory as device memory, accesses to which can be reordered or completed early but not combined.
+ * Equivalent to the following platform-specific memory types:
+ * - x86: UC
+ * - ARM: Device-nGRE
+ * - RISC-V: IO
+ */
+#define HYDROGEN_MEM_TYPE_DEVICE_NO_COMBINE (2u << 7)
+
+/**
+ * Map this memory as device memory, accesses to which can be completed early but not combined or reordered.
+ * Equivalent to the following platform-specific memory types:
+ * - x86: UC
+ * - ARM: Device-nGnRE
+ * - RISC-V: IO
+ */
+#define HYDROGEN_MEM_TYPE_DEVICE_NO_COMBINE_REORDER (3u << 7)
+
+/**
+ * Map this memory as device memory, accesses to which cannot be combined, reordered, or completed early.
+ * Equivalent to the following platform-specific memory types:
+ * - x86: UC
+ * - ARM: Device-nGnRnE
+ * - RISC-V: IO
+ */
+#define HYDROGEN_MEM_TYPE_DEVICE_NO_COMBINE_REORDER_EARLY (4u << 7)
+
+/**
  * The system's page size.
  */
 extern const size_t hydrogen_page_size __asm__("__hydrogen_page_size");
