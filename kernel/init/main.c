@@ -55,7 +55,6 @@ static void associate_std_handle(int handle, file_t *file) {
 
 static void launch_init_process(void *ctx) {
     static const char filename[] = "/sbin/init";
-    static const char *envp[] = {"HOME=/root"};
 
     int error = namespace_create(&current_thread->namespace);
     if (unlikely(error)) panic("failed to create init process namespace (%e)", error);
@@ -74,25 +73,8 @@ static void launch_init_process(void *ctx) {
     if (unlikely(error)) panic("failed to open init executable (%e)", error);
 
     hydrogen_string_t filename_arg = {filename, sizeof(filename) - 1};
-    hydrogen_string_t envp_args[sizeof(envp) / sizeof(*envp)];
-
-    for (size_t i = 0; i < sizeof(envp) / sizeof(*envp); i++) {
-        envp_args[i].data = envp[i];
-        envp_args[i].size = strlen(envp[i]);
-    }
-
     exec_data_t data;
-    error = create_exec_data(
-        &data,
-        current_thread->process,
-        image,
-        ident,
-        1,
-        &filename_arg,
-        sizeof(envp) / sizeof(*envp),
-        envp_args,
-        false
-    );
+    error = create_exec_data(&data, current_thread->process, image, ident, 1, &filename_arg, 0, NULL, false);
     ident_deref(ident);
     if (unlikely(error)) panic("failed to launch init process (%e)", error);
 
