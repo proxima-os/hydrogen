@@ -112,6 +112,8 @@ struct mem_iter_ctx {
 };
 
 static bool mem_handle_area(uint64_t head, uint64_t tail, int flags, struct mem_iter_ctx *ctx) {
+    if (tail < ctx->position) return true;
+    if (head < ctx->position) head = ctx->position;
     if (head >= ctx->end) return false;
     if (tail >= ctx->end) tail = ctx->end - 1;
 
