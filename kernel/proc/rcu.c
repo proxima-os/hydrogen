@@ -49,8 +49,7 @@ void rcu_quiet(cpu_t *cpu) {
         cpu_mask_set_notear(&rcu_cpu_states, id, false);
 
         if (cpu_mask_empty(&rcu_cpu_states)) {
-            size_t gen = __atomic_load_n(&rcu_generation, __ATOMIC_RELAXED);
-            gen += 1;
+            size_t gen = rcu_generation + 1;
 
             if (gen <= rcu_max_generation) {
                 start_generation(gen);
@@ -75,13 +74,13 @@ void rcu_quiet(cpu_t *cpu) {
         slist_append_end(&state->cur_cb, &state->next_cb);
         spin_acq_noirq(&rcu_lock);
 
-        state->generation = __atomic_load_n(&rcu_generation, __ATOMIC_RELAXED) + 1;
+        state->generation = rcu_generation + 1;
 
         if (!cpu_mask_empty(&rcu_cpu_states)) {
-            ASSERT(rcu_max_generation <= state->generation);
+            ASSERT(rcu_max_generation <= state->generation + 1);
             rcu_max_generation = state->generation + 1;
         } else {
-            start_generation(state->generation);
+            start_generation(rcu_generation);
         }
 
         spin_rel_noirq(&rcu_lock);
