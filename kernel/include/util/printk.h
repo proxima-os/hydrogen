@@ -22,6 +22,9 @@ void printk_remove(printk_sink_t *sink);
 void vprintk(const char *format, va_list args);
 void printk(const char *format, ...);
 
+size_t vsprintk(void *buffer, size_t size, const char *format, va_list args);
+size_t sprintk(void *buffer, size_t size, const char *format, ...);
+
 printk_state_t printk_lock(void);
 void printk_unlock(printk_state_t state);
 

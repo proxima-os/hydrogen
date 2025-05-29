@@ -37,33 +37,14 @@ void printk_remove(printk_sink_t *sink) {
     printk_unlock(state);
 }
 
-void vprintk(const char *format, va_list args) {
-    printk_state_t state = printk_lock();
-    printk_raw_formatv(format, args);
-    printk_raw_flush();
-    printk_unlock(state);
-}
-
-void printk(const char *format, ...) {
-    va_list args;
-    va_start(args, format);
-    vprintk(format, args);
-    va_end(args);
-}
-
-printk_state_t printk_lock(void) {
-    printk_state_t state = {};
-    state.preempt = preempt_lock();
-    state.irq = spin_acq(&lock);
-    return state;
-}
-
-void printk_unlock(printk_state_t state) {
-    spin_rel(&lock, state.irq);
-    preempt_unlock(state.preempt);
-}
-
-static void write_uint(uint64_t value, unsigned base, unsigned min_digits, bool alternate) {
+static size_t write_uint(
+    void (*fn)(const void *, size_t, void *),
+    void *ctx,
+    uint64_t value,
+    unsigned base,
+    unsigned min_digits,
+    bool alternate
+) {
     unsigned char buf[32];
     size_t index = sizeof(buf);
 
@@ -89,19 +70,27 @@ static void write_uint(uint64_t value, unsigned base, unsigned min_digits, bool 
         }
     }
 
-    printk_raw_write(&buf[index], sizeof(buf) - index);
+    fn(&buf[index], sizeof(buf) - index, ctx);
+    return sizeof(buf) - index;
 }
 
-static void write_int(int64_t value, unsigned base, unsigned min_digits) {
+static size_t write_int(
+    void (*fn)(const void *, size_t, void *),
+    void *ctx,
+    int64_t value,
+    unsigned base,
+    unsigned min_digits
+) {
     if (value >= 0) {
-        write_uint(value, base, min_digits, false);
+        return write_uint(fn, ctx, value, base, min_digits, false);
     } else {
-        write_uint(-(uint64_t)value, base, min_digits, true);
+        return write_uint(fn, ctx, -(uint64_t)value, base, min_digits, true);
     }
 }
 
-void printk_raw_formatv(const char *format, va_list args) {
+static size_t do_printk(void (*fn)(const void *, size_t, void *), void *ctx, const char *format, va_list args) {
     const char *last = format;
+    size_t count = 0;
 
     for (;;) {
         char c = *format;
@@ -112,7 +101,8 @@ void printk_raw_formatv(const char *format, va_list args) {
         }
 
         if (last != format) {
-            printk_raw_write(last, format - last);
+            fn(last, format - last, ctx);
+            count += format - last;
             last = format;
         }
 
@@ -128,36 +118,45 @@ void printk_raw_formatv(const char *format, va_list args) {
         switch (c) {
         case 'c':
             c = va_arg(args, int);
-            printk_raw_write(&c, 1);
+            fn(&c, 1, ctx);
+            count += 1;
             break;
         case 's': {
             char *s = va_arg(args, char *);
             if (!s) s = "(null)";
-            printk_raw_write(s, strlen(s));
+            size_t len = strlen(s);
+            fn(s, len, ctx);
+            count += len;
             break;
         }
         case 'S': {
             void *ptr = va_arg(args, void *);
             size_t len = va_arg(args, size_t);
-            printk_raw_write(ptr, len);
+            fn(ptr, len, ctx);
+            count += len;
             break;
         }
-        case 'o': write_uint(va_arg(args, uint32_t), 8, min_digits, true); break;
-        case 'O': write_uint(va_arg(args, uint64_t), 8, min_digits, true); break;
-        case 'd': write_int(va_arg(args, int32_t), 10, min_digits); break;
-        case 'D': write_int(va_arg(args, int64_t), 10, min_digits); break;
-        case 'u': write_uint(va_arg(args, uint32_t), 10, min_digits, false); break;
-        case 'U': write_uint(va_arg(args, uint64_t), 10, min_digits, false); break;
-        case 'x': write_uint(va_arg(args, uint32_t), 16, min_digits, false); break;
-        case 'X': write_uint(va_arg(args, uint64_t), 16, min_digits, false); break;
-        case 'q': write_int(va_arg(args, ssize_t), 10, min_digits); break;
-        case 'z': write_uint(va_arg(args, size_t), 10, min_digits, false); break;
-        case 'Z': write_uint(va_arg(args, size_t), 16, min_digits, false); break;
-        case 'p': write_uint((uintptr_t)va_arg(args, void *), 16, min_digits, true); break;
-        case '%': printk_raw_write(&c, 1); break;
+        case 'o': count += write_uint(fn, ctx, va_arg(args, uint32_t), 8, min_digits, true); break;
+        case 'O': count += write_uint(fn, ctx, va_arg(args, uint64_t), 8, min_digits, true); break;
+        case 'd': count += write_int(fn, ctx, va_arg(args, int32_t), 10, min_digits); break;
+        case 'D': count += write_int(fn, ctx, va_arg(args, int64_t), 10, min_digits); break;
+        case 'u': count += write_uint(fn, ctx, va_arg(args, uint32_t), 10, min_digits, false); break;
+        case 'U': count += write_uint(fn, ctx, va_arg(args, uint64_t), 10, min_digits, false); break;
+        case 'x': count += write_uint(fn, ctx, va_arg(args, uint32_t), 16, min_digits, false); break;
+        case 'X': count += write_uint(fn, ctx, va_arg(args, uint64_t), 16, min_digits, false); break;
+        case 'q': count += write_int(fn, ctx, va_arg(args, ssize_t), 10, min_digits); break;
+        case 'z': count += write_uint(fn, ctx, va_arg(args, size_t), 10, min_digits, false); break;
+        case 'Z': count += write_uint(fn, ctx, va_arg(args, size_t), 16, min_digits, false); break;
+        case 'p': count += write_uint(fn, ctx, (uintptr_t)va_arg(args, void *), 16, min_digits, true); break;
+        case '%':
+            fn(&c, 1, ctx);
+            count += 1;
+            break;
         case 'e': {
             const char *s = error_to_string(va_arg(args, int));
-            printk_raw_write(s, strlen(s));
+            size_t len = strlen(s);
+            fn(s, len, ctx);
+            count += len;
             break;
         }
         default: goto next;
@@ -168,8 +167,74 @@ void printk_raw_formatv(const char *format, va_list args) {
     }
 
     if (last != format) {
-        printk_raw_write(last, format - last);
+        fn(last, format - last, ctx);
+        count += format - last;
     }
+
+    return count;
+}
+
+void vprintk(const char *format, va_list args) {
+    printk_state_t state = printk_lock();
+    printk_raw_formatv(format, args);
+    printk_raw_flush();
+    printk_unlock(state);
+}
+
+void printk(const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    vprintk(format, args);
+    va_end(args);
+}
+
+struct vsprintk_ctx {
+    void *buffer;
+    size_t size;
+};
+
+static void vsprintk_fn(const void *data, size_t size, void *ptr) {
+    struct vsprintk_ctx *ctx = ptr;
+
+    if (ctx->size) {
+        size_t cur = size < ctx->size ? size : ctx->size;
+        memcpy(ctx->buffer, data, cur);
+        ctx->buffer += cur;
+        ctx->size -= cur;
+    }
+}
+
+size_t vsprintk(void *buffer, size_t size, const char *format, va_list args) {
+    struct vsprintk_ctx ctx = {buffer, size};
+    return do_printk(vsprintk_fn, &ctx, format, args);
+}
+
+size_t sprintk(void *buffer, size_t size, const char *format, ...) {
+    va_list args;
+    va_start(args, format);
+    size_t ret = vsprintk(buffer, size, format, args);
+    va_end(args);
+    return ret;
+}
+
+printk_state_t printk_lock(void) {
+    printk_state_t state = {};
+    state.preempt = preempt_lock();
+    state.irq = spin_acq(&lock);
+    return state;
+}
+
+void printk_unlock(printk_state_t state) {
+    spin_rel(&lock, state.irq);
+    preempt_unlock(state.preempt);
+}
+
+static void printk_fn(const void *data, size_t count, void *ptr) {
+    printk_raw_write(data, count);
+}
+
+void printk_raw_formatv(const char *format, va_list args) {
+    do_printk(printk_fn, NULL, format, args);
 }
 
 void printk_raw_format(const char *format, ...) {

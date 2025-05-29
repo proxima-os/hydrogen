@@ -1,5 +1,7 @@
 #include "drv/acpi/acpi.h"
 #include "arch/pmap.h"
+#include "cpu/cpudata.h"
+#include "fs/vfs.h"
 #include "init/main.h" /* IWYU pragma: keep */
 #include "init/task.h"
 #include "kernel/compiler.h"
@@ -10,6 +12,7 @@
 #include "mem/pmap.h"
 #include "mem/pmem.h"
 #include "mem/vmalloc.h"
+#include "proc/process.h"
 #include "sections.h"
 #include "string.h"
 #include "uacpi/kernel_api.h"
@@ -17,8 +20,11 @@
 #include "uacpi/status.h"
 #include "uacpi/types.h"
 #include "uacpi/uacpi.h"
+#include "util/object.h"
 #include "util/printk.h"
 #include "util/spinlock.h"
+#include <hydrogen/fcntl.h>
+#include <hydrogen/filesystem.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -54,6 +60,38 @@ static void acpi_tables_init(void) {
 }
 
 INIT_DEFINE_EARLY(acpi_tables, acpi_tables_init, INIT_REFERENCE(memory), INIT_REFERENCE(verify_loader_revision));
+
+static void create_acpi_devices(void) {
+    if (!have_acpi_tables) return;
+
+    int error = vfs_create(NULL, "/dev/acpi", 9, HYDROGEN_DIRECTORY, 0755, NULL);
+    if (unlikely(error)) {
+        printk("acpi: failed to create /dev/acpi (%e)\n", error);
+        return;
+    }
+
+    file_t *file;
+    ident_t *ident = ident_get(current_thread->process);
+    error = vfs_open(&file, NULL, "/dev/acpi/rsdp", 14, __O_WRONLY | __O_CREAT | __O_EXCL, 0600, ident);
+    ident_deref(ident);
+    if (unlikely(error)) {
+        printk("acpi: failed to create /dev/acpi/rsdp (%e)\n", error);
+        return;
+    }
+
+    unsigned char buffer[32];
+    size_t size = sprintk(buffer, sizeof(buffer), "0x%X\n", rsdp_phys);
+    ASSERT(size <= sizeof(buffer));
+
+    error = vfs_pwrite_full(file, buffer, size, 0);
+    obj_deref(&file->base);
+    if (unlikely(error)) {
+        printk("acpi: failed to create /dev/acpi/rsdp (%e)", error);
+        return;
+    }
+}
+
+INIT_DEFINE(create_acpi_devices, create_acpi_devices, INIT_REFERENCE(mount_rootfs));
 
 uacpi_status uacpi_kernel_get_rsdp(uacpi_phys_addr *out_rsdp_address) {
     *out_rsdp_address = rsdp_phys;

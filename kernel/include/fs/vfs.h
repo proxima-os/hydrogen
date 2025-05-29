@@ -2,6 +2,7 @@
 
 #include "fs/fifo.h"
 #include "init/task.h"
+#include "kernel/compiler.h"
 #include "mem/vmm.h"
 #include "proc/mutex.h"
 #include "proc/process.h"
@@ -262,3 +263,16 @@ void init_file(file_t *file, const file_ops_t *ops, inode_t *inode, dentry_t *pa
 void free_file(file_t *file);
 
 int vfs_create_anonymous(inode_t **out, hydrogen_file_type_t type, uint32_t mode, fs_device_t *device, ident_t *ident);
+
+static inline int vfs_pwrite_full(file_t *file, const void *data, size_t size, uint64_t position) {
+    while (size) {
+        hydrogen_ret_t ret = vfs_pwrite(file, data, size, position);
+        if (unlikely(ret.error)) return ret.error;
+
+        data += ret.integer;
+        size -= ret.integer;
+        position += ret.integer;
+    }
+
+    return 0;
+}
