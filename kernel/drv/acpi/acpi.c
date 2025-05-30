@@ -1,16 +1,12 @@
 #include "drv/acpi/acpi.h"
 #include "arch/gsi.h"
 #include "arch/pmap.h"
-#include "arch/usercopy.h"
 #include "cpu/cpudata.h"
-#include "drv/interrupt.h"
-#include "errno.h"
 #include "fs/vfs.h"
 #include "init/main.h" /* IWYU pragma: keep */
 #include "init/task.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
-#include "kernel/return.h"
 #include "limine.h"
 #include "mem/kvmm.h"
 #include "mem/memmap.h"
@@ -20,17 +16,14 @@
 #include "proc/process.h"
 #include "sections.h"
 #include "string.h"
-#include "sys/interrupt.h"
 #include "uacpi/kernel_api.h"
 #include "uacpi/platform/types.h"
 #include "uacpi/status.h"
 #include "uacpi/types.h"
 #include "uacpi/uacpi.h"
-#include "util/handle.h"
 #include "util/object.h"
 #include "util/panic.h"
 #include "util/printk.h"
-#include "util/refcount.h"
 #include "util/spinlock.h"
 #include <hydrogen/fcntl.h>
 #include <hydrogen/filesystem.h>
@@ -73,64 +66,6 @@ static void acpi_tables_init(void) {
 
 INIT_DEFINE_EARLY(acpi_tables, acpi_tables_init, INIT_REFERENCE(memory), INIT_REFERENCE(verify_loader_revision));
 
-static void gsi_device_file_free(object_t *ptr) {
-    file_t *self = (file_t *)ptr;
-    free_file(self);
-    vfree(self, sizeof(*self));
-}
-
-static hydrogen_ret_t gsi_device_file_ioctl(file_t *self, int request, void *buffer, size_t size) {
-    switch (request) {
-    case __IOCTL_IRQ_OPEN: {
-        if (unlikely((self->flags & (__O_RDONLY | __O_WRONLY)) != (__O_RDONLY | __O_WRONLY))) return ret_error(EBADF);
-
-        hydrogen_ioctl_irq_open_t data;
-        if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
-
-        int error = user_memcpy(&data, buffer, sizeof(data));
-        if (unlikely(error)) return ret_error(error);
-
-        if (unlikely(data.flags & ~HANDLE_FLAGS)) return ret_error(EINVAL);
-
-        int flags = 0;
-
-        if (data.active_low) flags |= GSI_ACTIVE_LOW;
-        if (data.level_triggered) flags |= GSI_LEVEL_TRIGGERED;
-        if (data.shareable) flags |= GSI_SHAREABLE;
-
-        hydrogen_ret_t ret = gsi_open(data.irq, flags);
-        if (unlikely(ret.error)) return ret_error(ret.error);
-        interrupt_t *irq = ret.pointer;
-
-        ret = hnd_alloc(&irq->base, INTERRUPT_RIGHTS, data.flags);
-        obj_deref(&irq->base);
-        return ret;
-    }
-    default: return ret_error(ENOTTY);
-    }
-}
-
-static const file_ops_t gsi_device_file_ops = {.base.free = gsi_device_file_free, .ioctl = gsi_device_file_ioctl};
-
-static hydrogen_ret_t gsi_device_open(
-    fs_device_t *self,
-    inode_t *inode,
-    dentry_t *path,
-    int flags,
-    struct ident *ident
-) {
-    file_t *file = vmalloc(sizeof(*file));
-    if (unlikely(!file)) return ret_error(ENOMEM);
-    memset(file, 0, sizeof(*file));
-
-    init_file(file, &gsi_device_file_ops, inode, path, flags);
-
-    return ret_pointer(file);
-}
-
-static const fs_device_ops_t gsi_device_ops = {.open = gsi_device_open};
-static fs_device_t gsi_device = {.ops = &gsi_device_ops, .references = REF_INIT(1)};
-
 static void create_acpi_devices(void) {
     if (!have_acpi_tables) return;
 
@@ -153,9 +88,6 @@ static void create_acpi_devices(void) {
     error = vfs_pwrite_full(file, buffer, size, 0);
     obj_deref(&file->base);
     if (unlikely(error)) panic("acpi: failed to create /dev/acpi/rsdp (%e)", error);
-
-    error = vfs_create(NULL, "/dev/acpi/gsi", 13, HYDROGEN_CHARACTER_DEVICE, 0600, &gsi_device);
-    if (unlikely(error)) panic("acpi: failed to create /dev/acpi/gsi (%e)", error);
 }
 
 INIT_DEFINE(create_acpi_devices, create_acpi_devices, INIT_REFERENCE(mount_rootfs));

@@ -1,6 +1,5 @@
 #pragma once
 
-#include "util/hlist.h"
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -9,12 +8,6 @@ typedef unsigned long irq_state_t;
 typedef struct {
     uint8_t vector;
 } irq_t;
-
-typedef struct {
-    hlist_node_t node;
-    bool (*func)(void *);
-    void *ctx;
-} irq_handler_t;
 
 static inline void disable_irq(void) {
     asm("cli");

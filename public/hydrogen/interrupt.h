@@ -10,10 +10,11 @@
 extern "C" {
 #endif
 
-#define HYDROGEN_INTERRUPT_WAIT (1u << 0)  /**< Allow the use of #hydrogen_interrupt_wait. */
-#define HYDROGEN_INTERRUPT_CLAIM (1u << 1) /**< Allow interrupts to be claimed. */
+#define HYDROGEN_INTERRUPT_WAIT (1u << 0)     /**< Allow the use of #hydrogen_interrupt_wait. */
+#define HYDROGEN_INTERRUPT_COMPLETE (1u << 1) /**< Allow interrupts to be completed. */
 
-#define HYDROGEN_IRQ_WAIT_CLAIM (1u << 0) /**< Claim the interrupt immediately. Requires #HYDROGEN_INTERRUPT_CLAIM. */
+/** Complete the interrupt immediately. Requires #HYDROGEN_INTERRUPT_COMPLETE. */
+#define HYDROGEN_IRQ_WAIT_COMPLETE (1u << 0)
 
 /**
  * Wait for an interrupt to become pending.
@@ -23,18 +24,18 @@ extern "C" {
  *                     If reached, this function returns #EAGAIN.
  * \param[in] flags A bitmask of the following flags:
  *                  - #HYDROGEN_IRQ_WAIT_CLAIM
- * \return An IRQ instance ID that can be passed to #hydrogen_interrupt_claim (in `integer`).
- */
-hydrogen_ret_t hydrogen_interrupt_wait(int irq, uint64_t deadline, unsigned flags) __asm__("__hydrogen_interrupt_wait");
-
-/**
- * Claim a pending IRQ.
- *
- * \param[in] irq The interrupt to claim.
- * \param[in] id The IRQ instance ID returned by #hydrogen_interrupt_wait.
  * \return 0, if successful; if not, an error code.
  */
-int hydrogen_interrupt_claim(int irq, size_t id) __asm__("__hydrogen_interrupt_claim");
+int hydrogen_interrupt_wait(int irq, uint64_t deadline, unsigned flags) __asm__("__hydrogen_interrupt_wait");
+
+/**
+ * Complete a pending IRQ. This is required even for shareable IRQs that did not originate from the hardware you are
+ * driving.
+ *
+ * \param[in] irq The interrupt to complete.
+ * \return 0, if successful; if not, an error code.
+ */
+int hydrogen_interrupt_complete(int irq) __asm__("__hydrogen_interrupt_complete");
 
 #ifdef __cplusplus
 };
