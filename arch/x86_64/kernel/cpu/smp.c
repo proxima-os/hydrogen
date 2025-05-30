@@ -101,6 +101,7 @@ typedef struct {
         uint16_t limit;
         uint64_t base;
     } __attribute__((packed)) temp_gdt_desc;
+    uint16_t rm_jmp[3];
 } mp_data_t;
 
 extern const void x86_64_smp_trampoline, x86_64_smp_trampoline_wakeup_entry, x86_64_smp_trampoline_end;
@@ -231,6 +232,7 @@ static int init_mp_data(mp_data_t *data, uint64_t phys) {
     data->jmp_target.eip += phys;
     data->jmp_target_wakeup.eip += phys;
     data->temp_gdt_desc.base += phys;
+    data->rm_jmp[2] = phys >> 4;
 
     return 0;
 }

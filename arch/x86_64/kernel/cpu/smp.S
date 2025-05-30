@@ -12,7 +12,7 @@
 .type x86_64_smp_trampoline, @object
 x86_64_smp_trampoline:
 .code16
-    jmp .Lrm_entry
+    jmp .Lrm_jmp
 .code64
     .org 8
 
@@ -59,6 +59,12 @@ x86_64_smp_trampoline:
 .Ltemp_gdt_desc:
     .word .Ltemp_gdt_end - .Ltemp_gdt
     .quad REL(.Ltemp_gdt)
+.Ltemp_gdt_end:
+    .byte 0
+.Lrm_jmp:
+    .byte 0xea # opcode for far jump
+    .word REL(.Lrm_entry)
+    .word 0 # segment for far jump, relocated by loader
 .Ltemp_gdt:
     .quad 0
 .set .Lcs32, . - .Ltemp_gdt
@@ -69,7 +75,6 @@ x86_64_smp_trampoline:
     .quad 0x209b0000000000
 .set .Lds64, . - .Ltemp_gdt
     .quad 0x40930000000000
-.Ltemp_gdt_end:
 
 .code16
 .Lrm_entry:
