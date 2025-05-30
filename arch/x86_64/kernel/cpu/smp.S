@@ -137,6 +137,25 @@ x86_64_smp_trampoline_wakeup_entry:
     mov %eax, %gs
     mov %eax, %ss
 
+    # disable caching
+    mov %cr0, %rax
+    or $(1 << 30), %eax
+    mov %rax, %cr0
+    wbinvd
+
+    # flush tlb
+    mov %cr4, %rax
+    and $~((1 << 17) | (1 << 7)), %eax
+    mov %rax, %cr4
+    mov %cr3, %rax
+    mov %rax, %cr3
+
+    # disable mtrr
+    mov $X86_64_MSR_MTRR_DEF_TYPE, %ecx
+    rdmsr
+    and $~(1 << 11), %eax
+    wrmsr
+
     # synchronize mtrrs
     testw $SMP_MTRR_SAVED, .Lflags(%rip)
     jz .Lmtrr_done
@@ -192,6 +211,20 @@ x86_64_smp_trampoline_wakeup_entry:
     mov $X86_64_MSR_PAT, %ecx
     wrmsr
 .Lpat_done:
+
+    # flush tlb again
+    mov %cr3, %rax
+    mov %rax, %cr3
+
+    # reenable caching
+    wbinvd
+    mov %cr0, %rax
+    and $~(1 << 30), %eax
+    mov %rax, %cr0
+
+    # restore cr4
+    mov .Lcr4(%rip), %eax
+    mov %rax, %cr4
 
     # use proper addresses and page tables
     mov .Lcpu(%rip), %rdi
