@@ -344,6 +344,8 @@ static hydrogen_ret_t ramfs_file_dir_readdir(file_t *ptr, void *buffer, size_t s
         ptr->position += 1;
     } while (size > 0);
 
+    entry->inode->atime = get_current_timestamp();
+
     mutex_rel(&entry->lock);
     return ret_integer(total);
 }
