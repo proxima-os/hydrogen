@@ -524,7 +524,7 @@ static hydrogen_ret_t mem_ioctl(file_t *self, int request, void *buffer, size_t 
 
         uint64_t head, tail;
         bool owned;
-        if (!next_ram_range(data.input.address, &head, &tail, &owned)) return ret_error(EEXIST);
+        if (!next_ram_range(data.input.address, &head, &tail, &owned)) return ret_error(ENOENT);
 
         data.output.start = head;
         data.output.size = tail - head + 1;
