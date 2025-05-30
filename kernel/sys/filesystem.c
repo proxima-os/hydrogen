@@ -1,3 +1,4 @@
+#include "sys/filesystem.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
@@ -358,20 +359,6 @@ int hydrogen_fs_truncate(int rel, const void *path, size_t length, uint64_t size
 ret:
     if (frel) obj_deref(&frel->base);
     return error;
-}
-
-static object_rights_t get_open_rights(int flags) {
-    object_rights_t rights = 0;
-    if (flags & __O_RDONLY) rights |= HYDROGEN_FILE_READ;
-    if (flags & __O_WRONLY) rights |= HYDROGEN_FILE_WRITE;
-    return rights;
-}
-
-static uint32_t get_open_flags(int flags) {
-    uint32_t handle_flags = 0;
-    if ((flags & __O_CLOFORK) == 0) handle_flags |= HYDROGEN_HANDLE_CLONE_KEEP;
-    if ((flags & __O_CLOEXEC) == 0) handle_flags |= HYDROGEN_HANDLE_EXEC_KEEP;
-    return handle_flags;
 }
 
 hydrogen_ret_t hydrogen_fs_open(int rel, const void *path, size_t length, int flags, uint32_t mode) {

@@ -5,6 +5,7 @@
 #include "fs/fifo.h"
 #include "init/task.h"
 #include "kernel/compiler.h"
+#include "kernel/pgsize.h"
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
 #include "mem/vmm.h"
@@ -1921,7 +1922,7 @@ void free_file(file_t *file) {
 }
 
 static const fs_ops_t anonymous_fs_ops = {};
-static filesystem_t anonymous_fs = {.ops = &anonymous_fs_ops};
+static filesystem_t anonymous_fs = {.ops = &anonymous_fs_ops, .block_size = PAGE_SIZE};
 static uint64_t anonymous_inode;
 
 static void anon_inode_free(inode_t *self) {
@@ -1985,4 +1986,39 @@ int vfs_create_anonymous(inode_t **out, hydrogen_file_type_t type, uint32_t mode
 
     *out = inode;
     return 0;
+}
+
+int deny_chmodown(inode_t *self, uint32_t mode, uint32_t uid, uint32_t gid) {
+    return EACCES;
+}
+
+int deny_utime(inode_t *self, __int128_t atime, __int128_t ctime, __int128_t mtime) {
+    return EACCES;
+}
+
+int deny_create(
+    inode_t *self,
+    dentry_t *entry,
+    hydrogen_file_type_t type,
+    ident_t *ident,
+    uint32_t mode,
+    fs_device_t *device
+) {
+    return EACCES;
+}
+
+int deny_symlink(inode_t *self, dentry_t *entry, const void *target, size_t size, ident_t *ident) {
+    return EACCES;
+}
+
+int deny_link(inode_t *self, dentry_t *entry, inode_t *target) {
+    return EACCES;
+}
+
+int deny_unlink(inode_t *self, dentry_t *entry) {
+    return EACCES;
+}
+
+int deny_rename(inode_t *self, dentry_t *entry, inode_t *target, dentry_t *target_entry) {
+    return EACCES;
 }

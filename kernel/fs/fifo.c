@@ -1,5 +1,4 @@
 #include "fs/fifo.h"
-#include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "fs/vfs.h"
@@ -11,6 +10,7 @@
 #include "proc/signal.h"
 #include "util/eventqueue.h"
 #include "util/list.h"
+#include "util/ringbuf.h"
 #include <hydrogen/eventqueue.h>
 #include <hydrogen/fcntl.h>
 #include <hydrogen/limits.h>
@@ -107,7 +107,9 @@ static hydrogen_ret_t fifo_file_read(file_t *ptr, void *buffer, size_t size, uin
 
     mutex_acq(&fifo->lock, 0, false);
 
-    while (!fifo->has_data) {
+    size_t readable = ringbuf_readable(&fifo->buffer);
+
+    while (!readable) {
         if (fifo->num_writers == 0) {
             mutex_rel(&fifo->lock);
             return ret_integer(0);
@@ -118,42 +120,26 @@ static hydrogen_ret_t fifo_file_read(file_t *ptr, void *buffer, size_t size, uin
             return ret_error(EAGAIN);
         }
 
-        fifo_wait(fifo, &fifo->read_waiting, NULL);
-    }
-
-    bool is_split = fifo->read_idx >= fifo->write_idx;
-    size_t p0_available = is_split ? __PIPE_BUF - fifo->read_idx : fifo->write_idx - fifo->read_idx;
-    size_t p1_available = is_split ? fifo->write_idx : 0;
-    size_t available = p0_available + p1_available;
-    size_t cur_count = size < available ? size : available;
-    size_t p0_count = cur_count < p0_available ? cur_count : p0_available;
-
-    int error = user_memcpy(buffer, fifo->buffer + fifo->read_idx, p0_count);
-
-    if (unlikely(error)) {
-        mutex_rel(&fifo->lock);
-        return ret_error(error);
-    }
-
-    if (p0_count < cur_count) {
-        size_t p1_count = cur_count - p0_count;
-        error = user_memcpy(buffer + p0_count, fifo->buffer, p1_count);
-
+        int error = fifo_wait(fifo, &fifo->read_waiting, NULL);
         if (unlikely(error)) {
             mutex_rel(&fifo->lock);
             return ret_error(error);
         }
 
-        fifo->read_idx = p1_count;
-    } else {
-        fifo->read_idx += p0_count;
-        if (fifo->read_idx == __PIPE_BUF) fifo->read_idx = 0;
+        readable = ringbuf_readable(&fifo->buffer);
     }
 
-    bool reset_read = cur_count == available;
-    bool signal_write = available == __PIPE_BUF;
+    size_t writable = ringbuf_writable(&fifo->buffer);
 
-    if (reset_read) fifo->has_data = false;
+    hydrogen_ret_t ret = ringbuf_read(&fifo->buffer, buffer, size);
+    if (unlikely(ret.error)) {
+        mutex_rel(&fifo->lock);
+        return ret;
+    }
+
+    bool reset_read = ret.integer == readable;
+    bool signal_write = writable == 0;
+
     if (signal_write) fifo_awaken(&fifo->write_waiting);
 
     if (reset_read || signal_write) {
@@ -164,7 +150,7 @@ static hydrogen_ret_t fifo_file_read(file_t *ptr, void *buffer, size_t size, uin
     }
 
     mutex_rel(&fifo->lock);
-    return ret_integer(cur_count);
+    return ret;
 }
 
 static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t size, uint64_t position, bool rpos) {
@@ -184,27 +170,15 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
             return ret_error(EPIPE);
         }
 
-        size_t p0_available;
-        size_t p1_available;
+        size_t writable = ringbuf_writable(&fifo->buffer);
 
-        if (fifo->has_data) {
-            bool is_split = fifo->read_idx < fifo->write_idx;
-            p0_available = is_split ? __PIPE_BUF - fifo->write_idx : fifo->read_idx - fifo->write_idx;
-            p1_available = is_split ? fifo->read_idx : 0;
-        } else {
-            p0_available = __PIPE_BUF - fifo->write_idx;
-            p1_available = fifo->write_idx;
-        }
-
-        size_t available = p0_available + p1_available;
-
-        if (available < size) {
+        if (writable < size) {
             if (self->base.flags & __O_NONBLOCK) {
-                if (size <= __PIPE_BUF || available == 0) {
+                if (size <= __PIPE_BUF || writable == 0) {
                     mutex_rel(&fifo->lock);
                     return ret_error(EAGAIN);
                 }
-            } else if (available == 0) {
+            } else if (writable == 0) {
                 int error = fifo_wait(fifo, &fifo->write_waiting, NULL);
 
                 if (unlikely(error)) {
@@ -218,38 +192,18 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
             }
         }
 
-        size_t cur_count = size < available ? size : available;
-        size_t p0_count = cur_count < p0_available ? cur_count : p0_available;
+        size_t readable = ringbuf_readable(&fifo->buffer);
 
-        int error = user_memcpy(fifo->buffer + fifo->write_idx, buffer, p0_count);
-
-        if (unlikely(error)) {
+        hydrogen_ret_t ret = ringbuf_write(&fifo->buffer, buffer, size);
+        if (unlikely(ret.error)) {
             mutex_rel(&fifo->lock);
-            return ret_error(error);
+            return ret;
         }
 
-        if (p0_count < cur_count) {
-            size_t p1_count = cur_count - p0_count;
-            error = user_memcpy(fifo->buffer, buffer + p0_count, p1_count);
+        bool reset_write = ret.integer == writable;
+        bool signal_read = readable == 0;
 
-            if (unlikely(error)) {
-                mutex_rel(&fifo->lock);
-                return ret_error(error);
-            }
-
-            fifo->write_idx = p1_count;
-        } else {
-            fifo->write_idx += p0_count;
-            if (fifo->write_idx == __PIPE_BUF) fifo->write_idx = 0;
-        }
-
-        bool reset_write = cur_count == available;
-        bool signal_read = available == __PIPE_BUF;
-
-        if (signal_read) {
-            fifo->has_data = true;
-            fifo_awaken(&fifo->read_waiting);
-        }
+        if (signal_read) fifo_awaken(&fifo->read_waiting);
 
         if (reset_write || signal_read) {
             LIST_FOREACH(fifo->files, fifo_file_t, node, file) {
@@ -275,15 +229,10 @@ hydrogen_ret_t fifo_open(fifo_t *fifo, inode_t *inode, dentry_t *path, int flags
     ASSERT(fifo == &inode->fifo);
     mutex_acq(&fifo->lock, 0, false);
 
-    if (!fifo->buffer) {
-        fifo->buffer = vmalloc(__PIPE_BUF);
-        if (unlikely(!fifo->buffer)) {
-            mutex_rel(&fifo->lock);
-            return ret_error(ENOMEM);
-        }
-        fifo->read_idx = 0;
-        fifo->write_idx = 0;
-        fifo->has_data = false;
+    int error = ringbuf_setup(&fifo->buffer);
+    if (unlikely(error)) {
+        mutex_rel(&fifo->lock);
+        return ret_error(error);
     }
 
     switch (flags & (__O_RDONLY | __O_WRONLY)) {
@@ -342,8 +291,8 @@ hydrogen_ret_t fifo_open(fifo_t *fifo, inode_t *inode, dentry_t *path, int flags
         }
     }
 
-    if (fifo->has_data) event_source_signal(&file->readable_event);
-    if (!fifo->has_data || fifo->read_idx != fifo->write_idx) event_source_signal(&file->writable_event);
+    if (ringbuf_readable(&fifo->buffer)) event_source_signal(&file->readable_event);
+    if (ringbuf_writable(&fifo->buffer)) event_source_signal(&file->writable_event);
     if (fifo->num_writers == 0) event_source_signal(&file->disconnect_event);
 
     list_insert_tail(&fifo->files, &file->node);
@@ -353,5 +302,5 @@ hydrogen_ret_t fifo_open(fifo_t *fifo, inode_t *inode, dentry_t *path, int flags
 }
 
 void fifo_free(fifo_t *fifo) {
-    vfree(fifo->buffer, __PIPE_BUF);
+    ringbuf_free(&fifo->buffer);
 }

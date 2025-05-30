@@ -276,3 +276,18 @@ static inline int vfs_pwrite_full(file_t *file, const void *data, size_t size, u
 
     return 0;
 }
+
+int deny_chmodown(inode_t *self, uint32_t mode, uint32_t uid, uint32_t gid);
+int deny_utime(inode_t *self, __int128_t atime, __int128_t ctime, __int128_t mtime);
+int deny_create(
+    inode_t *self,
+    dentry_t *entry,
+    hydrogen_file_type_t type,
+    struct ident *ident,
+    uint32_t mode,
+    fs_device_t *device
+);
+int deny_symlink(inode_t *self, dentry_t *entry, const void *target, size_t size, struct ident *ident);
+int deny_link(inode_t *self, dentry_t *entry, inode_t *target);
+int deny_unlink(inode_t *self, dentry_t *entry);
+int deny_rename(inode_t *self, dentry_t *entry, inode_t *target, dentry_t *target_entry);

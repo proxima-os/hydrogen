@@ -12,6 +12,7 @@ kernel_sources += files(
     'drv/acpi/acpi.c',
     'drv/framebuffer.c',
     'drv/interrupt.c',
+    'drv/terminal.c',
     'fs/fifo.c',
     'fs/ramfs.c',
     'fs/specdev.c',
@@ -52,6 +53,7 @@ kernel_sources += files(
     'util/object.c',
     'util/panic.c',
     'util/printk.c',
+    'util/ringbuf.c',
     'util/spinlock.c',
     'util/time.c',
 )

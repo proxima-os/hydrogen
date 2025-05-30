@@ -1,8 +1,8 @@
 #pragma once
 
 #include "proc/mutex.h"
-#include "util/eventqueue.h"
 #include "util/list.h"
+#include "util/ringbuf.h"
 #include <hydrogen/types.h>
 #include <stddef.h>
 
@@ -10,22 +10,17 @@ struct inode;
 struct dentry;
 
 typedef struct {
-    void *buffer;
-    size_t read_idx;
-    size_t write_idx;
-    bool has_data;
+    ringbuf_t buffer;
 
     list_t read_waiting;
     list_t write_waiting;
 
     list_t open_read_waiting;
     list_t open_write_waiting;
+
+    list_t files;
     size_t num_readers;
     size_t num_writers;
-
-    event_source_t readable_event;
-    event_source_t writable_event;
-    event_source_t disconnect_event;
 
     mutex_t lock;
 } fifo_t;

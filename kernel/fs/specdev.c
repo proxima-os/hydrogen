@@ -17,6 +17,7 @@
 #include "mem/vmm.h"
 #include "proc/process.h"
 #include "string.h"
+#include "sys/filesystem.h"
 #include "util/handle.h"
 #include "util/object.h"
 #include "util/panic.h"
@@ -409,7 +410,7 @@ static hydrogen_ret_t create_alloc_file(page_t *head, size_t count, int flags) {
     }
 
     file_t *file;
-    error = vfs_fopen(&file, NULL, inode, flags | __O_RDONLY | __O_WRONLY, ident);
+    error = vfs_fopen(&file, NULL, inode, flags, ident);
     inode_deref(inode);
     ident_deref(ident);
     if (unlikely(error)) return ret_error(error);
@@ -460,11 +461,6 @@ static hydrogen_ret_t mem_ioctl(file_t *self, int request, void *buffer, size_t 
         }
         file_t *file = ret.pointer;
 
-        uint32_t handle_flags = 0;
-
-        if (!(data.input.flags & __O_CLOEXEC)) handle_flags |= HYDROGEN_HANDLE_EXEC_KEEP;
-        if (!(data.input.flags & __O_CLOFORK)) handle_flags |= HYDROGEN_HANDLE_CLONE_KEEP;
-
         error = hnd_reserve(current_thread->namespace);
         if (unlikely(error)) {
             obj_deref(&file->base);
@@ -490,8 +486,8 @@ static hydrogen_ret_t mem_ioctl(file_t *self, int request, void *buffer, size_t 
         int fd = hnd_alloc_reserved(
             current_thread->namespace,
             &file->base,
-            HYDROGEN_FILE_READ | HYDROGEN_FILE_WRITE,
-            handle_flags,
+            get_open_rights(data.input.flags),
+            get_open_flags(data.input.flags),
             hdata
         );
         obj_deref(&file->base);
