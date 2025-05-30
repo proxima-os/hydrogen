@@ -1286,28 +1286,36 @@ int vfs_ftruncate(file_t *file, uint64_t size) {
     return error;
 }
 
+typedef struct {
+    file_t base;
+    event_source_t always_pending_event;
+} regular_file_t;
+
 static void regular_file_free(object_t *ptr) {
-    file_t *self = (file_t *)ptr;
-    free_file(self);
+    regular_file_t *self = (regular_file_t *)ptr;
+    event_source_cleanup(&self->always_pending_event);
+    free_file(&self->base);
     vfree(self, sizeof(*self));
 }
 
-static event_source_t always_pending_event_source = {.pending = true};
-
 static int regular_file_event_add(object_t *ptr, uint32_t rights, active_event_t *event) {
+    regular_file_t *self = (regular_file_t *)ptr;
+
     switch (event->source.type) {
     case HYDROGEN_EVENT_FILE_DESCRIPTION_READABLE:
     case HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE:
-    case HYDROGEN_EVENT_FILE_DESCRIPTION_ERROR_REGULAR: return event_source_add(&always_pending_event_source, event);
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_ERROR_REGULAR: return event_source_add(&self->always_pending_event, event);
     default: return EINVAL;
     }
 }
 
 static void regular_file_event_del(object_t *ptr, active_event_t *event) {
+    regular_file_t *self = (regular_file_t *)ptr;
+
     switch (event->source.type) {
     case HYDROGEN_EVENT_FILE_DESCRIPTION_READABLE:
     case HYDROGEN_EVENT_FILE_DESCRIPTION_WRITABLE:
-    case HYDROGEN_EVENT_FILE_DESCRIPTION_ERROR_REGULAR: event_source_del(&always_pending_event_source, event); break;
+    case HYDROGEN_EVENT_FILE_DESCRIPTION_ERROR_REGULAR: event_source_del(&self->always_pending_event, event); break;
     default: UNREACHABLE();
     }
 }
@@ -1423,9 +1431,10 @@ static const file_ops_t regular_file_ops = {
     .mmap = regular_file_mmap,
 };
 
-static void open_regular_file(file_t *file, inode_t *inode, dentry_t *path, int flags) {
+static void open_regular_file(regular_file_t *file, inode_t *inode, dentry_t *path, int flags) {
     memset(file, 0, sizeof(*file));
-    init_file(file, &regular_file_ops, inode, path, flags);
+    init_file(&file->base, &regular_file_ops, inode, path, flags);
+    event_source_signal(&file->always_pending_event);
 }
 
 static int do_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ident_t *ident) {
@@ -1451,7 +1460,7 @@ static int do_fopen(file_t **out, dentry_t *path, inode_t *inode, int flags, ide
     switch (inode->type) {
     case HYDROGEN_DIRECTORY: ret = inode->ops->directory.open(inode, path, flags); break;
     case HYDROGEN_REGULAR_FILE: {
-        file_t *file = vmalloc(sizeof(*file));
+        regular_file_t *file = vmalloc(sizeof(*file));
         if (unlikely(!file)) {
             ret = ret_error(ENOMEM);
             break;
@@ -1523,8 +1532,8 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
             goto ret;
         }
 
-        file = vmalloc(sizeof(*file));
-        if (unlikely(!file)) {
+        regular_file_t *rfile = vmalloc(sizeof(*rfile));
+        if (unlikely(!rfile)) {
             error = ENOMEM;
             goto ret;
         }
@@ -1532,19 +1541,22 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
         hydrogen_ret_t ret = dir->fs->ops->tmpfile(dir->fs, ident, mode);
         if (unlikely(ret.error)) {
             error = ret.error;
+            vfree(rfile, sizeof(*rfile));
             goto ret;
         }
         inode_t *inode = ret.pointer;
 
         mutex_acq(&inode->lock, 0, false);
-        open_regular_file(file, inode, NULL, flags);
+        open_regular_file(rfile, inode, NULL, flags);
         mutex_rel(&inode->lock);
         inode_deref(inode);
+
+        file = &rfile->base;
     } else if (entry->inode == NULL) {
         ASSERT(flags & __O_CREAT);
 
-        file = vmalloc(sizeof(*file));
-        if (unlikely(!file)) {
+        regular_file_t *rfile = vmalloc(sizeof(*rfile));
+        if (unlikely(!rfile)) {
             error = ENOMEM;
             goto ret;
         }
@@ -1557,7 +1569,7 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
         if (unlikely(!inode)) {
             error = ENOENT;
             mutex_rel(&parent->lock);
-            vfree(file, sizeof(*file));
+            vfree(rfile, sizeof(*rfile));
             goto ret;
         }
 
@@ -1568,7 +1580,7 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
         if (unlikely(error)) {
             mutex_rel(&inode->lock);
             mutex_rel(&parent->lock);
-            vfree(file, sizeof(*file));
+            vfree(rfile, sizeof(*rfile));
             goto ret;
         }
 
@@ -1576,12 +1588,14 @@ int vfs_open(file_t **out, file_t *rel, const void *path, size_t length, int fla
         mutex_rel(&inode->lock);
         mutex_rel(&parent->lock);
         if (unlikely(error)) {
-            vfree(file, sizeof(*file));
+            vfree(rfile, sizeof(*rfile));
             goto ret;
         }
         mutex_acq(&entry->inode->lock, 0, false);
-        open_regular_file(file, entry->inode, entry, flags);
+        open_regular_file(rfile, entry->inode, entry, flags);
         mutex_rel(&entry->inode->lock);
+
+        file = &rfile->base;
     } else {
         ASSERT((flags & __O_EXCL) == 0);
 
