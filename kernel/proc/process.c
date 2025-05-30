@@ -667,6 +667,7 @@ static void discard_status(process_t *process, process_t *parent, bool own_waiti
         if (!own_waitid_lock) mutex_rel(&parent->waitid_lock);
 
         reap_process(process, parent);
+        obj_deref(&process->base);
     }
 }
 
@@ -729,6 +730,7 @@ static void handle_process_exit(process_t *process) {
 
     if (!process->exit_signal_sent) {
         process->exit_signal_sent = true;
+        obj_ref(&process->base);
 
         mutex_acq(&parent->threads_lock, 0, false);
         mutex_acq(&parent->sig_target.lock, 0, false);
@@ -743,7 +745,6 @@ static void handle_process_exit(process_t *process) {
     bool should_reap = parent->sig_handlers[__SIGCHLD].__func.__handler == __SIG_IGN ||
                        parent->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDWAIT;
     if (should_reap) discard_status(process, parent, false);
-    else obj_ref(&process->base);
 
     mutex_rel(&parent->sig_lock);
     mutex_rel(&process->status_lock);
@@ -798,6 +799,7 @@ void handle_process_terminated(process_t *process, int signal, bool dump) {
     mutex_rel(&parent->children_lock);
 
     process->exit_signal_sent = true;
+    obj_ref(&process->base);
     mutex_rel(&process->status_lock);
 }
 
