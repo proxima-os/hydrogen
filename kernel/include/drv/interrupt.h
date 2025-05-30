@@ -6,6 +6,7 @@
 #include "util/object.h"
 #include "util/spinlock.h"
 #include <hydrogen/types.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #define IRQ_SHAREABLE (1 << 0)
@@ -29,28 +30,11 @@ struct irq_controller {
     const char *path;
 };
 
-/*typedef struct interrupt interrupt_t;
-
-typedef struct {
-    object_ops_t base;
-    void (*mask)(interrupt_t *self);
-    void (*unmask)(interrupt_t *self);
-} interrupt_ops_t;
-
-struct interrupt {
-    object_t base;
-    spinlock_t lock;
-    bool pending;
-    size_t id;
-    list_t waiting;
-    event_source_t pending_source;
-};*/
-
 typedef struct {
     object_t base;
     irq_controller_t *controller;
     spinlock_t lock;
-    bool pending;
+    size_t pending;
     list_t waiting;
     event_source_t pending_source;
     void *irq;

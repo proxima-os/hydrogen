@@ -67,9 +67,8 @@ static void handle_user_irq(void *ptr) {
     interrupt_t *interrupt = ptr;
     spin_acq_noirq(&interrupt->lock);
 
-    if (!interrupt->pending) {
+    if (interrupt->pending++ == 0) {
         interrupt->controller->ops->mask(interrupt->controller, interrupt->irq);
-        interrupt->pending = true;
         event_source_signal(&interrupt->pending_source);
 
         LIST_FOREACH(interrupt->waiting, thread_t, wait_node, thread) {
@@ -77,8 +76,6 @@ static void handle_user_irq(void *ptr) {
                 list_remove(&interrupt->waiting, &thread->wait_node);
             }
         }
-    } else {
-        printk("irq: interrupt triggered while already pending\n");
     }
 
     spin_rel_noirq(&interrupt->lock);
@@ -172,9 +169,10 @@ int irq_controller_init(irq_controller_t *controller) {
 }
 
 static void do_complete(interrupt_t *irq) {
-    irq->pending = false;
-    event_source_reset(&irq->pending_source);
-    irq->controller->ops->unmask(irq->controller, irq->irq);
+    if (--irq->pending == 0) {
+        event_source_reset(&irq->pending_source);
+        irq->controller->ops->unmask(irq->controller, irq->irq);
+    }
 }
 
 int interrupt_wait(interrupt_t *irq, uint64_t deadline, uint32_t flags) {
