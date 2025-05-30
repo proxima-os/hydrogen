@@ -231,11 +231,13 @@ static size_t get_free_idx(namespace_t *ns, size_t minimum) {
 static hydrogen_ret_t get_next_handle(namespace_t *ns, size_t minimum) {
 again: {
     size_t idx = get_free_idx(ns, minimum);
+    if (idx > (size_t)INT_MAX) return ret_error(EMFILE);
 
     if (idx >= ns->capacity || ns->capacity - ns->count - ns->reserved == 0) {
-        if (ns->capacity > (size_t)INT_MAX) {
-            if (idx == ns->capacity) return ret_error(EMFILE);
+        size_t min = ns->capacity + 1;
+        if (min <= idx) min = idx + 1;
 
+        if (min > (size_t)INT_MAX + 1) {
             // This can only happen if some slots are reserved. They might be unreserved instead of allocated;
             // wait until reserved count drops to 0 so that we can be sure there are no handles available.
             sched_prepare_wait(false);
@@ -247,7 +249,7 @@ again: {
             goto again;
         }
 
-        int error = expand(ns, ns->capacity + 1);
+        int error = expand(ns, min);
         if (unlikely(error)) return ret_error(error);
     }
 
