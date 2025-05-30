@@ -301,7 +301,7 @@ void event_source_cleanup(event_source_t *source) {
             spin_rel_noirq(&event->queue->pending_lock);
         }
 
-        list_remove(&source->events, &event->node);
+        list_remove(&source->events, &event->source_node);
         vfree(event, sizeof(*event));
     }
 
