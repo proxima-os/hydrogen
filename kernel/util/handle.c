@@ -184,7 +184,7 @@ int namespace_clone(namespace_t **out, namespace_t *ns) {
                     obj_ref(new_data->object);
                     dst->count += 1;
 
-                    *ddata = *sdata;
+                    *ddata = new_data;
                     *dbitmap |= mask;
                 }
 
