@@ -18,7 +18,7 @@
 #include <hydrogen/types.h>
 #include <stdint.h>
 
-#define PROCESS_RIGHTS (THIS_PROCESS_RIGHTS | HYDROGEN_PROCESS_WAIT_SIGNAL)
+#define PROCESS_RIGHTS (THIS_PROCESS_RIGHTS | HYDROGEN_PROCESS_WAIT_STATUS)
 
 hydrogen_ret_t hydrogen_process_find(int id, uint32_t flags) {
     if (unlikely((flags & ~HANDLE_FLAGS) != 0)) return ret_error(EINVAL);
