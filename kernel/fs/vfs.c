@@ -244,7 +244,14 @@ static int lookup(dentry_t **entry, const char *path, size_t length, ident_t *id
         }
 
         size_t comp_len = 0;
-        while (comp_len < length && path[comp_len] != '/') comp_len++;
+        while (comp_len < length && path[comp_len] != '/') {
+            if (unlikely(path[comp_len] == 0)) {
+                error = EILSEQ;
+                goto err;
+            }
+
+            comp_len += 1;
+        }
 
         uint32_t sym_flags = ((flags & (0xff | LOOKUP_REAL_ID)) + 1) | LOOKUP_ALLOW_TRAILING;
 
