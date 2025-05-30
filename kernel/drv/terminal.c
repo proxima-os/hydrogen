@@ -553,6 +553,8 @@ static hydrogen_ret_t ptmx_open(fs_device_t *self, inode_t *inode, dentry_t *pat
         return ret_error(error);
     }
 
+    event_source_signal(&pty->rx_writable_event);
+
     mutex_acq(&devpts_root_inode.lock, 0, false);
 
     intptr_t index = ptys_free;
