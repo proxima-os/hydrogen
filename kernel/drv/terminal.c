@@ -326,6 +326,8 @@ static void pts_event_del(object_t *ptr, active_event_t *event) {
 static hydrogen_ret_t pts_read(file_t *ptr, void *buffer, size_t size, uint64_t position) {
     pts_file_t *self = (pts_file_t *)ptr;
     pty_t *pty = (pty_t *)self->base.inode->device;
+    if (__atomic_load_n(&pty->locked, __ATOMIC_ACQUIRE)) return ret_error(EIO);
+
     mutex_acq(&pty->rx_lock, 0, false);
 
     size_t readable = ringbuf_readable(&pty->rx);
@@ -375,6 +377,8 @@ static hydrogen_ret_t pts_read(file_t *ptr, void *buffer, size_t size, uint64_t 
 static hydrogen_ret_t pts_write(file_t *ptr, const void *buffer, size_t size, uint64_t position, bool rpos) {
     pts_file_t *self = (pts_file_t *)ptr;
     pty_t *pty = (pty_t *)self->base.inode->device;
+    if (__atomic_load_n(&pty->locked, __ATOMIC_ACQUIRE)) return ret_error(EIO);
+
     mutex_acq(&pty->tx_lock, 0, false);
 
     size_t writable = ringbuf_writable(&pty->tx);
