@@ -15,6 +15,7 @@
 #include "x86_64/kvmclock.h"
 #include "x86_64/lapic.h"
 #include "x86_64/msr.h"
+#include "x86_64/pit.h"
 #include "x86_64/time.h"
 #include "x86_64/tsc.h"
 #include <stdint.h>
@@ -45,6 +46,7 @@ static void init_events(void) {
 INIT_DEFINE_EARLY_AP(x86_64_time_ap, init_events, INIT_REFERENCE(x86_64_interrupts_ap));
 
 static void init_timers(void) {
+    x86_64_pit_init();
     x86_64_hpet_init();
     x86_64_kvmclock_init();
     x86_64_tsc_init();

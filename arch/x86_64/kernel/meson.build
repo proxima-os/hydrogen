@@ -25,6 +25,7 @@ kernel_sources += files(
     'sys/transition.c',
     'time/hpet.c',
     'time/kvmclock.c',
+    'time/pit.c',
     'time/time.c',
     'time/tsc.c',
 )
