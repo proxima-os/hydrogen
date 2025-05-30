@@ -145,6 +145,10 @@ static void x86_64_ioapic_init(void) {
     struct acpi_entry_hdr *cur = madt->entries;
     struct acpi_entry_hdr *end = (void *)madt + madt->hdr.length;
 
+    for (int i = 0; i < 16; i++) {
+        isa_irq_overrides[i].gsi = i;
+    }
+
     while (cur < end) {
         if (cur->type == ACPI_MADT_ENTRY_TYPE_IOAPIC) {
             struct acpi_madt_ioapic *entry = (void *)cur;
