@@ -102,7 +102,7 @@ static hydrogen_ret_t ramfs_inode_regular_data_get_page(
     mem_object_t *ptr,
     vmm_region_t *region,
     uint64_t index,
-    rcu_state_t *state_out,
+    bool lock_rcu,
     bool write
 ) {
     ramfs_inode_t *self = CONTAINER(ramfs_inode_t, data.base, ptr);
@@ -120,7 +120,7 @@ static hydrogen_ret_t ramfs_inode_regular_data_get_page(
         mutex_rel(&self->base.lock);
     }
 
-    return self->orig_data_ops->get_page(ptr, region, index, state_out, write);
+    return self->orig_data_ops->get_page(ptr, region, index, lock_rcu, write);
 }
 
 static void ramfs_inode_regular_data_post_map(
@@ -299,10 +299,10 @@ static hydrogen_ret_t ramfs_file_dir_readdir(file_t *ptr, void *buffer, size_t s
             name = ".";
             length = 1;
         } else if (ptr->position == 1) {
-            rcu_state_t state = rcu_read_lock();
+            rcu_read_lock();
             dentry_t *root = rcu_read(current_thread->process->root_dir);
             dentry_ref(root);
-            rcu_read_unlock(state);
+            rcu_read_unlock();
 
             dentry_t *parent = current;
 

@@ -156,10 +156,10 @@ USED void x86_64_idt_dispatch(arch_context_t *context) {
     case X86_64_IDT_AC: signal_or_fatal(context, __SIGBUS, __BUS_ADRALN); break;
     case X86_64_IDT_XM: signal_or_fatal(context, __SIGFPE, 0); break;
     case X86_64_IDT_IPI_REMOTE_CALL: {
-        preempt_state_t state = preempt_lock();
+        preempt_lock();
         smp_handle_remote_call();
         x86_64_lapic_eoi();
-        preempt_unlock(state);
+        preempt_unlock();
         break;
     }
     case X86_64_IDT_LAPIC_TIMER: x86_64_handle_timer(); break;

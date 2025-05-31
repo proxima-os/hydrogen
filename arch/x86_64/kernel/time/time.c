@@ -90,10 +90,10 @@ void x86_64_handle_timer(void) {
         }
     }
 
-    preempt_state_t state = preempt_lock();
+    preempt_lock();
     time_handle_irq();
     x86_64_lapic_eoi();
-    preempt_unlock(state);
+    preempt_unlock();
 }
 
 void arch_queue_timer_irq(uint64_t deadline) {

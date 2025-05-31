@@ -278,7 +278,7 @@ static uint64_t irq_map[(NUM_IRQS + 63) / 64];
 static spinlock_t irqs_lock;
 
 void x86_64_lapic_irq_handle(uint8_t vector) {
-    preempt_state_t pstate = preempt_lock();
+    preempt_lock();
 
     irq_state_t state = spin_acq(&irqs_lock);
     irq_data_t *data = &irqs[vector - X86_64_IDT_IRQ_MIN];
@@ -291,7 +291,7 @@ void x86_64_lapic_irq_handle(uint8_t vector) {
 
     spin_rel(&irqs_lock, state);
     x86_64_lapic_eoi();
-    preempt_unlock(pstate);
+    preempt_unlock();
 }
 
 int arch_irq_allocate(irq_t *out, void (*func)(void *), void *ctx) {

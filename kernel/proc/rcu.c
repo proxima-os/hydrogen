@@ -88,9 +88,9 @@ void rcu_quiet(cpu_t *cpu) {
 }
 
 void rcu_call(task_t *task) {
-    preempt_state_t state = preempt_lock();
+    preempt_lock();
     slist_insert_tail(&get_current_cpu()->rcu.next_cb, &task->node);
-    preempt_unlock(state);
+    preempt_unlock();
 }
 
 typedef struct {

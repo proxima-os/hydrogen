@@ -14,7 +14,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef bool preempt_state_t;
 typedef bool migrate_state_t;
 
 struct namespace;
@@ -77,9 +76,8 @@ typedef struct {
     thread_t *reaper;
     list_t reaper_queue;
     thread_t idle_thread;
-    preempt_state_t preempt_state;
+    unsigned preempt_level;
     bool preempt_queued;
-    bool preempt_work;
     spinlock_t lock;
     slist_t tasks;
 } sched_t;
@@ -103,8 +101,8 @@ int sched_create_thread(
     unsigned flags
 );
 
-preempt_state_t preempt_lock(void);
-void preempt_unlock(preempt_state_t state);
+void preempt_lock(void);
+void preempt_unlock(void);
 
 void sched_yield(void);
 bool sched_wake(thread_t *thread); // if thread is in THREAD_CREATED, increments its reference count

@@ -231,12 +231,12 @@ static inline void x86_64_invlpg_asid(uintptr_t virt, void *table, int asid) {
         x86_64_invlpg(virt);
     } else {
         // invplg only flushes in the current pcid, so we need to switch to the other one temporarily
-        preempt_state_t state = preempt_lock();
+        preempt_lock();
         size_t cr3 = x86_64_read_cr3();
         x86_64_write_cr3(virt_to_phys(table) | asid | (1ul << 63));
         x86_64_invlpg(virt);
         x86_64_write_cr3(cr3 | (1ul << 63));
-        preempt_unlock(state);
+        preempt_unlock();
     }
 }
 
@@ -285,7 +285,7 @@ static inline void arch_pt_flush_edge(uintptr_t virt, void *table, int asid, boo
             // PGE or clearing PCIDE. We prefer flipping PGE, since clearing PCIDE can only be done
             // when the current PCID is 0 (otherwise we might accidentally set PCD/PWT).
 
-            preempt_state_t state = preempt_lock();
+            preempt_lock();
             size_t cr4 = x86_64_read_cr4();
 
             if (x86_64_cpu_features.pge) {
@@ -299,7 +299,7 @@ static inline void arch_pt_flush_edge(uintptr_t virt, void *table, int asid, boo
                 x86_64_write_cr3(cr3);
             }
 
-            preempt_unlock(state);
+            preempt_unlock();
         }
     }
 }

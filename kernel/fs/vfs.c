@@ -215,7 +215,7 @@ static int lookup(dentry_t **entry, const char *path, size_t length, ident_t *id
 
     dentry_t *current = *entry;
 
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
 
     dentry_t *root = rcu_read(current_thread->process->root_dir);
     dentry_ref(root);
@@ -223,7 +223,7 @@ static int lookup(dentry_t **entry, const char *path, size_t length, ident_t *id
     if (length > 0 && path[0] == '/') {
         current = root;
         dentry_ref(current);
-        rcu_read_unlock(state);
+        rcu_read_unlock();
         mutex_acq(&current->lock, 0, false);
         mount_top(&current);
         path += 1;
@@ -231,7 +231,7 @@ static int lookup(dentry_t **entry, const char *path, size_t length, ident_t *id
     } else {
         if (current == NULL) current = rcu_read(current_thread->process->work_dir);
         dentry_ref(current);
-        rcu_read_unlock(state);
+        rcu_read_unlock();
         mutex_acq(&current->lock, 0, false);
     }
 
@@ -1771,10 +1771,10 @@ static size_t try_get_fpath(dentry_t *root, dentry_t *entry, void *buffer, size_
 }
 
 hydrogen_ret_t vfs_fpath(dentry_t *path, void **buf_out, size_t *len_out) {
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     dentry_t *root = current_thread->process->root_dir;
     dentry_ref(root);
-    rcu_read_unlock(state);
+    rcu_read_unlock();
 
     void *buffer = NULL;
     size_t capacity = 0;

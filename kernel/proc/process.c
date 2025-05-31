@@ -384,14 +384,14 @@ int proc_clone(process_t **out) {
     process->alarm_task.func = alarm_send;
 
     process->umask = __atomic_load_n(&current_thread->process->umask, __ATOMIC_ACQUIRE);
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     process->work_dir = rcu_read(current_thread->process->work_dir);
     process->root_dir = rcu_read(current_thread->process->root_dir);
     process->group = rcu_read(current_thread->process->group);
     dentry_ref(process->work_dir);
     dentry_ref(process->root_dir);
     pgroup_ref(process->group);
-    rcu_read_unlock(state);
+    rcu_read_unlock();
 
     mutex_acq(&pids_lock, 0, false);
     int error = allocate_pid(process, NULL);
@@ -460,16 +460,16 @@ int proc_thread_create(process_t *process, struct thread *thread) {
 // holding children_lock prevents the parent from reparenting us away
 static process_t *get_parent_with_locked_children(process_t *process) {
     for (;;) {
-        rcu_state_t state = rcu_read_lock();
+        rcu_read_lock();
         process_t *parent = rcu_read(process->parent);
         obj_ref(&parent->base);
-        rcu_read_unlock(state);
+        rcu_read_unlock();
 
         mutex_acq(&parent->children_lock, 0, false);
 
-        state = rcu_read_lock();
+        rcu_read_lock();
         bool ok = rcu_read(process->parent) == parent;
-        rcu_read_unlock(state);
+        rcu_read_unlock();
 
         if (ok) return parent;
 
@@ -546,7 +546,7 @@ static void reparent_children(process_t *process) {
         process_t *child = LIST_REMOVE_HEAD(process->children, process_t, parent_node);
         if (!child) break;
 
-        rcu_state_t state = rcu_read_lock();
+        rcu_read_lock();
 
         pgroup_t *opgroup = process->group;
         pgroup_t *npgroup = init_process->group;
@@ -565,7 +565,7 @@ static void reparent_children(process_t *process) {
             __atomic_fetch_add(&cgroup->orphan_inhibitors, 1, __ATOMIC_ACQ_REL);
         }
 
-        rcu_read_unlock(state);
+        rcu_read_unlock();
 
         if (newly_orphaned) {
             handle_group_orphaned(cgroup);
@@ -699,13 +699,13 @@ static void handle_process_exit(process_t *process) {
 
     reparent_children(process);
 
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     pgroup_t *pgroup = rcu_read(rcu_read(process->parent)->group);
     pgroup_t *cgroup = rcu_read(process->group);
     pgroup_ref(cgroup);
     bool newly_orphaned = does_inhibit_orphaning(pgroup, cgroup) &&
                           __atomic_fetch_sub(&cgroup->orphan_inhibitors, 1, __ATOMIC_ACQ_REL) == 1;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
 
     leave_group(process->group, process);
 
@@ -1184,11 +1184,11 @@ int sigwait(process_t *process, __sigset_t set, __siginfo_t *info, uint64_t dead
 }
 
 bool can_send_signal(process_t *process, __siginfo_t *info) {
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
 
     if (info->__signo == __SIGCONT &&
         rcu_read(current_thread->process->group)->session == rcu_read(process->group->session)) {
-        rcu_read_unlock(state);
+        rcu_read_unlock();
         return true;
     }
 
@@ -1196,19 +1196,19 @@ bool can_send_signal(process_t *process, __siginfo_t *info) {
 
     if (info->__data.__user_or_sigchld.__uid == rx_ident->uid ||
         info->__data.__user_or_sigchld.__uid == rx_ident->suid) {
-        rcu_read_unlock(state);
+        rcu_read_unlock();
         return true;
     }
 
     ident_t *tx_ident = rcu_read(current_thread->process->identity);
 
     if (tx_ident->euid == 0) {
-        rcu_read_unlock(state);
+        rcu_read_unlock();
         return true;
     }
 
     bool ok = tx_ident->euid == rx_ident->uid || tx_ident->euid == rx_ident->suid;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
     return ok;
 }
 
@@ -1336,23 +1336,23 @@ int getpid(process_t *process) {
 }
 
 int getppid(process_t *process) {
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     int id = rcu_read(process->parent)->pid->id;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
     return id;
 }
 
 int getpgid(process_t *process) {
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     int id = rcu_read(process->group)->pid->id;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
     return id;
 }
 
 int getsid(process_t *process) {
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     int id = rcu_read(process->group)->session->pid->id;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
     return id;
 }
 
@@ -1379,10 +1379,10 @@ static void do_unlock_two(pgroup_t *a, pgroup_t *b) {
 int setpgid(process_t *process, int pgid) {
     if (pgid < 0) return EINVAL;
 
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     session_t *own_session = rcu_read(current_thread->process->group)->session;
     session_ref(own_session);
-    rcu_read_unlock(state);
+    rcu_read_unlock();
 
     mutex_acq(&process->group_update_lock, 0, false);
     pgroup_t *old_group = process->group;
@@ -1442,14 +1442,14 @@ int setpgid(process_t *process, int pgid) {
         goto err;
     }
 
-    state = rcu_read_lock();
+    rcu_read_lock();
 
     pgroup_t *parent_group = rcu_read(rcu_read(process->parent)->group);
     bool old_inhibit = does_inhibit_orphaning(parent_group, old_group);
     bool new_inhibit = does_inhibit_orphaning(parent_group, new_group);
     bool newly_orphaned = old_inhibit && __atomic_fetch_sub(&old_group->orphan_inhibitors, 1, __ATOMIC_ACQ_REL) == 1;
     if (new_inhibit) __atomic_fetch_add(&new_group->orphan_inhibitors, 1, __ATOMIC_ACQ_REL);
-    rcu_read_unlock(state);
+    rcu_read_unlock();
 
     do_leave_group(old_group, process);
     list_insert_tail(&new_group->members, &process->group_node);
@@ -1524,10 +1524,10 @@ hydrogen_ret_t setsid(process_t *process) {
 
     pgroup_t *old_group = process->group;
 
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     bool newly_orphaned = does_inhibit_orphaning(rcu_read(rcu_read(process->parent)->group), old_group) &&
                           __atomic_fetch_sub(&old_group->orphan_inhibitors, 1, __ATOMIC_ACQ_REL) == 1;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
 
     leave_group(old_group, process);
 
@@ -1548,42 +1548,42 @@ hydrogen_ret_t setsid(process_t *process) {
 }
 
 uint32_t getgid(process_t *process) {
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     uint32_t gid = rcu_read(process->identity)->gid;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
     return gid;
 }
 
 uint32_t getuid(process_t *process) {
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     uint32_t uid = rcu_read(process->identity)->uid;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
     return uid;
 }
 
 uint32_t getegid(process_t *process) {
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     uint32_t egid = rcu_read(process->identity)->egid;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
     return egid;
 }
 
 uint32_t geteuid(process_t *process) {
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     uint32_t euid = rcu_read(process->identity)->euid;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
     return euid;
 }
 
 int getresgid(process_t *process, uint32_t gids[3]) {
     uint32_t src[3];
 
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     ident_t *ident = rcu_read(process->identity);
     src[0] = ident->gid;
     src[1] = ident->egid;
     src[2] = ident->sgid;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
 
     return user_memcpy(gids, src, sizeof(src));
 }
@@ -1591,12 +1591,12 @@ int getresgid(process_t *process, uint32_t gids[3]) {
 int getresuid(process_t *process, uint32_t uids[3]) {
     uint32_t src[3];
 
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     ident_t *ident = rcu_read(process->identity);
     src[0] = ident->uid;
     src[1] = ident->euid;
     src[2] = ident->suid;
-    rcu_read_unlock(state);
+    rcu_read_unlock();
 
     return user_memcpy(uids, src, sizeof(src));
 }
@@ -1803,10 +1803,10 @@ int setgroups(process_t *process, const uint32_t *groups, size_t count) {
 }
 
 ident_t *ident_get(process_t *process) {
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     ident_t *ident = rcu_read(process->identity);
     ident_ref(ident);
-    rcu_read_unlock(state);
+    rcu_read_unlock();
     return ident;
 }
 

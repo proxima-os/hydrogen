@@ -2,6 +2,7 @@
 #pragma once
 
 #include "x86_64/tss.h"
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -30,3 +31,11 @@ typedef struct {
 #define this_cpu_read_tl(name) (*(__seg_gs __this_cpu_type(name) *)offsetof(cpu_t, name))
 #define this_cpu_write_tl(name, value) (this_cpu_read_tl(name) = (value))
 #define get_current_cpu() this_cpu_read(arch.self)
+
+#define this_cpu_inc32(name) ({ asm("addl $1, %%gs:%c0" ::"i"(offsetof(cpu_t, name)) : "cc"); })
+#define this_cpu_dec32(name)                                                             \
+    ({                                                                                   \
+        bool _zero;                                                                      \
+        asm volatile("subl $1, %%gs:%c1" : "=@ccz"(_zero) : "i"(offsetof(cpu_t, name))); \
+        _zero;                                                                           \
+    })

@@ -552,10 +552,10 @@ hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) {
         }
     } else {
         fdesc = NULL;
-        rcu_state_t state = rcu_read_lock();
+        rcu_read_lock();
         entry = current_thread->process->work_dir;
         dentry_ref(entry);
-        rcu_read_unlock(state);
+        rcu_read_unlock();
     }
 
     void *path;

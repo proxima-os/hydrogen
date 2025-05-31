@@ -64,8 +64,8 @@ static void anon_mem_object_free(object_t *ptr) {
     vfree(self, sizeof(*self));
 }
 
-static page_t *get_noalloc(anon_mem_object_t *self, uint64_t index, rcu_state_t *state_out) {
-    rcu_state_t state = rcu_read_lock();
+static page_t *get_noalloc(anon_mem_object_t *self, uint64_t index, bool lock_rcu) {
+    rcu_read_lock();
 
     uintptr_t root_value = rcu_read(self->root);
     size_t levels = root_value & PAGE_MASK;
@@ -75,13 +75,12 @@ static page_t *get_noalloc(anon_mem_object_t *self, uint64_t index, rcu_state_t 
         void *ptr = curptr ? rcu_read(*curptr) : (void *)(root_value & ~PAGE_MASK);
 
         if (!ptr) {
-            rcu_read_unlock(state);
+            rcu_read_unlock();
             return NULL;
         }
 
         if (levels == 0) {
-            if (state_out) *state_out = state;
-            else rcu_read_unlock(state);
+            if (!lock_rcu) rcu_read_unlock();
             return virt_to_page(ptr);
         }
 
@@ -94,12 +93,12 @@ static hydrogen_ret_t anon_mem_object_get_page(
     mem_object_t *ptr,
     vmm_region_t *region,
     uint64_t index,
-    rcu_state_t *state_out,
+    bool lock_rcu,
     bool write
 ) {
     anon_mem_object_t *self = (anon_mem_object_t *)ptr;
 
-    void *ret = get_noalloc(self, index, state_out);
+    void *ret = get_noalloc(self, index, lock_rcu);
     if (ret) return ret_pointer(ret);
 
     // note: can't make this faster by continuing where get_noalloc failed, as the object might've
@@ -130,7 +129,7 @@ static hydrogen_ret_t anon_mem_object_get_page(
         }
 
         if (levels == 0) {
-            if (state_out) *state_out = rcu_read_lock(); // has to be done before releasing update_lock
+            if (lock_rcu) rcu_read_lock(); // has to be done before releasing update_lock
             mutex_rel(&self->update_lock);
             return ret_pointer(virt_to_page(ptr));
         }

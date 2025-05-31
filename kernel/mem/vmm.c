@@ -455,9 +455,9 @@ vmm_t *vmm_switch(vmm_t *vmm) {
     current_thread->vmm = vmm;
 
     if (vmm != NULL) {
-        preempt_state_t state = preempt_lock();
+        preempt_lock();
         pmap_switch(&vmm->pmap);
-        preempt_unlock(state);
+        preempt_unlock();
     }
 
     return orig;
@@ -1289,12 +1289,11 @@ int mem_object_read(mem_object_t *object, void *buffer, size_t count, uint64_t p
         if (current > count) current = count;
         if (current > sizeof(buf)) current = sizeof(buf);
 
-        rcu_state_t state;
-        hydrogen_ret_t ret = ops->get_page(object, NULL, position >> PAGE_SHIFT, &state, false);
+        hydrogen_ret_t ret = ops->get_page(object, NULL, position >> PAGE_SHIFT, true, false);
         if (unlikely(ret.error)) return ret.error;
         page_t *page = ret.pointer;
         memcpy(buf, page_to_virt(page) + offset, current);
-        rcu_read_unlock(state);
+        rcu_read_unlock();
 
         int error = user_memcpy(buffer, buf, current);
         if (unlikely(error)) return error;
@@ -1324,12 +1323,11 @@ int mem_object_write(mem_object_t *object, const void *buffer, size_t count, uin
         int error = user_memcpy(buf, buffer, current);
         if (unlikely(error)) return error;
 
-        rcu_state_t state;
-        hydrogen_ret_t ret = ops->get_page(object, NULL, position >> PAGE_SHIFT, &state, true);
+        hydrogen_ret_t ret = ops->get_page(object, NULL, position >> PAGE_SHIFT, true, true);
         if (unlikely(ret.error)) return ret.error;
         page_t *page = ret.pointer;
         memcpy(page_to_virt(page) + offset, buf, current);
-        rcu_read_unlock(state);
+        rcu_read_unlock();
 
         buffer += current;
         position += current;

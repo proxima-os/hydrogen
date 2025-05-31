@@ -1,7 +1,6 @@
 #pragma once
 
 #include "arch/irq.h"
-#include "proc/sched.h"
 #include "util/list.h"
 #include <stdarg.h>
 
@@ -13,7 +12,6 @@ typedef struct printk_sink {
 
 typedef struct {
     irq_state_t irq;
-    preempt_state_t preempt;
 } printk_state_t;
 
 void printk_add(printk_sink_t *sink);

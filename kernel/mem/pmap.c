@@ -148,7 +148,7 @@ static void tlb_commit(tlb_ctx_t *tlb, vmm_t *vmm) {
         if (tlb->pmap != NULL && tlb->global) {
             cpu_t *cur = get_current_cpu();
 
-            preempt_state_t state = preempt_lock();
+            preempt_lock();
             spin_acq_noirq(&tlb->pmap->cpus_lock);
 
             HLIST_FOREACH(tlb->pmap->cpus, pmap_asid_data_t, node, asid) {
@@ -159,7 +159,7 @@ static void tlb_commit(tlb_ctx_t *tlb, vmm_t *vmm) {
             }
 
             spin_rel_noirq(&tlb->pmap->cpus_lock);
-            preempt_unlock(state);
+            preempt_unlock();
 
             while (__atomic_load_n(&ctx.pending, __ATOMIC_ACQUIRE) != 0) {
                 cpu_relax();
@@ -305,7 +305,7 @@ static void switch_away(void *ctx) {
 
 void pmap_prepare_destroy(pmap_t *pmap) {
     // ensure no cpus are using this pmap
-    preempt_state_t state = preempt_lock();
+    preempt_lock();
     spin_acq_noirq(&pmap->cpus_lock);
 
     cpu_t *cur_cpu = get_current_cpu();
@@ -328,7 +328,7 @@ void pmap_prepare_destroy(pmap_t *pmap) {
     }
 
     spin_rel_noirq(&pmap->cpus_lock);
-    preempt_unlock(state);
+    preempt_unlock();
 }
 
 static size_t do_destroy_range(vmm_t *vmm, void *table, unsigned level, uintptr_t virt, size_t size) {

@@ -25,7 +25,7 @@ int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible) {
         if (likely(try_lock_weak(mutex))) return 0;
     }
 
-    preempt_state_t state = preempt_lock();
+    preempt_lock();
     spin_acq_noirq(&mutex->lock);
 
     int status = 0;
@@ -34,9 +34,9 @@ int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible) {
         list_insert_tail(&mutex->waiters, &current_thread->wait_node);
         sched_prepare_wait(interruptible);
         spin_rel_noirq(&mutex->lock);
-        preempt_unlock(state);
+        preempt_unlock();
         status = sched_perform_wait(deadline);
-        state = preempt_lock();
+        preempt_lock();
         spin_acq_noirq(&mutex->lock);
 
         if (status) {
@@ -63,7 +63,7 @@ int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible) {
     }
 
     spin_rel_noirq(&mutex->lock);
-    preempt_unlock(state);
+    preempt_unlock();
     return status;
 }
 
@@ -87,7 +87,7 @@ void mutex_rel(mutex_t *mutex) {
 
     ASSERT(value == MUTEX_CONTESTED);
 
-    preempt_state_t state = preempt_lock();
+    preempt_lock();
     spin_acq_noirq(&mutex->lock);
 
     LIST_FOREACH(mutex->waiters, thread_t, wait_node, waiter) {
@@ -102,7 +102,7 @@ void mutex_rel(mutex_t *mutex) {
     __atomic_store_n(&mutex->state, MUTEX_UNLOCKED, __ATOMIC_RELEASE);
 done:
     spin_rel_noirq(&mutex->lock);
-    preempt_unlock(state);
+    preempt_unlock();
 }
 
 int rmutex_acq(rmutex_t *mutex, uint64_t deadline, bool interruptible) {

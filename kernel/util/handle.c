@@ -424,7 +424,7 @@ int namespace_resolve(handle_data_t *out, namespace_t *ns, int handle) {
     // the handle table cannot shrink, only grow
     if (unlikely((size_t)handle >= __atomic_load_n(&ns->capacity, __ATOMIC_ACQUIRE))) return EBADF;
 
-    rcu_state_t state = rcu_read_lock();
+    rcu_read_lock();
     handle_data_t *data = rcu_read(rcu_read(ns->data)[handle]);
 
     if (likely(data != NULL)) {
@@ -432,7 +432,7 @@ int namespace_resolve(handle_data_t *out, namespace_t *ns, int handle) {
         obj_ref(out->object);
     }
 
-    rcu_read_unlock(state);
+    rcu_read_unlock();
     return likely(data != NULL) ? 0 : EBADF;
 }
 

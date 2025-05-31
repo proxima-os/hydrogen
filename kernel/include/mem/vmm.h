@@ -2,7 +2,6 @@
 
 #include "mem/pmap.h"
 #include "proc/mutex.h"
-#include "proc/rcu.h"
 #include "util/list.h"
 #include "util/object.h"
 #include <hydrogen/memory.h>
@@ -25,13 +24,13 @@ typedef struct {
     object_ops_t base;
     bool mem_type_allowed;
     void (*post_map)(mem_object_t *self, vmm_t *vmm, uintptr_t head, uintptr_t tail, unsigned flags, uint64_t offset);
-    // if state_out isn't null, this function locks rcu without unlocking it, and writes the state to state_out.
+    // if lock_rcu is true, this function locks rcu without unlocking it.
     // this is done in such a way that the returned page stays valid until rcu is unlocked.
     hydrogen_ret_t (*get_page)(
         mem_object_t *self,
         vmm_region_t *region,
         uint64_t index,
-        rcu_state_t *state_out,
+        bool lock_rcu,
         bool write
     );
 } mem_object_ops_t;

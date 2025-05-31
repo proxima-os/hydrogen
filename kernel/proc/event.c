@@ -10,7 +10,7 @@ void event_signal(event_t *event) {
     bool wanted = false;
 
     if (__atomic_compare_exchange_n(&event->signalled, &wanted, true, false, __ATOMIC_RELEASE, __ATOMIC_RELAXED)) {
-        preempt_state_t pstate = preempt_lock();
+        preempt_lock();
         irq_state_t state = spin_acq(&event->lock);
 
         thread_t *waiter = LIST_HEAD(event->waiters, thread_t, wait_node);
@@ -26,7 +26,7 @@ void event_signal(event_t *event) {
         }
 
         spin_rel(&event->lock, state);
-        preempt_unlock(pstate);
+        preempt_unlock();
     }
 }
 

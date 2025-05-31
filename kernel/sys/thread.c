@@ -531,9 +531,9 @@ int hydrogen_thread_get_cpu_time(hydrogen_cpu_time_t *time) {
 
     sched_commit_time_accounting();
 
-    preempt_state_t state = preempt_lock();
+    preempt_lock();
     hydrogen_cpu_time_t data = {.user = current_thread->user_time, .kernel = current_thread->kern_time};
-    preempt_unlock(state);
+    preempt_unlock();
 
     return user_memcpy(time, &data, sizeof(*time));
 }

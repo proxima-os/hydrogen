@@ -223,7 +223,7 @@ retry:
 }
 
 int event_source_add(event_source_t *source, active_event_t *event) {
-    preempt_state_t pstate = preempt_lock();
+    preempt_lock();
     irq_state_t state = spin_acq(&source->lock);
 
     list_insert_tail(&source->events, &event->source_node);
@@ -245,7 +245,7 @@ int event_source_add(event_source_t *source, active_event_t *event) {
     }
 
     spin_rel(&source->lock, state);
-    preempt_unlock(pstate);
+    preempt_unlock();
     return 0;
 }
 
@@ -265,7 +265,7 @@ void event_source_del(event_source_t *source, active_event_t *event) {
 }
 
 void event_source_cleanup(event_source_t *source) {
-    preempt_state_t pstate = preempt_lock();
+    preempt_lock();
     irq_state_t state = spin_acq(&source->lock);
 
     for (;;) {
@@ -276,11 +276,11 @@ void event_source_cleanup(event_source_t *source) {
             event_queue_t *queue = event->queue;
             obj_ref(&queue->base);
             spin_rel(&source->lock, state);
-            preempt_unlock(pstate);
+            preempt_unlock();
             mutex_acq(&queue->lock, 0, false);
             mutex_rel(&queue->lock);
             obj_deref(&queue->base);
-            pstate = preempt_lock();
+            preempt_lock();
             state = spin_acq(&source->lock);
             event = LIST_HEAD(source->events, active_event_t, source_node);
             if (!event) break;
@@ -306,18 +306,18 @@ void event_source_cleanup(event_source_t *source) {
     }
 
     spin_rel(&source->lock, state);
-    preempt_unlock(pstate);
+    preempt_unlock();
 }
 
 void event_source_signal(event_source_t *source) {
     if (__atomic_load_n(&source->pending, __ATOMIC_ACQUIRE)) return;
 
-    preempt_state_t pstate = preempt_lock();
+    preempt_lock();
     irq_state_t state = spin_acq(&source->lock);
 
     if (source->pending) {
         spin_rel(&source->lock, state);
-        preempt_unlock(pstate);
+        preempt_unlock();
         return;
     }
 
@@ -339,7 +339,7 @@ void event_source_signal(event_source_t *source) {
 
     __atomic_store_n(&source->pending, true, __ATOMIC_RELEASE);
     spin_rel(&source->lock, state);
-    preempt_unlock(pstate);
+    preempt_unlock();
 }
 
 void event_source_reset(event_source_t *source) {

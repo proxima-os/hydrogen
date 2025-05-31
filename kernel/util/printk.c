@@ -219,14 +219,14 @@ size_t sprintk(void *buffer, size_t size, const char *format, ...) {
 
 printk_state_t printk_lock(void) {
     printk_state_t state = {};
-    state.preempt = preempt_lock();
+    preempt_lock();
     state.irq = spin_acq(&lock);
     return state;
 }
 
 void printk_unlock(printk_state_t state) {
     spin_rel(&lock, state.irq);
-    preempt_unlock(state.preempt);
+    preempt_unlock();
 }
 
 static void printk_fn(const void *data, size_t count, void *ptr) {

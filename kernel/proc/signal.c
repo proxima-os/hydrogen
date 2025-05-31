@@ -317,12 +317,12 @@ bool check_signals(signal_target_t *target, bool was_sys_eintr, __sigset_t mask)
         printk("signal: failed to write signal info to stack (%e), terminating with SIGSEGV\n", error);
     } else if (disp == SIGNAL_STOP) {
         if (signal != __SIGSTOP) {
-            rcu_state_t state = rcu_read_lock();
+            rcu_read_lock();
             bool orphaned = __atomic_load_n(
                                 &rcu_read(current_thread->process->group)->orphan_inhibitors,
                                 __ATOMIC_ACQUIRE
                             ) == 0;
-            rcu_read_unlock(state);
+            rcu_read_unlock();
 
             if (orphaned) {
                 goto handled;
