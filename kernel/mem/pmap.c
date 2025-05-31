@@ -1404,8 +1404,18 @@ static void create_new_user_mapping(
         target = page_to_phys(ret.pointer);
 
         if ((region->flags & HYDROGEN_MEM_SHARED) == 0) {
-            pte_flags &= ~PMAP_WRITABLE;
-            pte_flags |= PMAP_COPY_ON_WRITE;
+            if (type == PMAP_FAULT_WRITE) {
+                page_t *page = alloc_page_for_user_mapping(vmm, region);
+                if (unlikely(!page)) {
+                    return user_fault_fail(context, pc, address, flags, __SIGBUS, __BUS_OBJERR, ENOMEM);
+                }
+                memcpy(page_to_virt(page), phys_to_virt(target), PAGE_SIZE);
+                target = page_to_phys(page);
+                pte_flags |= PMAP_ANONYMOUS | PMAP_WRITABLE;
+            } else {
+                pte_flags &= ~PMAP_WRITABLE;
+                pte_flags |= PMAP_COPY_ON_WRITE;
+            }
         }
     }
 
