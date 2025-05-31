@@ -382,7 +382,6 @@ static void pts_event_del(object_t *ptr, active_event_t *event) {
 static hydrogen_ret_t pts_read(file_t *ptr, void *buffer, size_t size, uint64_t position) {
     pts_file_t *self = (pts_file_t *)ptr;
     pty_t *pty = (pty_t *)self->base.inode->device;
-    if (__atomic_load_n(&pty->locked, __ATOMIC_ACQUIRE)) return ret_error(EIO);
 
     mutex_acq(&pty->rx_lock, 0, false);
 
@@ -522,7 +521,6 @@ done:
 static hydrogen_ret_t pts_write(file_t *ptr, const void *buffer, size_t size, uint64_t position, bool rpos) {
     pts_file_t *self = (pts_file_t *)ptr;
     pty_t *pty = (pty_t *)self->base.inode->device;
-    if (__atomic_load_n(&pty->locked, __ATOMIC_ACQUIRE)) return ret_error(EIO);
 
     mutex_acq(&pty->tx_lock, 0, false);
 
@@ -584,7 +582,6 @@ static hydrogen_ret_t pts_write(file_t *ptr, const void *buffer, size_t size, ui
 static hydrogen_ret_t pts_ioctl(file_t *ptr, int request, void *buffer, size_t size) {
     pts_file_t *self = (pts_file_t *)ptr;
     pty_t *pty = (pty_t *)self->base.inode->device;
-    if (__atomic_load_n(&pty->locked, __ATOMIC_ACQUIRE)) return ret_error(EIO);
 
     return pty_ioctl(pty, request, buffer, size);
 }
@@ -645,6 +642,7 @@ static void pty_free(fs_device_t *ptr) {
 
 static hydrogen_ret_t pty_open(fs_device_t *ptr, inode_t *inode, dentry_t *path, int flags, ident_t *ident) {
     pty_t *pty = (pty_t *)ptr;
+    if (__atomic_load_n(&pty->locked, __ATOMIC_ACQUIRE)) return ret_error(EIO);
 
     pts_file_t *file = vmalloc(sizeof(*file));
     if (unlikely(!file)) return ret_error(ENOMEM);
