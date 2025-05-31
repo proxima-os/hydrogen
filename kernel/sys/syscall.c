@@ -224,6 +224,12 @@ static hydrogen_ret_t dispatch(ssize_t id, size_t a0, size_t a1, size_t a2, size
     case SYSCALL_INTERRUPT_COMPLETE: return ret_error(hydrogen_interrupt_complete(a0));
     case SYSCALL_THREAD_SET_CPU_AFFINITY: return ret_error(hydrogen_thread_set_cpu_affinity((const uint64_t *)a0, a1));
     case SYSCALL_THREAD_GET_CPU_AFFINITY: return ret_error(hydrogen_thread_get_cpu_affinity((uint64_t *)a0, a1));
+    case SYSCALL_THREAD_SET_SCHEDULER: return ret_error(hydrogen_thread_set_scheduler(a0, a1));
+    case SYSCALL_THREAD_GET_SCHEDULER: {
+        int priority;
+        int scheduler = hydrogen_thread_get_scheduler(&priority);
+        return ret_integer(((uint64_t)priority << 32) | scheduler);
+    }
     default: return ret_error(ENOSYS);
     }
 }

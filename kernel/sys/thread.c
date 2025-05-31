@@ -570,3 +570,31 @@ int hydrogen_thread_get_cpu_affinity(uint64_t *bitmask, size_t size) {
 
     return 0;
 }
+
+int hydrogen_thread_set_scheduler(int scheduler, int priority) {
+    switch (scheduler) {
+    case HYDROGEN_SCHEDULER_DEFAULT: sched_set_priority(SCHED_RT_PRIORITIES, true); return 0;
+    case HYDROGEN_SCHEDULER_FIFO:
+    case HYDROGEN_SCHEDULER_RR:
+        if (unlikely(priority < 0)) return EINVAL;
+        if (unlikely(priority >= SCHED_RT_PRIORITIES)) return EINVAL;
+        if (unlikely(geteuid(current_thread->process) != 0)) return EPERM;
+        priority = SCHED_RT_PRIORITIES - 1 - priority;
+        sched_set_priority(priority, scheduler == HYDROGEN_SCHEDULER_RR);
+        return 0;
+    default: return EINVAL;
+    }
+}
+
+int hydrogen_thread_get_scheduler(int *priority) {
+    bool timeslice;
+    int prio = sched_get_priority(&timeslice);
+
+    if (prio >= SCHED_RT_PRIORITIES) {
+        *priority = 0;
+        return HYDROGEN_SCHEDULER_DEFAULT;
+    }
+
+    *priority = SCHED_RT_PRIORITIES - 1 - prio;
+    return timeslice ? HYDROGEN_SCHEDULER_RR : HYDROGEN_SCHEDULER_FIFO;
+}

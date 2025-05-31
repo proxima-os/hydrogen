@@ -85,3 +85,13 @@ EXPORT int hydrogen_thread_set_cpu_affinity(const uint64_t *bitmask, size_t size
 EXPORT int hydrogen_thread_get_cpu_affinity(uint64_t *bitmask, size_t size) {
     return SYSCALL2(SYSCALL_THREAD_GET_CPU_AFFINITY, bitmask, size).error;
 }
+
+EXPORT int hydrogen_thread_set_scheduler(int scheduler, int priority) {
+    return SYSCALL2(SYSCALL_THREAD_SET_SCHEDULER, scheduler, priority).error;
+}
+
+EXPORT int hydrogen_thread_get_scheduler(int *priority) {
+    uint64_t value = SYSCALL0(SYSCALL_THREAD_GET_SCHEDULER).integer;
+    *priority = value >> 32;
+    return value & 0xffffffff;
+}

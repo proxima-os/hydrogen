@@ -14,6 +14,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#define SCHED_PRIORITIES 64
+#define SCHED_RT_PRIORITIES 32
+
 typedef bool migrate_state_t;
 
 struct namespace;
@@ -32,6 +35,7 @@ typedef enum {
 
 typedef struct thread {
     object_t base;
+    int queue; // lower number = higher priority, except for -1, which is for the idle thread
     struct pid *pid;
     struct cpu *cpu;
     list_node_t queue_node;
@@ -61,6 +65,9 @@ typedef struct thread {
     uint64_t user_time;
     uint64_t kern_time;
 
+    uint64_t timeslice_tot;
+    uint64_t timeslice_rem;
+
     cpu_mask_t affinity;
 } thread_t;
 
@@ -70,7 +77,9 @@ typedef struct task {
 } task_t;
 
 typedef struct {
-    list_t queue;
+    list_t queues[SCHED_PRIORITIES];
+    int cur_queue;
+    uint64_t queue_mask;
     size_t num_threads;
     thread_t *current;
     thread_t *reaper;
@@ -80,6 +89,9 @@ typedef struct {
     bool preempt_queued;
     spinlock_t lock;
     slist_t tasks;
+    uint64_t timeslice_start_time;
+    timer_event_t timeslice_event;
+    timer_event_t boost_event;
 } sched_t;
 
 INIT_DECLARE(scheduler_early);
@@ -116,6 +128,11 @@ void sched_migrate(struct cpu *dest);
 void sched_commit_time_accounting(void);
 
 void sched_set_affinity(const cpu_mask_t *mask);
+
+// Lower value, higher priority. Must be 0 <= priority < SCHED_PRIORITIES. If priority >= SCHED_RT_PRIORITIES,
+// the priority may be set to a different value >= SCHED_RT_PRIORITIES, and timeslice may be ignored.
+void sched_set_priority(int priority, bool timeslice);
+int sched_get_priority(bool *timeslice_out);
 
 void sched_queue_task(task_t *task);
 _Noreturn void sched_idle(void);

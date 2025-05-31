@@ -117,3 +117,16 @@ static inline void list_insert_after(list_t *list, list_node_t *anchor, list_nod
     if (node->next) node->next->prev = node;
     else list->tail = node;
 }
+
+static inline void list_append_end(list_t *dest, list_t *src) {
+    if (!list_empty(src)) {
+        src->head->prev = dest->tail;
+
+        if (dest->head) dest->tail->next = src->head;
+        else dest->head = src->head;
+
+        dest->tail = src->tail;
+
+        list_clear(src);
+    }
+}

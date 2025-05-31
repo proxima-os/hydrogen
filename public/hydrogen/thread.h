@@ -7,6 +7,7 @@
 #include <hydrogen/process.h>
 #include <hydrogen/signal.h>
 #include <hydrogen/types.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -21,6 +22,15 @@ extern "C" {
 #define HYDROGEN_THIS_THREAD (-2)
 
 #define HYDROGEN_CLONED_VMM (-3) /**< See #hydrogen_thread_create. */
+
+#define HYDROGEN_SCHEDULER_DEFAULT 0 /**< The default scheduler. */
+
+/**
+ * The highest priority runs first. Threads using #HYDROGEN_SCHEDULER_DEFAULT are treated as priority -1. Threads run
+ * until they block; there are no time slices.
+ */
+#define HYDROGEN_SCHEDULER_FIFO 1
+#define HYDROGEN_SCHEDULER_RR 2 /**< Like #HYDROGEN_SCHEDULER_FIFO, but threads have time slices. */
 
 /**
  * Create a new thread.
@@ -161,6 +171,26 @@ int hydrogen_thread_set_cpu_affinity(const uint64_t *bitmask, size_t size) __asm
 );
 
 int hydrogen_thread_get_cpu_affinity(uint64_t *bitmask, size_t size) __asm__("__hydrogen_thread_get_cpu_affinity");
+
+/**
+ * Set the scheduling policy of the current thread.
+ *
+ * \param[in] scheduler The scheduling policy. Must be one of the following values:
+ *                      - #HYDROGEN_SCHEDULER_DEFAULT
+ *                      - #HYDROGEN_SCHEDULER_FIFO
+ *                      - #HYDROGEN_SCHEDULER_RR
+ * \param[in] priority The new priority of the thread.
+ * \return 0, if successful; if not, an error code.
+ */
+int hydrogen_thread_set_scheduler(int scheduler, int priority) __asm__("__hydrogen_thread_set_scheduler");
+
+/**
+ * Get the scheduling policy of the current thread.
+ *
+ * \param[out] priority The priority of the thread.
+ * \return The scheduling policy.
+ */
+int hydrogen_thread_get_scheduler(int *priority) __asm__("__hydrogen_thread_get_scheduler");
 
 #ifdef __cplusplus
 };

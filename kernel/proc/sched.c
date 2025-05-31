@@ -33,6 +33,18 @@
 
 #define PREEMPT_NO_WORK (1u << 31)
 
+#define NORMAL_PRIORITIES (SCHED_PRIORITIES - SCHED_RT_PRIORITIES)
+
+#define TIMESLICE_MIN (10 * NS_PER_MS) // The time slice (in nanoseconds) used for priorities < SCHED_RT_PRIORITIES
+#define TIMESLICE_MAX (50 * NS_PER_MS) // The time slice (in nanoseconds) used for priority SCHED_PRIORITIES
+// The number of nanoseconds to increase the time slice by when moving down a queue.
+// Only valid if the new queue >= SCHED_RT_PRIORITIES
+#define TIMESLICE_INC ((TIMESLICE_MAX - TIMESLICE_MIN + (NORMAL_PRIORITIES / 2)) / NORMAL_PRIORITIES)
+
+// Every so often, the scheduler increases the priority of all non-real-time tasks by one to prevent starvation.
+// This parameter determines how often that happens.
+#define BOOST_INTERVAL_NS NS_PER_SEC
+
 static void handle_timeout_event(timer_event_t *self);
 
 static void reap_thread(thread_t *thread) {
@@ -93,14 +105,56 @@ static const object_ops_t thread_ops = {
     .free = thread_free,
 };
 
+static void handle_timeslice_event(timer_event_t *event);
+static void maybe_preempt(cpu_t *cpu);
+
+static void update_cur_queue(cpu_t *cpu) {
+    cpu->sched.cur_queue = __builtin_ffsll(cpu->sched.queue_mask) - 1;
+}
+
+static void handle_boost_event(timer_event_t *event) {
+    event->deadline += BOOST_INTERVAL_NS;
+    timer_queue_event(event);
+
+    cpu_t *cpu = get_current_cpu();
+    uint64_t mask = cpu->sched.queue_mask >> (SCHED_RT_PRIORITIES + 1);
+    uint64_t cmask = 1ull << (SCHED_RT_PRIORITIES + 1);
+    list_t *queue = &cpu->sched.queues[SCHED_RT_PRIORITIES + 1];
+
+    while (mask != 0) {
+        size_t extra = __builtin_ctzll(mask);
+        mask >>= extra;
+        cmask <<= extra;
+        queue += extra;
+
+        LIST_FOREACH(*queue, thread_t, queue_node, thread) {
+            thread->queue -= 1;
+            thread->timeslice_tot -= TIMESLICE_INC;
+        }
+
+        list_append_end(queue - 1, queue);
+        cpu->sched.queue_mask |= cmask >> 1;
+        cpu->sched.queue_mask &= ~cmask;
+
+        mask &= ~1ull;
+    }
+
+    update_cur_queue(cpu);
+    maybe_preempt(cpu);
+}
+
 static void sched_init(void) {
     cpu_t *cpu = get_current_cpu();
     sched_t *sched = &cpu->sched;
+    sched->cur_queue = -1;
     sched->preempt_level = PREEMPT_NO_WORK;
+    sched->timeslice_event.func = handle_timeslice_event;
+    sched->boost_event.func = handle_boost_event;
     sched->current = &sched->idle_thread;
     sched->current->base.ops = &thread_ops;
     obj_init(&sched->current->base, OBJECT_THREAD);
     obj_ref(&sched->current->base); // for sched->current
+    sched->current->queue = -1;
     sched->current->cpu = cpu;
     sched->current->state = THREAD_RUNNING;
     sched->current->process = &kernel_process;
@@ -140,6 +194,9 @@ static void sched_init_late(void) {
 
     int error = sched_create_thread(&cpu->sched.reaper, reaper_func, NULL, cpu, &kernel_process, 0);
     if (unlikely(error)) panic("sched: failed to create reaper thread (%e)", error);
+
+    cpu->sched.boost_event.deadline = arch_read_time() + BOOST_INTERVAL_NS;
+    timer_queue_event(&cpu->sched.boost_event);
 }
 
 INIT_DEFINE(scheduler, sched_init_late);
@@ -199,6 +256,16 @@ int sched_create_thread(
     thread->sig_stack.__flags = __SS_DISABLE;
     thread->affinity = current_thread->affinity;
 
+    if (current_thread->queue >= 0) {
+        thread->queue = current_thread->queue;
+        thread->timeslice_tot = current_thread->timeslice_tot;
+    } else {
+        thread->queue = SCHED_RT_PRIORITIES;
+        thread->timeslice_tot = TIMESLICE_MIN + TIMESLICE_INC;
+    }
+
+    thread->timeslice_rem = thread->timeslice_tot;
+
     if (process != NULL) {
         thread->process = process;
         int error = proc_thread_create(process, thread);
@@ -247,11 +314,29 @@ static void post_switch(thread_t *prev) {
 static void enqueue(cpu_t *cpu, thread_t *thread) {
     ASSERT(cpu == thread->cpu);
 
-    list_insert_tail(&cpu->sched.queue, &thread->queue_node);
+    int queue_idx = thread->queue;
+    if (queue_idx < 0) return;
+
+    list_t *queue = &cpu->sched.queues[queue_idx];
+    list_insert_tail(queue, &thread->queue_node);
+    cpu->sched.queue_mask |= 1ull << queue_idx;
+    if (cpu->sched.cur_queue < 0 || queue_idx < cpu->sched.cur_queue) cpu->sched.cur_queue = queue_idx;
 }
 
 static thread_t *dequeue(cpu_t *cpu) {
-    return LIST_REMOVE_HEAD(cpu->sched.queue, thread_t, queue_node);
+    int queue_idx = cpu->sched.cur_queue;
+    if (queue_idx < 0) return NULL;
+
+    list_t *queue = &cpu->sched.queues[queue_idx];
+    thread_t *thread = LIST_REMOVE_HEAD(*queue, thread_t, queue_node);
+    ASSERT(thread != NULL);
+
+    if (list_empty(queue)) {
+        cpu->sched.queue_mask &= ~(1ull << queue_idx);
+        update_cur_queue(cpu);
+    }
+
+    return thread;
 }
 
 static void time_account_submit(thread_t *thread, uint64_t time) {
@@ -272,12 +357,25 @@ static void do_yield(cpu_t *cpu, bool migrating) {
     rcu_quiet(cpu);
 
     thread_t *prev = cpu->sched.current;
-    if (!migrating && prev->state == THREAD_RUNNING && prev != &cpu->sched.idle_thread) {
-        enqueue(cpu, prev);
-    }
+    if (!migrating && prev->state == THREAD_RUNNING) enqueue(cpu, prev);
 
     thread_t *next = dequeue(cpu);
     if (!next) next = &cpu->sched.idle_thread;
+
+    uint64_t time = arch_read_time();
+    uint64_t delta = time - cpu->sched.timeslice_start_time;
+    cpu->sched.timeslice_start_time = time;
+
+    if (delta >= prev->timeslice_rem) {
+        prev->timeslice_rem = prev->timeslice_tot;
+    }
+
+    timer_cancel_event(&cpu->sched.timeslice_event);
+
+    if (next->timeslice_rem) {
+        cpu->sched.timeslice_event.deadline = time + next->timeslice_rem;
+        timer_queue_event(&cpu->sched.timeslice_event);
+    }
 
     if (prev == next) return;
 
@@ -286,7 +384,6 @@ static void do_yield(cpu_t *cpu, bool migrating) {
     prev->active = false;
     next->active = true;
 
-    uint64_t time = arch_read_time();
     time_account_submit(prev, time);
     next->account_start_time = next->kernel_start_time = time;
 
@@ -299,6 +396,20 @@ static void queue_yield(cpu_t *cpu) {
     // don't need atomics here, interrupts are currently disabled
     cpu->sched.preempt_level &= ~PREEMPT_NO_WORK;
     cpu->sched.preempt_queued = true;
+}
+
+static void handle_timeslice_event(timer_event_t *event) {
+    cpu_t *cpu = get_current_cpu();
+    thread_t *thread = cpu->sched.current;
+
+    ASSERT(thread->timeslice_tot != 0);
+
+    if (thread->queue >= SCHED_RT_PRIORITIES && thread->queue < (SCHED_PRIORITIES - 1)) {
+        thread->queue += 1;
+        thread->timeslice_tot += TIMESLICE_INC;
+    }
+
+    queue_yield(cpu);
 }
 
 void preempt_lock(void) {
@@ -355,7 +466,8 @@ void sched_yield(void) {
 }
 
 static bool should_preempt(cpu_t *cpu) {
-    return cpu->sched.current == &cpu->sched.idle_thread && !list_empty(&cpu->sched.queue);
+    if (cpu->sched.cur_queue < 0) return false;
+    return cpu->sched.current->queue < 0 || cpu->sched.cur_queue < cpu->sched.current->queue;
 }
 
 static void remote_maybe_preempt(void *ctx) {
@@ -613,6 +725,69 @@ void sched_set_affinity(const cpu_mask_t *mask) {
     do_migrate(src, dest);
 
     preempt_unlock();
+}
+
+void sched_set_priority(int priority, bool timeslice) {
+    ASSERT(priority >= 0);
+    ASSERT(priority < SCHED_PRIORITIES);
+
+    preempt_lock();
+
+    cpu_t *cpu = get_current_cpu();
+    irq_state_t state = spin_acq(&cpu->sched.lock);
+
+    thread_t *thread = cpu->sched.current;
+    bool update_time_slice = false;
+
+    if (priority >= SCHED_RT_PRIORITIES) {
+        if (thread->queue < SCHED_RT_PRIORITIES) {
+            thread->queue = SCHED_RT_PRIORITIES;
+            thread->timeslice_tot = TIMESLICE_MIN + TIMESLICE_INC;
+            update_time_slice = true;
+        }
+    } else if (priority != thread->queue) {
+        thread->queue = priority;
+
+        if (timeslice) {
+            if (!thread->timeslice_tot) {
+                thread->timeslice_tot = TIMESLICE_MIN;
+                update_time_slice = true;
+            }
+        } else if (thread->timeslice_tot) {
+            thread->timeslice_tot = 0;
+            update_time_slice = true;
+        }
+    }
+
+    if (update_time_slice) {
+        thread->timeslice_rem = thread->timeslice_tot;
+        timer_cancel_event(&cpu->sched.timeslice_event);
+
+        if (thread->timeslice_rem) {
+            cpu->sched.timeslice_start_time = arch_read_time();
+            cpu->sched.timeslice_event.deadline = cpu->sched.timeslice_start_time + thread->timeslice_rem;
+            timer_queue_event(&cpu->sched.timeslice_event);
+        }
+    }
+
+    maybe_preempt(cpu);
+
+    spin_rel(&cpu->sched.lock, state);
+    preempt_unlock();
+}
+
+int sched_get_priority(bool *timeslice_out) {
+    preempt_lock();
+
+    cpu_t *cpu = get_current_cpu();
+    irq_state_t state = spin_acq(&cpu->sched.lock);
+
+    int priority = cpu->sched.current->queue;
+    *timeslice_out = cpu->sched.current->timeslice_tot;
+
+    spin_rel(&cpu->sched.lock, state);
+    preempt_unlock();
+    return priority;
 }
 
 _Noreturn void sched_init_thread(thread_t *prev, void (*func)(void *), void *ctx) {
