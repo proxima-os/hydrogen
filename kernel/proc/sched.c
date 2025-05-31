@@ -25,6 +25,7 @@
 #include "util/list.h"
 #include "util/object.h"
 #include "util/panic.h"
+#include "util/refcount.h"
 #include "util/slist.h"
 #include "util/spinlock.h"
 #include "util/time.h"
@@ -80,7 +81,7 @@ static void thread_free(object_t *ptr) {
         pid_t *pid = thread->pid;
         mutex_acq(&pids_lock, 0, false);
 
-        if (__atomic_load_n(&thread->base.references.references, __ATOMIC_ACQUIRE) != 0) {
+        if (!ref_dec(&thread->base.references)) {
             mutex_rel(&pids_lock);
             return;
         }

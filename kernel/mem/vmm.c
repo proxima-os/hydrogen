@@ -357,7 +357,8 @@ static void obj_add_two(vmm_region_t *r1, vmm_region_t *r2) {
     ASSERT(r1->object == r2->object);
     if (!r1->object) return;
 
-    obj_ref_n(&r1->object->base, 2);
+    obj_ref(&r1->object->base);
+    obj_ref(&r1->object->base);
     mutex_acq(&r1->object->regions_lock, 0, false);
     list_insert_tail(&r1->object->regions, &r1->object_node);
     list_insert_tail(&r1->object->regions, &r2->object_node);
@@ -381,7 +382,8 @@ static void obj_rem_two(vmm_region_t *r1, vmm_region_t *r2) {
     list_remove(&r1->object->regions, &r1->object_node);
     list_remove(&r1->object->regions, &r2->object_node);
     mutex_rel(&r1->object->regions_lock);
-    obj_deref_n(&r1->object->base, 2);
+    obj_deref(&r1->object->base);
+    obj_deref(&r1->object->base);
 }
 
 int clone_region(vmm_region_t **out, vmm_t *dvmm, vmm_t *svmm, vmm_region_t *src) {

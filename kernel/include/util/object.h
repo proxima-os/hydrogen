@@ -37,20 +37,12 @@ typedef uint32_t object_rights_t;
 // expects object->ops to be set
 void obj_init(object_t *object, object_type_t type);
 
-static inline void obj_ref_n(object_t *object, size_t num) {
-    ref_add(&object->references, num);
-}
-
-static inline void obj_deref_n(object_t *object, size_t num) {
-    if (ref_sub(&object->references, num)) {
-        object->ops->free(object);
-    }
-}
-
 static inline void obj_ref(object_t *object) {
-    obj_ref_n(object, 1);
+    ref_inc(&object->references);
 }
 
 static inline void obj_deref(object_t *object) {
-    obj_deref_n(object, 1);
+    if (ref_dec_maybe(&object->references)) {
+        object->ops->free(object);
+    }
 }

@@ -49,7 +49,7 @@ typedef struct {
 } dname_t;
 
 struct dentry {
-    size_t references;
+    refcnt_t references;
 
     filesystem_t *fs;
     dentry_t *parent;

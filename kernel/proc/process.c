@@ -148,7 +148,7 @@ static void process_free(object_t *ptr) {
         pid_t *pid = process->pid;
         mutex_acq(&pids_lock, 0, false);
 
-        if (__atomic_load_n(&process->base.references.references, __ATOMIC_ACQUIRE) != 0) {
+        if (!ref_dec(&process->base.references)) {
             mutex_rel(&pids_lock);
             return;
         }
@@ -174,8 +174,14 @@ static void process_free(object_t *ptr) {
         event_source_cleanup(&process->status_event);
         vfree(process, sizeof(*process));
 
-        if (parent != NULL && ref_sub(&parent->base.references, 2)) {
+        if (parent != NULL) {
+            obj_deref(&parent->base);
+
+            if (ref_dec_maybe(&parent->base.references)) {
             process = parent;
+            } else {
+                process = NULL;
+            }
         } else {
             process = NULL;
         }
@@ -1291,13 +1297,13 @@ void pgroup_ref(pgroup_t *group) {
 }
 
 void pgroup_deref(pgroup_t *group) {
-    if (ref_dec(&group->references) == 1) {
+    if (ref_dec_maybe(&group->references)) {
         ASSERT(group != &kernel_group);
 
         pid_t *pid = group->pid;
         mutex_acq(&pids_lock, 0, false);
 
-        if (__atomic_load_n(&group->references.references, __ATOMIC_ACQUIRE) != 0) {
+        if (!ref_dec(&group->references)) {
             mutex_rel(&pids_lock);
             return;
         }
@@ -1315,13 +1321,13 @@ void session_ref(session_t *session) {
 }
 
 void session_deref(session_t *session) {
-    if (ref_dec(&session->references)) {
+    if (ref_dec_maybe(&session->references)) {
         ASSERT(session != &kernel_session);
 
         pid_t *pid = session->pid;
         mutex_acq(&pids_lock, 0, false);
 
-        if (__atomic_load_n(&session->references.references, __ATOMIC_ACQUIRE) != 0) {
+        if (!ref_dec(&session->references)) {
             mutex_rel(&pids_lock);
             return;
         }
@@ -1828,7 +1834,7 @@ void ident_ref(ident_t *ident) {
 }
 
 void ident_deref(ident_t *ident) {
-    if (ref_dec(&ident->references) == 1) {
+    if (ref_dec(&ident->references)) {
         vfree(ident->groups, sizeof(*ident->groups) * ident->num_groups);
         vfree(ident, sizeof(*ident));
     }

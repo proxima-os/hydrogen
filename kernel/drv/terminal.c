@@ -620,7 +620,7 @@ static void pty_free(fs_device_t *ptr) {
     pty_t *self = (pty_t *)ptr;
     mutex_acq(&devpts_root_inode.lock, 0, false);
 
-    if (__atomic_load_n(&self->base.references.references, __ATOMIC_ACQUIRE) != 0) {
+    if (!ref_dec(&self->base.references)) {
         mutex_rel(&devpts_root_inode.lock);
         return;
     }

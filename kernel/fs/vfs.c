@@ -28,10 +28,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-static dentry_t root_dentry = {.references = 1};
+static dentry_t root_dentry = {.references = REF_INIT(1)};
 
 static void vfs_init(void) {
-    root_dentry.references += 2;
+    dentry_ref(&root_dentry);
+    dentry_ref(&root_dentry);
     rcu_write(current_thread->process->work_dir, &root_dentry);
     rcu_write(current_thread->process->root_dir, &root_dentry);
 }
@@ -178,7 +179,7 @@ static int single_lookup(dentry_t **entry, const char *name, size_t length, iden
     if (unlikely(!child)) return ENOMEM;
 
     memset(child, 0, sizeof(*child));
-    child->references = 1;
+    child->references = REF_INIT(1);
     child->fs = parent->fs;
     child->parent = parent;
     child->name.data = vmalloc(length);
@@ -1802,17 +1803,17 @@ hydrogen_ret_t vfs_fpath(dentry_t *path, void **buf_out, size_t *len_out) {
 }
 
 void dentry_ref(dentry_t *entry) {
-    __atomic_fetch_add(&entry->references, 1, __ATOMIC_ACQUIRE);
+    ref_inc(&entry->references);
 }
 
 void dentry_deref(dentry_t *entry) {
-    while (__atomic_fetch_sub(&entry->references, 1, __ATOMIC_ACQ_REL) == 1) {
+    while (ref_dec_maybe(&entry->references)) {
         dentry_t *parent = entry->parent;
 
         if (parent != NULL) {
             mutex_acq(&parent->lock, 0, false);
 
-            if (__atomic_load_n(&entry->references, __ATOMIC_RELAXED) != 0) {
+            if (!ref_dec(&entry->references)) {
                 mutex_rel(&parent->lock);
                 break;
             }
@@ -1862,7 +1863,7 @@ void fsdev_ref(fs_device_t *dev) {
 }
 
 void fsdev_deref(fs_device_t *dev) {
-    if (ref_dec(&dev->references)) {
+    if (ref_dec_maybe(&dev->references)) {
         dev->ops->free(dev);
     }
 }
@@ -1897,7 +1898,7 @@ int create_root_dentry(filesystem_t *fs, inode_t *root) {
     if (unlikely(!entry)) return ENOMEM;
     memset(entry, 0, sizeof(*entry));
 
-    entry->references = 1;
+    entry->references = REF_INIT(1);
     entry->fs = fs;
     entry->inode = root;
     entry->present = true;
