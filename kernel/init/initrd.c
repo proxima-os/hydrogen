@@ -190,7 +190,7 @@ static bool extract_single(file_t *dest, void *data, size_t size, ident_t *ident
                 } else {
                     int error = vfs_ftruncate(file, size);
 
-                    if (unlikely(errored)) {
+                    if (unlikely(error)) {
                         printk(
                             "initrd: failed to set size of regular file %S to %U bytes (%e)\n",
                             path,
