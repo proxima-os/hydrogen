@@ -66,7 +66,7 @@ hydrogen_ret_t hydrogen_namespace_add(
 
     if (dst_ns_hnd == HYDROGEN_THIS_NAMESPACE) {
         dst_ns = current_thread->namespace;
-        dst_ns_rights = NAMESPACE_RIGHTS;
+        dst_ns_rights = THIS_NAMESPACE_RIGHTS;
     } else {
         handle_data_t data;
         error = hnd_resolve(&data, dst_ns_hnd, OBJECT_NAMESPACE, HYDROGEN_NAMESPACE_ADD);
