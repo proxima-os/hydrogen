@@ -13,6 +13,7 @@ install_headers(
     'hydrogen/process.h',
     'hydrogen/signal.h',
     'hydrogen/stat.h',
+    'hydrogen/termios.h',
     'hydrogen/thread.h',
     'hydrogen/time.h',
     'hydrogen/types.h',

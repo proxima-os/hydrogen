@@ -45,6 +45,12 @@ size_t ringbuf_writable(ringbuf_t *buf) {
     }
 }
 
+void ringbuf_clear(ringbuf_t *buf) {
+    buf->read_idx = 0;
+    buf->write_idx = 0;
+    buf->has_data = false;
+}
+
 hydrogen_ret_t ringbuf_read(ringbuf_t *buf, void *dest, size_t size) {
     size_t p0_available;
     size_t p1_available;
@@ -123,4 +129,26 @@ hydrogen_ret_t ringbuf_write(ringbuf_t *buf, const void *src, size_t size) {
 
     buf->has_data = true;
     return ret_integer(cur_count);
+}
+
+int ringbuf_get(ringbuf_t *buf) {
+    if (!buf->has_data) return -1;
+
+    unsigned char c = buf->data[buf->read_idx++];
+
+    if (buf->read_idx == BUFFER_SIZE) buf->read_idx = 0;
+    if (buf->read_idx == buf->write_idx) buf->has_data = false;
+
+    return c;
+}
+
+bool ringbuf_put(ringbuf_t *buf, unsigned char c) {
+    if (buf->has_data && buf->read_idx == buf->write_idx) return false;
+
+    buf->data[buf->write_idx++] = c;
+
+    if (buf->write_idx == BUFFER_SIZE) buf->write_idx = 0;
+    buf->has_data = true;
+
+    return true;
 }

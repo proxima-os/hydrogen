@@ -7,6 +7,7 @@
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/return.h"
+#include "kernel/types.h"
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
 #include "proc/process.h"
@@ -25,6 +26,7 @@
 #include <hydrogen/filesystem.h>
 #include <hydrogen/ioctl.h>
 #include <hydrogen/stat.h>
+#include <hydrogen/termios.h>
 #include <hydrogen/types.h>
 #include <limits.h>
 #include <stddef.h>
@@ -52,6 +54,8 @@ typedef struct {
     list_t tx_read_waiting;
     list_t tx_write_waiting;
     event_source_t tx_readable_event;
+    struct __termios settings;
+    unsigned column;
 } pty_t;
 
 static int pty_wait(list_t *list, mutex_t *lock) {
@@ -88,6 +92,58 @@ typedef struct {
     event_source_t writable_event;
     event_source_t disconnect_event;
 } pts_file_t;
+
+static hydrogen_ret_t pty_ioctl(pty_t *pty, int request, void *buffer, size_t size) {
+    switch (request) {
+    case __IOCTL_PTY_GET_SETTINGS: {
+        struct __termios data;
+        if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
+
+        mutex_acq(&pty->rx_lock, 0, false);
+        data = pty->settings;
+        mutex_rel(&pty->rx_lock);
+
+        int error = user_memcpy(buffer, &data, sizeof(data));
+        if (unlikely(error)) return ret_error(error);
+
+        return ret_error(0);
+    }
+    case __IOCTL_PTY_SET_SETTINGS:
+    case __IOCTL_PTY_SET_SETTINGS_DRAIN:
+    case __IOCTL_PTY_SET_SETTINGS_FLUSH: {
+        struct __termios data;
+        if (unlikely(size < sizeof(data))) return ret_error(EINVAL);
+
+        // Note: drain is identical to regular, because "data has been sent" means "data is in tx buffer" for ptys
+
+        mutex_acq(&pty->rx_lock, 0, false);
+        mutex_acq(&pty->tx_lock, 0, false);
+
+        if (request == __IOCTL_PTY_SET_SETTINGS_FLUSH && ringbuf_readable(&pty->rx)) {
+            ringbuf_clear(&pty->rx);
+            event_source_signal(&pty->rx_writable_event);
+            mutex_acq(&pty->files_lock, 0, false);
+
+            LIST_FOREACH(pty->files, pts_file_t, node, file) {
+                event_source_reset(&file->readable_event);
+            }
+
+            mutex_rel(&pty->files_lock);
+        }
+
+        data = pty->settings;
+
+        mutex_rel(&pty->tx_lock);
+        mutex_rel(&pty->rx_lock);
+
+        int error = user_memcpy(buffer, &data, sizeof(data));
+        if (unlikely(error)) return ret_error(error);
+
+        return ret_error(0);
+    }
+    default: return ret_error(ENOTTY);
+    }
+}
 
 static void ptm_free(object_t *ptr) {
     ptm_file_t *self = (ptm_file_t *)ptr;
@@ -279,7 +335,7 @@ static hydrogen_ret_t ptm_ioctl(file_t *ptr, int request, void *buffer, size_t s
         __atomic_store_n(&pty->locked, !!data, __ATOMIC_RELEASE);
         return ret_error(0);
     }
-    default: return ret_error(ENOTTY);
+    default: return pty_ioctl(pty, request, buffer, size);
     }
 }
 
@@ -374,6 +430,95 @@ static hydrogen_ret_t pts_read(file_t *ptr, void *buffer, size_t size, uint64_t 
     return ret;
 }
 
+static ssize_t process_single_char(pty_t *pty, unsigned char c, size_t available) {
+    ASSERT(available != 0);
+
+    switch (c) {
+    case '\n':
+        if (pty->settings.__output_flags & __ONLCR) {
+            if (available < 2) return -1;
+            ringbuf_put(&pty->tx, '\r');
+            ringbuf_put(&pty->tx, '\n');
+            pty->column = 0;
+            return 2;
+        }
+
+        if (pty->settings.__output_flags & __ONLRET) pty->column = 0;
+        break;
+    case '\r':
+        if ((pty->settings.__output_flags & __ONOCR) != 0 && pty->column == 0) return 0;
+
+        if (pty->settings.__output_flags & __OCRNL) {
+            c = '\n';
+            if (pty->settings.__output_flags & __ONLRET) pty->column = 0;
+            break;
+        }
+
+        pty->column = 0;
+        break;
+    case '\t': {
+        unsigned spaces = 8 - (pty->column & 7);
+
+        if ((pty->settings.__output_flags & __TABDLY) == __TAB3) {
+            if (available < spaces) return -1;
+
+            pty->column += spaces;
+            for (unsigned i = 0; i < spaces; i++) ringbuf_put(&pty->tx, ' ');
+
+            return spaces;
+        }
+
+        pty->column += spaces;
+        break;
+    }
+    case '\b':
+        if (pty->column) pty->column -= 1;
+        break;
+    default:
+        if (c >= 0x20 && c != 0x7f && ((pty->settings.__input_flags & __IUTF8) == 0 || (c & 0xc0) != 0x80)) {
+            pty->column += 1;
+        }
+        break;
+    }
+
+    ringbuf_put(&pty->tx, c);
+    return 1;
+}
+
+typedef struct {
+    size_t written;
+    size_t processed;
+} process_result_t;
+
+static int process_user_buffer(process_result_t *out, pty_t *pty, const void *buffer, size_t size, size_t available) {
+    process_result_t result = {};
+    unsigned char buf[1024];
+
+    while (size > 0 && available > 0) {
+        size_t cur = sizeof(buf) < size ? sizeof(buf) : size;
+        int error = user_memcpy(buf, buffer, cur);
+        if (unlikely(error)) {
+            if (result.processed) break;
+            return error;
+        }
+
+        for (size_t i = 0; i < cur && available > 0; i++) {
+            ssize_t count = process_single_char(pty, buf[i], available);
+            if (count < 0) goto done;
+            result.processed += 1;
+            result.written += count;
+            available -= count;
+        }
+
+        buffer += cur;
+        size -= cur;
+    }
+
+done:
+    *out = result;
+    return 0;
+}
+
 static hydrogen_ret_t pts_write(file_t *ptr, const void *buffer, size_t size, uint64_t position, bool rpos) {
     pts_file_t *self = (pts_file_t *)ptr;
     pty_t *pty = (pty_t *)self->base.inode->device;
@@ -399,14 +544,25 @@ static hydrogen_ret_t pts_write(file_t *ptr, const void *buffer, size_t size, ui
     }
 
     size_t readable = ringbuf_readable(&pty->tx);
+    process_result_t result;
 
-    hydrogen_ret_t ret = ringbuf_write(&pty->tx, buffer, size);
-    if (unlikely(ret.error)) {
-        mutex_rel(&pty->tx_lock);
-        return ret;
+    if (pty->settings.__output_flags & __OPOST) {
+        int error = process_user_buffer(&result, pty, buffer, size, writable);
+        if (unlikely(error)) {
+            mutex_rel(&pty->tx_lock);
+            return ret_error(error);
+        }
+    } else {
+        hydrogen_ret_t ret = ringbuf_write(&pty->tx, buffer, size);
+        if (unlikely(ret.error)) {
+            mutex_rel(&pty->tx_lock);
+            return ret;
+        }
+        result.written = ret.integer;
+        result.processed = ret.integer;
     }
 
-    if (writable == ret.integer) {
+    if (writable == result.written) {
         mutex_acq(&pty->files_lock, 0, false);
 
         LIST_FOREACH(pty->files, pts_file_t, node, file) {
@@ -416,13 +572,21 @@ static hydrogen_ret_t pts_write(file_t *ptr, const void *buffer, size_t size, ui
         mutex_rel(&pty->files_lock);
     }
 
-    if (readable == 0) {
+    if (readable == 0 && result.written != 0) {
         pty_wake(&pty->tx_read_waiting);
         event_source_signal(&pty->tx_readable_event);
     }
 
     mutex_rel(&pty->tx_lock);
-    return ret;
+    return ret_integer(result.processed);
+}
+
+static hydrogen_ret_t pts_ioctl(file_t *ptr, int request, void *buffer, size_t size) {
+    pts_file_t *self = (pts_file_t *)ptr;
+    pty_t *pty = (pty_t *)self->base.inode->device;
+    if (__atomic_load_n(&pty->locked, __ATOMIC_ACQUIRE)) return ret_error(EIO);
+
+    return pty_ioctl(pty, request, buffer, size);
 }
 
 static const file_ops_t pts_ops = {
@@ -431,6 +595,7 @@ static const file_ops_t pts_ops = {
     .base.event_del = pts_event_del,
     .read = pts_read,
     .write = pts_write,
+    .ioctl = pts_ioctl,
 };
 
 static void devpts_inode_free(inode_t *self) {
@@ -509,15 +674,18 @@ static const fs_device_ops_t pty_ops = {
 };
 
 static hydrogen_ret_t ptmx_open(fs_device_t *self, inode_t *inode, dentry_t *path, int flags, ident_t *ident) {
+    static const struct __termios default_settings = {
+        .__input_flags = __IUTF8,
+        .__output_flags = __OPOST | __ONLCR,
+    };
+
     ptm_file_t *file = vmalloc(sizeof(*file));
     if (unlikely(!file)) return ret_error(ENOMEM);
     memset(file, 0, sizeof(*file));
 
     pty_t *pty = vmalloc(sizeof(*pty));
-    if (unlikely(!pty)) {
-        vfree(file, sizeof(*file));
-        return ret_error(ENOMEM);
-    }
+    int error = ENOMEM;
+    if (unlikely(!pty)) goto err;
     memset(pty, 0, sizeof(*pty));
 
     pty->base.ops = &pty_ops;
@@ -537,21 +705,13 @@ static hydrogen_ret_t ptmx_open(fs_device_t *self, inode_t *inode, dentry_t *pat
     pty->inode.device = &pty->base;
 
     pty->locked = true;
+    pty->settings = default_settings;
 
-    int error = ringbuf_setup(&pty->rx);
-    if (unlikely(error)) {
-        vfree(pty, sizeof(*pty));
-        vfree(file, sizeof(*file));
-        return ret_error(error);
-    }
+    error = ringbuf_setup(&pty->rx);
+    if (unlikely(error)) goto err2;
 
     error = ringbuf_setup(&pty->tx);
-    if (unlikely(error)) {
-        ringbuf_free(&pty->rx);
-        vfree(pty, sizeof(*pty));
-        vfree(file, sizeof(*file));
-        return ret_error(error);
-    }
+    if (unlikely(error)) goto err3;
 
     event_source_signal(&pty->rx_writable_event);
 
@@ -562,9 +722,8 @@ static hydrogen_ret_t ptmx_open(fs_device_t *self, inode_t *inode, dentry_t *pat
     if (index < 0) {
         if (ptys_capacity > INT_MAX) {
             mutex_rel(&devpts_root_inode.lock);
-            vfree(pty, sizeof(*pty));
-            vfree(file, sizeof(*file));
-            return ret_error(EAGAIN);
+            error = EAGAIN;
+            goto err4;
         }
 
         index = ptys_capacity;
@@ -573,9 +732,8 @@ static hydrogen_ret_t ptmx_open(fs_device_t *self, inode_t *inode, dentry_t *pat
         void *new_ptys = vrealloc(ptys, ptys_capacity * sizeof(*ptys), new_cap * sizeof(*ptys));
         if (unlikely(!new_ptys)) {
             mutex_rel(&devpts_root_inode.lock);
-            vfree(pty, sizeof(*pty));
-            vfree(file, sizeof(*file));
-            return ret_error(ENOMEM);
+            error = ENOMEM;
+            goto err4;
         }
         ptys = new_ptys;
         ptys_capacity = new_cap;
@@ -597,6 +755,15 @@ static hydrogen_ret_t ptmx_open(fs_device_t *self, inode_t *inode, dentry_t *pat
     file->pty = pty;
 
     return ret_pointer(file);
+err4:
+    ringbuf_free(&pty->tx);
+err3:
+    ringbuf_free(&pty->rx);
+err2:
+    vfree(pty, sizeof(*pty));
+err:
+    vfree(file, sizeof(*file));
+    return ret_error(error);
 }
 
 static const fs_device_ops_t ptmx_ops = {.open = ptmx_open};

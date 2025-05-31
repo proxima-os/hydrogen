@@ -18,6 +18,11 @@ extern "C" {
 #define __IOCTL_PTM_GET_LOCKED 0x20002 /**< Get the lock state. void -> bool. */
 #define __IOCTL_PTM_SET_LOCKED 0x20003 /**< Set the lock state. bool -> void. */
 
+#define __IOCTL_PTY_GET_SETTINGS 0x30000 /**< Get the pty settings. #__termios -> void. */
+#define __IOCTL_PTY_SET_SETTINGS 0x30001 /**< Set the pty settings. #__termios -> void. */
+#define __IOCTL_PTY_SET_SETTINGS_DRAIN 0x30002 /**< Set the pty settings once all output is sent. #__termios -> void. */
+#define __IOCTL_PTY_SET_SETTINGS_FLUSH 0x30003 /**< Like #__IOCTL_PTY_SET_SETTINGS_DRAIN, but also flush input. */
+
 #ifdef __cplusplus
 };
 #endif
