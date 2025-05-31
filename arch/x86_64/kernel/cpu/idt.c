@@ -113,6 +113,53 @@ static void signal_or_fatal(arch_context_t *context, int signal, int code) {
     );
 }
 
+#define FPE_EXCEPTION_MASK ((1u << 6) - 1)
+#define FPE_EXCEPTION_INVALID (1u << 0)
+#define FPE_EXCEPTION_DENORMAL (1u << 1)
+#define FPE_EXCEPTION_DIV_ZERO (1u << 2)
+#define FPE_EXCEPTION_OVERFLOW (1u << 3)
+#define FPE_EXCEPTION_UNDERFLOW (1u << 4)
+#define FPE_EXCEPTION_PRECISION (1u << 5)
+
+static void handle_fpe_exception(arch_context_t *context, uint32_t trigger) {
+    int code;
+
+    if (trigger & FPE_EXCEPTION_INVALID) code = __FPE_FLTINV;
+    else if (trigger & FPE_EXCEPTION_DIV_ZERO) code = __FPE_FLTDIV;
+    else if (trigger & FPE_EXCEPTION_OVERFLOW) code = __FPE_FLTOVF;
+    else if (trigger & FPE_EXCEPTION_DENORMAL) code = __FPE_FLTUND;
+    else if (trigger & FPE_EXCEPTION_UNDERFLOW) code = __FPE_FLTUND;
+    else if (trigger & FPE_EXCEPTION_PRECISION) code = __FPE_FLTRES;
+    else return; // According to Linux, these exceptions can be spurious.
+
+    signal_or_fatal(context, __SIGFPE, code);
+}
+
+#define X87_STATUS_SHIFT 0
+#define X87_MASK_SHIFT 0
+
+static void handle_mf(arch_context_t *context) {
+    uint16_t sword, cword;
+    asm volatile("fstsw %0" : "=am"(sword));
+    asm volatile("fstcw %0" : "=m"(cword));
+
+    uint32_t status = (sword >> X87_STATUS_SHIFT) & FPE_EXCEPTION_MASK;
+    uint32_t mask = (cword >> X87_MASK_SHIFT) & FPE_EXCEPTION_MASK;
+    handle_fpe_exception(context, status & ~mask);
+}
+
+#define MXCSR_STATUS_SHIFT 0
+#define MXCSR_MASK_SHIFT 7
+
+static void handle_xm(arch_context_t *context) {
+    uint32_t mxcsr;
+    asm volatile("stmxcsr %0" : "=m"(mxcsr));
+
+    uint32_t status = (mxcsr >> MXCSR_STATUS_SHIFT) & FPE_EXCEPTION_MASK;
+    uint32_t mask = (mxcsr >> MXCSR_MASK_SHIFT) & FPE_EXCEPTION_MASK;
+    handle_fpe_exception(context, status & ~mask);
+}
+
 USED void x86_64_idt_dispatch(arch_context_t *context) {
     if (x86_64_cpu_features.smap) asm("clac");
 
@@ -152,9 +199,9 @@ USED void x86_64_idt_dispatch(arch_context_t *context) {
         pmap_handle_page_fault(context, context->rip, address, type, flags);
         break;
     }
-    case X86_64_IDT_MF: signal_or_fatal(context, __SIGFPE, 0); break;
+    case X86_64_IDT_MF: handle_mf(context); break;
     case X86_64_IDT_AC: signal_or_fatal(context, __SIGBUS, __BUS_ADRALN); break;
-    case X86_64_IDT_XM: signal_or_fatal(context, __SIGFPE, 0); break;
+    case X86_64_IDT_XM: handle_xm(context); break;
     case X86_64_IDT_IPI_REMOTE_CALL: {
         preempt_lock();
         smp_handle_remote_call();
