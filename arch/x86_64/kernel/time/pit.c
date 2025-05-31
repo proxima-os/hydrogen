@@ -27,6 +27,8 @@
 #define PIT_MODE_RATE (2 << 1)
 #define PIT_ACCESS_BOTH (3 << 4)
 
+#define PIT_IRQ 0
+
 static uint64_t pit_ticks;
 static void *pit_irq;
 static spinlock_t pit_lock;
@@ -76,7 +78,7 @@ static void pit_confirm(bool final) {
 
         hydrogen_ret_t irq = x86_64_isa_controller.ops->open(
             &x86_64_isa_controller,
-            0,
+            PIT_IRQ,
             IRQ_ACTIVE_HIGH | IRQ_EDGE_TRIGGERED,
             handle_pit_irq,
             NULL
