@@ -965,11 +965,13 @@ again:
                         return ret_error(error);
                     }
 
+                    obj_ref(&process->base);
                     handle_got_status(process, flags, true);
 
                     int id = process->pid->id;
                     mutex_rel(&process->status_lock);
                     mutex_rel(&parent->waitid_lock);
+                    obj_deref(&process->base);
                     return ret_integer(id);
                 }
 
