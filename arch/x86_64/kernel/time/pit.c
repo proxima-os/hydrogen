@@ -2,6 +2,7 @@
 #include "arch/irq.h"
 #include "arch/pio.h"
 #include "drv/interrupt.h"
+#include "init/cmdline.h"
 #include "kernel/compiler.h"
 #include "kernel/time.h"
 #include "util/panic.h"
@@ -33,6 +34,7 @@ static uint64_t pit_ticks;
 static void *pit_irq;
 static spinlock_t pit_lock;
 static timeconv_t pit_conv;
+static bool pit_disable;
 
 static uint64_t pit_read(void) {
     static uint64_t last_ticks;
@@ -100,5 +102,16 @@ static void pit_confirm(bool final) {
 }
 
 void x86_64_pit_init(void) {
+    if (pit_disable) {
+        printk("pit: disabled on command line\n");
+        return;
+    }
+
     x86_64_switch_timer(pit_read, NULL, pit_cleanup, pit_confirm);
 }
+
+static void process_disable(const char *name, char *value) {
+    pit_disable = true;
+}
+
+CMDLINE_OPT("x86.nopit", process_disable);

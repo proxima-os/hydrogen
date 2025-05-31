@@ -2,6 +2,7 @@
 #include "arch/divide.h"
 #include "arch/irq.h"
 #include "arch/time.h"
+#include "init/cmdline.h"
 #include "kernel/compiler.h"
 #include "kernel/time.h"
 #include "kernel/vdso.h"
@@ -23,6 +24,7 @@
 static uint64_t tsc_freq;
 static uint64_t lapic_freq;
 static timeconv_t time2tsc_conv;
+static bool tsc_disable;
 
 typedef struct {
     uint64_t nanoseconds;
@@ -150,6 +152,11 @@ static void tsc_confirm(bool final) {
 }
 
 void x86_64_tsc_init(void) {
+    if (tsc_disable) {
+        printk("tsc: disabled on command line\n");
+        x86_64_cpu_features.tsc_invariant = false;
+    }
+
     if (!x86_64_cpu_features.tsc_invariant) x86_64_cpu_features.tsc_deadline = false;
 
     // do this even if tsc isn't invariant, since it determins lapic frequency too
@@ -164,7 +171,7 @@ void x86_64_tsc_init(void) {
     }
 
     if (!x86_64_cpu_features.tsc_invariant) {
-        printk("tsc: not invariant\n");
+        if (!tsc_disable) printk("tsc: not invariant\n");
         return;
     }
 
@@ -175,3 +182,9 @@ void x86_64_tsc_init(void) {
 
     x86_64_switch_timer(tsc_read_time, time_to_tsc, NULL, tsc_confirm);
 }
+
+static void process_disable(const char *name, char *value) {
+    tsc_disable = true;
+}
+
+CMDLINE_OPT("x86.notsc", process_disable);

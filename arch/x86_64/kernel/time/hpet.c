@@ -1,6 +1,7 @@
 #include "x86_64/hpet.h"
 #include "arch/mmio.h"
 #include "arch/pmap.h"
+#include "init/cmdline.h"
 #include "kernel/compiler.h"
 #include "kernel/time.h"
 #include "mem/kvmm.h"
@@ -29,6 +30,7 @@
 
 static uintptr_t hpet_regs;
 static timeconv_t hpet_conv;
+static bool hpet_disable;
 
 static uint64_t hpet_read(unsigned reg) {
     return mmio_read64(hpet_regs, reg);
@@ -54,6 +56,11 @@ static void hpet_confirm(bool final) {
 }
 
 void x86_64_hpet_init(void) {
+    if (hpet_disable) {
+        printk("hpet: disabled on command line\n");
+        return;
+    }
+
     uacpi_table table;
     uacpi_status status = uacpi_table_find_by_signature(ACPI_HPET_SIGNATURE, &table);
     if (uacpi_unlikely_error(status)) {
@@ -93,3 +100,9 @@ void x86_64_hpet_init(void) {
 
     x86_64_switch_timer(hpet_read_time, NULL, hpet_cleanup, hpet_confirm);
 }
+
+static void process_disable(const char *name, char *value) {
+    hpet_disable = true;
+}
+
+CMDLINE_OPT("x86.nohpet", process_disable);

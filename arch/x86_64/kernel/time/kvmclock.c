@@ -1,4 +1,5 @@
 #include "x86_64/kvmclock.h"
+#include "init/cmdline.h"
 #include "kernel/arch/vdso.h"
 #include "kernel/vdso.h"
 #include "kernel/x86_64/kvmclock.h"
@@ -15,6 +16,7 @@
 #define KVM_FEATURE_CLOCKSOURCE2 (1u << 3)
 
 static uint32_t kvmclock_msr;
+static bool kvmclock_disable;
 
 static uint64_t kvmclock_read(void) {
     return x86_64_read_kvmclock(&vdso_info.arch.kvmclock);
@@ -31,6 +33,11 @@ static void kvmclock_confirm(bool final) {
 }
 
 void x86_64_kvmclock_init(void) {
+    if (kvmclock_disable) {
+        printk("kvmclock: disabled on command line\n");
+        return;
+    }
+
     if (!x86_64_cpu_features.hypervisor) {
         printk("kvmclock: not running in hypervisor\n");
         return;
@@ -64,3 +71,9 @@ void x86_64_kvmclock_init(void) {
     x86_64_switch_timer(kvmclock_read, NULL, kvmclock_cleanup, kvmclock_confirm);
     printk("kvmclock: initialized\n");
 }
+
+static void process_disable(const char *name, char *value) {
+    kvmclock_disable = true;
+}
+
+CMDLINE_OPT("x86.nokvmclock", process_disable);
