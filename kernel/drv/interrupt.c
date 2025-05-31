@@ -105,7 +105,11 @@ static hydrogen_ret_t irq_controller_device_file_ioctl(file_t *self, int request
         int flags = 0;
 
         if (data.active_low) flags |= IRQ_ACTIVE_LOW;
+        else flags |= IRQ_ACTIVE_HIGH;
+
         if (data.level_triggered) flags |= IRQ_LEVEL_TRIGGERED;
+        else flags |= IRQ_EDGE_TRIGGERED;
+
         if (data.shareable) flags |= IRQ_SHAREABLE;
 
         interrupt_t *irq = vmalloc(sizeof(*irq));

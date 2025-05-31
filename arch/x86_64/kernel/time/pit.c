@@ -1,6 +1,7 @@
 #include "x86_64/pit.h"
 #include "arch/irq.h"
 #include "arch/pio.h"
+#include "drv/interrupt.h"
 #include "kernel/compiler.h"
 #include "kernel/time.h"
 #include "util/panic.h"
@@ -73,7 +74,13 @@ static void pit_confirm(bool final) {
     if (!pit_irq) {
         pit_conv = timeconv_create(PIT_FREQ, NS_PER_SEC);
 
-        hydrogen_ret_t irq = x86_64_isa_controller.ops->open(&x86_64_isa_controller, 0, 0, handle_pit_irq, NULL);
+        hydrogen_ret_t irq = x86_64_isa_controller.ops->open(
+            &x86_64_isa_controller,
+            0,
+            IRQ_ACTIVE_HIGH | IRQ_EDGE_TRIGGERED,
+            handle_pit_irq,
+            NULL
+        );
         if (unlikely(irq.error)) panic("pit: failed to open interrupt (%e)", irq.error);
         pit_irq = irq.pointer;
 

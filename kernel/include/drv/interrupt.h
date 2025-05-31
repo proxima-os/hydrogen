@@ -10,7 +10,9 @@
 #include <stdint.h>
 
 #define IRQ_SHAREABLE (1 << 0)
+#define IRQ_ACTIVE_HIGH 0
 #define IRQ_ACTIVE_LOW (1 << 1)
+#define IRQ_EDGE_TRIGGERED 0
 #define IRQ_LEVEL_TRIGGERED (1 << 2)
 
 typedef void (*irq_func_t)(void *);
@@ -44,10 +46,3 @@ int irq_controller_init(irq_controller_t *controller);
 
 int interrupt_wait(interrupt_t *irq, uint64_t deadline, uint32_t flags);
 int interrupt_complete(interrupt_t *irq);
-
-/*void interrupt_init(interrupt_t *irq, const interrupt_ops_t *ops);
-void interrupt_trigger(interrupt_t *irq);
-
-void interrupt_free(interrupt_t *irq);
-int interrupt_event_add(object_t *irq, uint32_t rights, active_event_t *event);
-void interrupt_event_del(object_t *irq, active_event_t *event);*/
