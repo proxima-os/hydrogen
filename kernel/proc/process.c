@@ -580,20 +580,20 @@ static void reparent_children(process_t *process) {
         rcu_write(child->parent, init_process);
         mutex_rel(&init_process->children_lock);
 
-        if (process->have_status) {
+        if (child->have_status) {
             mutex_acq(&init_process->sig_lock, 0, false);
             mutex_acq(&init_process->threads_lock, 0, false);
             mutex_acq(&init_process->sig_target.lock, 0, false);
 
-            unsigned code = process->chld_sig.info.__code;
+            unsigned code = child->chld_sig.info.__code;
             if ((code != __CLD_CONTINUED && code != __CLD_STOPPED) ||
                 (init_process->sig_handlers[__SIGCHLD].__flags & __SA_NOCLDSTOP) == 0) {
                 queue_signal_unlocked(
                     init_process,
                     &init_process->sig_target,
-                    &process->chld_sig.info,
+                    &child->chld_sig.info,
                     0,
-                    &process->chld_sig
+                    &child->chld_sig
                 );
             }
 
@@ -602,12 +602,12 @@ static void reparent_children(process_t *process) {
             mutex_rel(&init_process->sig_target.lock);
         }
 
-        if (!process->exit_signal_sent || process->have_status) {
+        if (!child->exit_signal_sent || child->have_status) {
             mutex_acq(&init_process->waitid_lock, 0, false);
 
-            list_insert_tail(&init_process->waitid_available, &process->waitid_node);
+            list_insert_tail(&init_process->waitid_available, &child->waitid_node);
 
-            if (process->have_status) {
+            if (child->have_status) {
                 LIST_FOREACH(init_process->waitid_waiting, thread_t, wait_node, thread) {
                     sched_wake(thread);
                 }
@@ -1066,8 +1066,8 @@ int sigaction(process_t *process, int signal, const struct __sigaction *action, 
 
         if (new_act.__func.__handler != __SIG_DFL) {
             if ((signal == __SIGKILL || signal == __SIGSTOP) ||
-                (new_act.__func.__handler != __SIG_IGN && (uintptr_t)new_act.__func.__handler > arch_pt_max_user_addr()
-                )) {
+                (new_act.__func.__handler != __SIG_IGN &&
+                 (uintptr_t)new_act.__func.__handler > arch_pt_max_user_addr())) {
                 mutex_rel(&process->sig_lock);
                 return EINVAL;
             }
