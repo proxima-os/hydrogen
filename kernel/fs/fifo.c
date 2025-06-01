@@ -198,6 +198,7 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
 
         hydrogen_ret_t ret = ringbuf_write(&fifo->buffer, buffer, size);
         if (unlikely(ret.error)) {
+            if (total) break;
             mutex_rel(&fifo->lock);
             return ret;
         }
@@ -215,6 +216,8 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
         }
 
         total += ret.integer;
+        buffer += ret.integer;
+        size -= ret.integer;
     } while (size != 0 && (self->base.flags & __O_NONBLOCK) == 0);
 
     mutex_rel(&fifo->lock);
