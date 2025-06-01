@@ -1484,6 +1484,8 @@ int setpgid(process_t *process, int pgid) {
         }
 
         mutex_rel(&parent->waitid_lock);
+        mutex_rel(&parent->children_lock);
+        obj_deref(&parent->base);
     }
 
     mutex_rel(&process->status_lock);
