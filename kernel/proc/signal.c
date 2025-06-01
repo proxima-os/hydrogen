@@ -134,12 +134,13 @@ void unqueue_signal(queued_signal_t *signal) {
 
     mutex_acq(&signal->process->sig_lock, 0, false);
     mutex_acq(&signal->process->threads_lock, 0, false);
-    if (!signal->target) goto ret;
+    signal_target_t *target = signal->target;
+    if (!target) goto ret;
     mutex_acq(&signal->target->lock, 0, false);
 
-    remove_queued_signal(signal->target, signal);
+    remove_queued_signal(target, signal);
 
-    mutex_rel(&signal->target->lock);
+    mutex_rel(&target->lock);
 ret:
     mutex_rel(&signal->process->threads_lock);
     mutex_rel(&signal->process->sig_lock);
