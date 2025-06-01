@@ -300,50 +300,6 @@ static void tree_mov(vmm_t *vmm, vmm_region_t *region, uintptr_t new_head) {
     tree_add(vmm, region);
 }
 
-static void vmm_free(object_t *ptr) {
-    vmm_t *vmm = (vmm_t *)ptr;
-
-    pmap_prepare_destroy(&vmm->pmap);
-
-    for (;;) {
-        vmm_region_t *region = LIST_REMOVE_HEAD(vmm->regions, vmm_region_t, node);
-        if (!region) break;
-        pmap_destroy_range(vmm, region->head, region->tail - region->head + 1);
-        vfree(region, sizeof(*region));
-    }
-
-    pmap_finish_destruction(vmm);
-    pmem_unreserve(vmm->num_reserved);
-
-    if (vmm->path) dentry_deref(vmm->path);
-    if (vmm->inode) inode_deref(vmm->inode);
-
-    vfree(vmm, sizeof(*vmm));
-}
-
-static const object_ops_t vmm_object_ops = {.free = vmm_free};
-
-int vmm_create(vmm_t **out) {
-    static uint64_t next_id = 1;
-
-    vmm_t *vmm = vmalloc(sizeof(*vmm));
-    if (unlikely(!vmm)) return ENOMEM;
-    memset(vmm, 0, sizeof(*vmm));
-
-    int error = pmap_create(vmm);
-    if (unlikely(error)) {
-        vfree(vmm, sizeof(*vmm));
-        return error;
-    }
-
-    vmm->base.ops = &vmm_object_ops;
-    obj_init(&vmm->base, OBJECT_VMM);
-    vmm->id = __atomic_fetch_add(&next_id, 1, __ATOMIC_RELAXED);
-
-    *out = vmm;
-    return 0;
-}
-
 static void obj_add(vmm_region_t *region) {
     if (!region->object) return;
 
@@ -384,6 +340,51 @@ static void obj_rem_two(vmm_region_t *r1, vmm_region_t *r2) {
     mutex_rel(&r1->object->regions_lock);
     obj_deref(&r1->object->base);
     obj_deref(&r1->object->base);
+}
+
+static void vmm_free(object_t *ptr) {
+    vmm_t *vmm = (vmm_t *)ptr;
+
+    pmap_prepare_destroy(&vmm->pmap);
+
+    for (;;) {
+        vmm_region_t *region = LIST_REMOVE_HEAD(vmm->regions, vmm_region_t, node);
+        if (!region) break;
+        obj_rem(region);
+        pmap_destroy_range(vmm, region->head, region->tail - region->head + 1);
+        vfree(region, sizeof(*region));
+    }
+
+    pmap_finish_destruction(vmm);
+    pmem_unreserve(vmm->num_reserved);
+
+    if (vmm->path) dentry_deref(vmm->path);
+    if (vmm->inode) inode_deref(vmm->inode);
+
+    vfree(vmm, sizeof(*vmm));
+}
+
+static const object_ops_t vmm_object_ops = {.free = vmm_free};
+
+int vmm_create(vmm_t **out) {
+    static uint64_t next_id = 1;
+
+    vmm_t *vmm = vmalloc(sizeof(*vmm));
+    if (unlikely(!vmm)) return ENOMEM;
+    memset(vmm, 0, sizeof(*vmm));
+
+    int error = pmap_create(vmm);
+    if (unlikely(error)) {
+        vfree(vmm, sizeof(*vmm));
+        return error;
+    }
+
+    vmm->base.ops = &vmm_object_ops;
+    obj_init(&vmm->base, OBJECT_VMM);
+    vmm->id = __atomic_fetch_add(&next_id, 1, __ATOMIC_RELAXED);
+
+    *out = vmm;
+    return 0;
 }
 
 int clone_region(vmm_region_t **out, vmm_t *dvmm, vmm_t *svmm, vmm_region_t *src) {
