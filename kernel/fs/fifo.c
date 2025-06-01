@@ -211,6 +211,8 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
                 if (signal_read) event_source_signal(&file->readable_event);
             }
         }
+
+        total += ret.integer;
     } while (size != 0 && (self->base.flags & __O_NONBLOCK) == 0);
 
     mutex_rel(&fifo->lock);
