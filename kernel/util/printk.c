@@ -412,8 +412,9 @@ static hydrogen_ret_t klog_file_read(file_t *ptr, void *buffer, size_t size, uin
     size_t tot = 0;
 
     do {
-        size_t max = self->read_idx < write_idx ? write_idx - self->read_idx : sizeof(printk_buf) - self->read_idx;
-        size_t cur = size < max ? size : max;
+        size_t avl = self->read_idx < write_idx ? write_idx - self->read_idx : sizeof(printk_buf) - self->read_idx;
+        size_t max = size - tot;
+        size_t cur = avl < max ? avl : max;
 
         void *ptr = &printk_buf[self->read_idx];
 
@@ -442,7 +443,8 @@ static hydrogen_ret_t klog_file_write(file_t *ptr, const void *buffer, size_t si
     size_t total = 0;
 
     do {
-        size_t cur = sizeof(buf) < size ? sizeof(buf) : size;
+        size_t max = size - total;
+        size_t cur = sizeof(buf) < max ? sizeof(buf) : max;
         int error = user_memcpy(buf, buffer + total, cur);
         if (unlikely(error)) return ret_error(error);
 
