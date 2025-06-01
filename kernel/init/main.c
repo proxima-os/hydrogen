@@ -59,6 +59,9 @@ static void launch_init_process(void *ctx) {
     int error = namespace_create(&current_thread->namespace);
     if (unlikely(error)) panic("failed to create init process namespace (%e)", error);
 
+    hydrogen_ret_t ret = setsid(current_thread->process);
+    if (unlikely(ret.error)) panic("failed to create init session (%e)", ret.error);
+
     file_t *file;
     ident_t *ident = ident_get(current_thread->process);
     error = vfs_open(&file, NULL, "/dev/klog", 9, __O_WRONLY, 0, ident);
