@@ -757,6 +757,7 @@ int vfs_unlink(file_t *rel, const void *path, size_t length, int flags) {
     mutex_acq(&parent->lock, 0, false);
 
     error = access_sticky(parent, entry->inode, ident);
+    mutex_rel(&entry->inode->lock);
     if (unlikely(error)) goto ret3;
 
     error = parent->ops->directory.unlink(parent, entry);
@@ -768,7 +769,6 @@ int vfs_unlink(file_t *rel, const void *path, size_t length, int flags) {
 ret3:
     mutex_rel(&parent->lock);
     mutex_rel(&entry->parent->lock);
-    mutex_rel(&entry->inode->lock);
 ret2:
     mutex_rel(&entry->lock);
     dentry_deref(entry);
@@ -881,6 +881,8 @@ int vfs_rename(file_t *rel, const void *path, size_t length, file_t *trel, const
 
     inode_t *snode = source->inode;
     inode_t *tnode = target->inode;
+    inode_ref(snode);
+    inode_ref(tnode);
 
     if ((uintptr_t)snode < (uintptr_t)tnode) {
         mutex_acq(&snode->lock, 0, false);
@@ -945,6 +947,8 @@ int vfs_rename(file_t *rel, const void *path, size_t length, file_t *trel, const
 ret6:
     mutex_rel(&snode->lock);
     mutex_rel(&tnode->lock);
+    inode_deref(tnode);
+    inode_deref(snode);
     mutex_rel(&spnode->lock);
     mutex_rel(&tpnode->lock);
 ret5:
