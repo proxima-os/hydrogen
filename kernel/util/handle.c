@@ -321,9 +321,9 @@ hydrogen_ret_t namespace_add(
     associate_handle(ns, handle, new_data);
     if (old_data == NULL) ns->count += 1;
     mutex_rel(&ns->update_lock);
-    rcu_sync();
 
     if (old_data != NULL) {
+        rcu_sync();
         obj_deref(old_data->object);
         vfree(old_data, sizeof(*old_data));
     }
