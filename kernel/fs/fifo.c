@@ -281,7 +281,6 @@ hydrogen_ret_t fifo_open(fifo_t *fifo, inode_t *inode, dentry_t *path, int flags
     }
 
     if (flags & __O_WRONLY) {
-        fifo->num_writers += 1;
         fifo_awaken(&fifo->open_write_waiting);
 
         if (fifo->num_writers++ == 0) {
