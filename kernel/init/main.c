@@ -227,7 +227,7 @@ static void mount_rootfs(void) {
     error = ramfs_create(&devfs, 0755);
     if (unlikely(error)) panic("failed to create /dev filesystem (%e)", error);
 
-    error = vfs_mount(NULL, "/dev", 4, fs);
+    error = vfs_mount(NULL, "/dev", 4, devfs);
     if (unlikely(error)) panic("failed to mount /dev (%e)", error);
 }
 
