@@ -56,6 +56,7 @@ hydrogen_ret_t hydrogen_namespace_add(
 
     int flags_mode = flags & (3u << 30);
     flags &= ~flags_mode;
+    if (unlikely(flags & ~HANDLE_FLAGS)) return ret_error(EINVAL);
 
     namespace_t *src_ns;
     int error = namespace_or_this(&src_ns, src_ns_hnd, HYDROGEN_NAMESPACE_RESOLVE);
