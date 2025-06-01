@@ -234,42 +234,6 @@ static hydrogen_ret_t ramfs_file_dir_seek(file_t *ptr, hydrogen_seek_anchor_t an
     return ret_integer(position);
 }
 
-static hydrogen_ret_t emit_single(
-    void **buffer,
-    size_t *size,
-    uint64_t id,
-    uint64_t position,
-    hydrogen_file_type_t type,
-    const void *name,
-    size_t length
-) {
-    size_t offset = offsetof(hydrogen_directory_entry_t, name);
-    size_t cursz = offset + length;
-    // align cursz+1 up
-    size_t totsz = (cursz + _Alignof(hydrogen_directory_entry_t)) & ~(_Alignof(hydrogen_directory_entry_t) - 1);
-    if (totsz > *size) return ret_integer(0);
-
-    hydrogen_directory_entry_t base_entry = {.id = id, .position = position, .size = totsz, .type = type};
-
-    int error = user_memcpy(*buffer, &base_entry, offset);
-    if (unlikely(error)) return ret_error(error);
-    *buffer += offset;
-    *size -= offset;
-
-    error = user_memcpy(*buffer, name, length);
-    if (unlikely(error)) return ret_error(error);
-    *buffer += length;
-    *size -= length;
-
-    size_t padding = totsz - cursz;
-    error = user_memset(*buffer, 0, padding);
-    if (unlikely(error)) return ret_error(error);
-    *buffer += padding;
-    *size -= padding;
-
-    return ret_integer(totsz);
-}
-
 static hydrogen_ret_t ramfs_file_dir_readdir(file_t *ptr, void *buffer, size_t size) {
     dentry_t *entry = ptr->path;
     mutex_acq(&entry->lock, 0, false);
@@ -319,7 +283,12 @@ static hydrogen_ret_t ramfs_file_dir_readdir(file_t *ptr, void *buffer, size_t s
             length = 2;
         } else {
             if (!current) break;
-            if (!current->inode) continue;
+
+            if (!current->inode) {
+                ptr->position += 1;
+                continue;
+            }
+
             id = current->inode->id;
             type = current->inode->type;
             name = current->name.data;
@@ -327,7 +296,7 @@ static hydrogen_ret_t ramfs_file_dir_readdir(file_t *ptr, void *buffer, size_t s
             current = LIST_NEXT(*current, dentry_t, list_node);
         }
 
-        hydrogen_ret_t ret = emit_single(&buffer, &size, id, ptr->position, type, name, length);
+        hydrogen_ret_t ret = emit_single_dirent(&buffer, &size, id, ptr->position, type, name, length);
         if (unlikely(ret.error)) {
             if (total != 0) break;
             mutex_rel(&entry->lock);

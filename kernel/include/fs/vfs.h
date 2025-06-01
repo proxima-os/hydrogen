@@ -291,3 +291,39 @@ int deny_symlink(inode_t *self, dentry_t *entry, const void *target, size_t size
 int deny_link(inode_t *self, dentry_t *entry, inode_t *target);
 int deny_unlink(inode_t *self, dentry_t *entry);
 int deny_rename(inode_t *self, dentry_t *entry, inode_t *target, dentry_t *target_entry);
+
+static inline hydrogen_ret_t emit_single_dirent(
+    void **buffer,
+    size_t *size,
+    uint64_t id,
+    uint64_t position,
+    hydrogen_file_type_t type,
+    const void *name,
+    size_t length
+) {
+    size_t offset = offsetof(hydrogen_directory_entry_t, name);
+    size_t cursz = offset + length;
+    // align cursz+1 up
+    size_t totsz = (cursz + _Alignof(hydrogen_directory_entry_t)) & ~(_Alignof(hydrogen_directory_entry_t) - 1);
+    if (totsz > *size) return ret_integer(0);
+
+    hydrogen_directory_entry_t base_entry = {.id = id, .position = position, .size = totsz, .type = type};
+
+    int error = user_memcpy(*buffer, &base_entry, offset);
+    if (unlikely(error)) return ret_error(error);
+    *buffer += offset;
+    *size -= offset;
+
+    error = user_memcpy(*buffer, name, length);
+    if (unlikely(error)) return ret_error(error);
+    *buffer += length;
+    *size -= length;
+
+    size_t padding = totsz - cursz;
+    error = user_memset(*buffer, 0, padding);
+    if (unlikely(error)) return ret_error(error);
+    *buffer += padding;
+    *size -= padding;
+
+    return ret_integer(totsz);
+}
