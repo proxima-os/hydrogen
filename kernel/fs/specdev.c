@@ -418,7 +418,7 @@ static hydrogen_ret_t create_alloc_file(page_t *head, size_t count, int flags) {
     return ret_pointer(file);
 }
 
-static hydrogen_ret_t mem_ioctl(file_t *self, int request, void *buffer, size_t size) {
+static hydrogen_ret_t mem_ioctl(file_t *self, unsigned long request, void *buffer, size_t size) {
     switch (request) {
     case __IOCTL_MEM_ALLOCATE: {
         if (unlikely((self->flags & (__O_RDONLY | __O_WRONLY)) != (__O_RDONLY | __O_WRONLY))) {

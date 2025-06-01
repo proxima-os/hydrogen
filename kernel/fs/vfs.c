@@ -1707,7 +1707,7 @@ hydrogen_ret_t vfs_write(file_t *file, const void *buffer, size_t size) {
     return ret;
 }
 
-hydrogen_ret_t vfs_ioctl(file_t *file, int request, void *buffer, size_t size) {
+hydrogen_ret_t vfs_ioctl(file_t *file, unsigned long request, void *buffer, size_t size) {
     const file_ops_t *ops = (const file_ops_t *)file->base.ops;
     if (unlikely(!ops->ioctl)) return ret_error(ENOTTY);
 

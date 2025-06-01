@@ -87,7 +87,7 @@ static void irq_controller_device_file_free(object_t *ptr) {
     vfree(self, sizeof(*self));
 }
 
-static hydrogen_ret_t irq_controller_device_file_ioctl(file_t *self, int request, void *buffer, size_t size) {
+static hydrogen_ret_t irq_controller_device_file_ioctl(file_t *self, unsigned long request, void *buffer, size_t size) {
     irq_controller_t *controller = (irq_controller_t *)self->inode->device;
 
     switch (request) {

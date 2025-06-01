@@ -134,7 +134,9 @@ hydrogen_ret_t hydrogen_fs_seek(int file, hydrogen_seek_anchor_t anchor, int64_t
 hydrogen_ret_t hydrogen_fs_readdir(int file, void *buffer, size_t size) __asm__("__hydrogen_fs_readdir");
 hydrogen_ret_t hydrogen_fs_read(int file, void *buffer, size_t size) __asm__("__hydrogen_fs_read");
 hydrogen_ret_t hydrogen_fs_write(int file, const void *buffer, size_t size) __asm__("__hydrogen_fs_write");
-hydrogen_ret_t hydrogen_fs_ioctl(int file, int request, void *buffer, size_t size) __asm__("__hydrogen_fs_ioctl");
+hydrogen_ret_t hydrogen_fs_ioctl(int file, unsigned long request, void *buffer, size_t size) __asm__(
+    "__hydrogen_fs_ioctl"
+);
 
 hydrogen_ret_t hydrogen_fs_fflags(int file, int flags) __asm__("__hydrogen_fs_fflags");
 hydrogen_ret_t hydrogen_fs_fpath(int file, void *buffer, size_t size) __asm__("__hydrogen_fs_fpath");

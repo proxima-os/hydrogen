@@ -85,7 +85,7 @@ typedef struct {
         uint32_t flags,
         uint64_t offset
     );
-    hydrogen_ret_t (*ioctl)(file_t *self, int request, void *buffer, size_t size);
+    hydrogen_ret_t (*ioctl)(file_t *self, unsigned long request, void *buffer, size_t size);
 } file_ops_t;
 
 struct file {
@@ -243,7 +243,7 @@ hydrogen_ret_t vfs_seek(file_t *file, hydrogen_seek_anchor_t anchor, int64_t off
 hydrogen_ret_t vfs_read(file_t *file, void *buffer, size_t size);
 hydrogen_ret_t vfs_readdir(file_t *file, void *buffer, size_t size);
 hydrogen_ret_t vfs_write(file_t *file, const void *buffer, size_t size);
-hydrogen_ret_t vfs_ioctl(file_t *file, int request, void *buffer, size_t size);
+hydrogen_ret_t vfs_ioctl(file_t *file, unsigned long request, void *buffer, size_t size);
 
 int vfs_fflags(file_t *file, int flags);
 hydrogen_ret_t vfs_fpath(dentry_t *path, void **buf_out, size_t *len_out);

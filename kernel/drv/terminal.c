@@ -93,7 +93,7 @@ typedef struct {
     event_source_t disconnect_event;
 } pts_file_t;
 
-static hydrogen_ret_t pty_ioctl(pty_t *pty, int request, void *buffer, size_t size) {
+static hydrogen_ret_t pty_ioctl(pty_t *pty, unsigned long request, void *buffer, size_t size) {
     switch (request) {
     case __IOCTL_PTY_GET_SETTINGS: {
         struct __termios data;
@@ -280,7 +280,7 @@ static hydrogen_ret_t ptm_write(file_t *ptr, const void *buffer, size_t size, ui
     return ret;
 }
 
-static hydrogen_ret_t ptm_ioctl(file_t *ptr, int request, void *buffer, size_t size) {
+static hydrogen_ret_t ptm_ioctl(file_t *ptr, unsigned long request, void *buffer, size_t size) {
     ptm_file_t *self = (ptm_file_t *)ptr;
     pty_t *pty = self->pty;
 
@@ -579,7 +579,7 @@ static hydrogen_ret_t pts_write(file_t *ptr, const void *buffer, size_t size, ui
     return ret_integer(result.processed);
 }
 
-static hydrogen_ret_t pts_ioctl(file_t *ptr, int request, void *buffer, size_t size) {
+static hydrogen_ret_t pts_ioctl(file_t *ptr, unsigned long request, void *buffer, size_t size) {
     pts_file_t *self = (pts_file_t *)ptr;
     pty_t *pty = (pty_t *)self->base.inode->device;
 

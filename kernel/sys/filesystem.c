@@ -736,7 +736,7 @@ err:
     return error;
 }
 
-hydrogen_ret_t hydrogen_fs_ioctl(int file, int request, void *buffer, size_t size) {
+hydrogen_ret_t hydrogen_fs_ioctl(int file, unsigned long request, void *buffer, size_t size) {
     int error = verify_user_buffer(buffer, size);
     if (unlikely(error)) return ret_error(error);
 
