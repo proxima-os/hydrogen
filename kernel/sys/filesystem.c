@@ -702,8 +702,12 @@ int hydrogen_fs_pipe(int fds[2], int flags) {
     if (unlikely(error)) goto err4;
 
     file_t *read;
-    error = vfs_fopen(&read, NULL, inode, flags | __O_RDONLY, ident);
+    error = vfs_fopen(&read, NULL, inode, flags | __O_RDONLY | __O_NONBLOCK, ident);
     if (unlikely(error)) goto err5;
+
+    if ((flags & __O_NONBLOCK) == 0) {
+        vfs_fflags(read, flags | __O_RDONLY);
+    }
 
     file_t *write;
     error = vfs_fopen(&write, NULL, inode, flags | __O_WRONLY, ident);
