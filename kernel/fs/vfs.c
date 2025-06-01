@@ -1980,6 +1980,7 @@ int vfs_create_anonymous(inode_t **out, hydrogen_file_type_t type, uint32_t mode
     switch (type) {
     case HYDROGEN_CHARACTER_DEVICE:
     case HYDROGEN_BLOCK_DEVICE: inode->device = device; break;
+    case HYDROGEN_FIFO: break;
     default: UNREACHABLE();
     }
 
