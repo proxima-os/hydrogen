@@ -1525,6 +1525,7 @@ hydrogen_ret_t setsid(process_t *process) {
 
     session->pid = process->pid;
     session->references = REF_INIT(1);
+    session->num_members = 1;
 
     group->pid = process->pid;
     group->references = REF_INIT(1);
