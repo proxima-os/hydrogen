@@ -174,6 +174,8 @@ static hydrogen_ret_t fifo_file_write(file_t *ptr, const void *buffer, size_t si
 
         if (writable < size) {
             if (self->base.flags & __O_NONBLOCK) {
+                if (total != 0) break;
+
                 if (size <= __PIPE_BUF || writable == 0) {
                     mutex_rel(&fifo->lock);
                     return ret_error(EAGAIN);
