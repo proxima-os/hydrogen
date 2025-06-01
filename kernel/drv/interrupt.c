@@ -68,7 +68,10 @@ static void handle_user_irq(void *ptr) {
     spin_acq_noirq(&interrupt->lock);
 
     if (interrupt->pending++ == 0) {
-        interrupt->controller->ops->mask(interrupt->controller, interrupt->irq);
+        if (interrupt->flags & IRQ_LEVEL_TRIGGERED) {
+            interrupt->controller->ops->mask(interrupt->controller, interrupt->irq);
+        }
+
         event_source_signal(&interrupt->pending_source);
 
         LIST_FOREACH(interrupt->waiting, thread_t, wait_node, thread) {
@@ -119,6 +122,7 @@ static hydrogen_ret_t irq_controller_device_file_ioctl(file_t *self, unsigned lo
         irq->base.ops = &irq_object_ops;
         obj_init(&irq->base, OBJECT_INTERRUPT);
         irq->controller = controller;
+        irq->flags = flags;
 
         hydrogen_ret_t ret = controller->ops->open(controller, data.irq, flags, handle_user_irq, irq);
         if (unlikely(ret.error)) return ret_error(ret.error);
@@ -175,7 +179,10 @@ int irq_controller_init(irq_controller_t *controller) {
 static void do_complete(interrupt_t *irq) {
     if (--irq->pending == 0) {
         event_source_reset(&irq->pending_source);
-        irq->controller->ops->unmask(irq->controller, irq->irq);
+
+        if (irq->flags & IRQ_LEVEL_TRIGGERED) {
+            irq->controller->ops->unmask(irq->controller, irq->irq);
+        }
     }
 }
 

@@ -35,6 +35,7 @@ struct irq_controller {
 typedef struct {
     object_t base;
     irq_controller_t *controller;
+    int flags;
     spinlock_t lock;
     size_t pending;
     list_t waiting;
