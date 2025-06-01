@@ -256,15 +256,8 @@ int sched_create_thread(
     thread->sig_mask = current_thread->sig_mask;
     thread->sig_stack.__flags = __SS_DISABLE;
     thread->affinity = current_thread->affinity;
-
-    if (current_thread->queue >= 0) {
-        thread->queue = current_thread->queue;
-        thread->timeslice_tot = current_thread->timeslice_tot;
-    } else {
-        thread->queue = SCHED_RT_PRIORITIES;
-        thread->timeslice_tot = TIMESLICE_MIN + TIMESLICE_INC;
-    }
-
+    thread->queue = SCHED_RT_PRIORITIES;
+    thread->timeslice_tot = TIMESLICE_MIN + TIMESLICE_INC;
     thread->timeslice_rem = thread->timeslice_tot;
 
     if (process != NULL) {
