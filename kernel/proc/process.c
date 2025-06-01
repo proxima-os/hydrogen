@@ -1841,7 +1841,7 @@ void ident_deref(ident_t *ident) {
 }
 
 void pid_handle_removal_and_unlock(pid_t *pid) {
-    if (pid->thread == NULL && pid->process == NULL && pid->group == NULL) {
+    if (pid->thread == NULL && pid->process == NULL && pid->group == NULL && pid->session == NULL) {
         make_free_entry(pid->id, free_pids, 0);
         free_pids = pid->id;
         vfree(pid, sizeof(*pid));
