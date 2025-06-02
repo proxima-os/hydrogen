@@ -157,13 +157,16 @@ static void process_free(object_t *ptr) {
         pid_handle_removal_and_unlock(pid);
 
         process_t *parent;
+        bool have_extra_parent_ref;
 
-        if (!process->exit_signal_sent) {
+        if (!process->exit_signal_sent || process->have_status) {
             parent = get_parent_with_locked_children(process);
+            have_extra_parent_ref = true;
             reap_process(process, parent);
             mutex_rel(&parent->children_lock);
         } else {
-            parent = NULL;
+            parent = process->parent;
+            have_extra_parent_ref = false;
         }
 
         proc_alarm(process, 0);
@@ -174,14 +177,10 @@ static void process_free(object_t *ptr) {
         event_source_cleanup(&process->status_event);
         vfree(process, sizeof(*process));
 
-        if (parent != NULL) {
-            obj_deref(&parent->base);
+        if (have_extra_parent_ref) obj_deref(&parent->base);
 
-            if (ref_dec_maybe(&parent->base.references)) {
+        if (ref_dec_maybe(&parent->base.references)) {
             process = parent;
-            } else {
-                process = NULL;
-            }
         } else {
             process = NULL;
         }
@@ -498,8 +497,6 @@ static void reap_process(process_t *process, process_t *parent) {
 
         mutex_rel(&parent->waitid_lock);
     }
-
-    obj_deref(&parent->base);
 }
 
 static bool does_inhibit_orphaning(pgroup_t *parent_group, pgroup_t *child_group) {
