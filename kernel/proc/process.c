@@ -160,6 +160,17 @@ static void process_free(object_t *ptr) {
         bool have_extra_parent_ref;
 
         if (!process->exit_signal_sent || process->have_status) {
+            if (!process->have_status) {
+                pgroup_t *cgroup = process->group;
+                rcu_read_lock();
+                pgroup_t *pgroup = rcu_read(rcu_read(process->parent)->group);
+                bool newly_orphaned = does_inhibit_orphaning(pgroup, cgroup) &&
+                                      __atomic_fetch_sub(&cgroup->orphan_inhibitors, 1, __ATOMIC_ACQ_REL) == 1;
+                rcu_read_unlock();
+                leave_group(process->group, process);
+                if (newly_orphaned) handle_group_orphaned(cgroup);
+            }
+
             parent = get_parent_with_locked_children(process);
             have_extra_parent_ref = true;
             reap_process(process, parent);
