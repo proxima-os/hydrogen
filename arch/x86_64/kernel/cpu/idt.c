@@ -1,8 +1,8 @@
 #include "x86_64/idt.h"
 #include "arch/context.h"
+#include "arch/idle.h"
 #include "arch/irq.h"
 #include "cpu/cpudata.h"
-#include "cpu/smp.h"
 #include "kernel/compiler.h"
 #include "mem/pmap.h"
 #include "proc/process.h"
@@ -202,13 +202,28 @@ USED void x86_64_idt_dispatch(arch_context_t *context) {
     case X86_64_IDT_MF: handle_mf(context); break;
     case X86_64_IDT_AC: signal_or_fatal(context, __SIGBUS, __BUS_ADRALN); break;
     case X86_64_IDT_XM: handle_xm(context); break;
-    case X86_64_IDT_IPI_REMOTE_CALL: {
+    case X86_64_IDT_IPI_REMOTE_NOOP: x86_64_lapic_eoi(); break;
+    case X86_64_IDT_IPI_REMOTE_LEAVE_PMAP:
         preempt_lock();
-        smp_handle_remote_call();
+        pmap_handle_leave_pmap();
         x86_64_lapic_eoi();
         preempt_unlock();
         break;
-    }
+    case X86_64_IDT_IPI_REMOTE_TLB:
+        preempt_lock();
+        pmap_handle_remote_tlb();
+        x86_64_lapic_eoi();
+        preempt_unlock();
+        break;
+    case X86_64_IDT_IPI_REMOTE_PREEMPT:
+        preempt_lock();
+        sched_handle_remote_preempt();
+        x86_64_lapic_eoi();
+        preempt_unlock();
+        break;
+    case X86_64_IDT_IPI_REMOTE_HALT:
+        for (;;) cpu_idle();
+        break;
     case X86_64_IDT_LAPIC_TIMER: x86_64_handle_timer(); break;
     case X86_64_IDT_LAPIC_ERROR: x86_64_lapic_irq_error(); break;
     case X86_64_IDT_LAPIC_SPURIOUS: x86_64_lapic_irq_spurious(); break;

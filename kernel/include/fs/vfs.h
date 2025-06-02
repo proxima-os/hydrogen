@@ -1,8 +1,10 @@
 #pragma once
 
+#include "arch/usercopy.h"
 #include "fs/fifo.h"
 #include "init/task.h"
 #include "kernel/compiler.h"
+#include "kernel/return.h"
 #include "mem/vmm.h"
 #include "proc/mutex.h"
 #include "proc/process.h"
@@ -26,9 +28,9 @@
 
 #define FILE_PERM_FLAGS (__O_WRONLY | __O_RDONLY)
 #define FILE_DESC_FLAGS (__O_NONBLOCK | __O_APPEND | FILE_PERM_FLAGS)
-#define FILE_OPEN_FLAGS                                                                                          \
-    (__O_TMPFILE | __O_CLOEXEC | __O_TRUNC | __O_NOFOLLOW | __O_EXCL | __O_DIRECTORY | __O_CREAT | __O_CLOFORK | \
-     FILE_DESC_FLAGS)
+#define FILE_OPEN_FLAGS                                                                                         \
+    (__O_NOCTTY | __O_TMPFILE | __O_CLOEXEC | __O_TRUNC | __O_NOFOLLOW | __O_EXCL | __O_DIRECTORY | __O_CREAT | \
+     __O_CLOFORK | FILE_DESC_FLAGS)
 
 #define FILESYSTEM_READ_ONLY (1u << 0)
 #define FILESYSTEM_NO_SETUID (1u << 1)

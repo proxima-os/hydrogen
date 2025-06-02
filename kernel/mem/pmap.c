@@ -24,6 +24,7 @@
 #include "util/panic.h"
 #include "util/printk.h"
 #include "util/shlist.h"
+#include "util/slist.h"
 #include "util/spinlock.h"
 #include <hydrogen/memory.h>
 #include <hydrogen/signal.h>
@@ -104,11 +105,17 @@ static void tlb_remote(void *ptr) {
         if (this_cpu_read(pmap.asids)[ctx->tlb->asid].table == ctx->tlb->pmap->table) {
             arch_pt_flush(ctx->tlb->pmap->table, ctx->tlb->asid);
         }
-
-        __atomic_fetch_sub(&ctx->pending, 1, __ATOMIC_RELEASE);
     } else {
         arch_pt_flush(kernel_page_table, -1);
     }
+
+    __atomic_fetch_sub(&ctx->pending, 1, __ATOMIC_RELEASE);
+}
+
+void pmap_handle_remote_tlb(void) {
+    cpu_t *cpu = get_current_cpu();
+    tlb_remote(cpu->pmap.tlb_ctx);
+    __atomic_store_n(&cpu->pmap.tlb_ctx, NULL, __ATOMIC_RELEASE);
 }
 
 static void anon_free(page_t *page, vmm_t *vmm) {
@@ -143,29 +150,61 @@ static void tlb_commit(tlb_ctx_t *tlb, vmm_t *vmm) {
     if (tlb->broadcasted) {
         arch_pt_flush_wait();
     } else if (tlb->global) {
+        cpu_t *cur = get_current_cpu();
         struct tlb_remote_ctx ctx = {tlb, 0};
 
         if (tlb->pmap != NULL && tlb->global) {
-            cpu_t *cur = get_current_cpu();
-
             preempt_lock();
-            spin_acq_noirq(&tlb->pmap->cpus_lock);
+            irq_state_t state = spin_acq(&tlb->pmap->cpus_lock);
 
             HLIST_FOREACH(tlb->pmap->cpus, pmap_asid_data_t, node, asid) {
                 if (asid->cpu != cur) {
                     __atomic_fetch_add(&ctx.pending, 1, __ATOMIC_ACQUIRE);
-                    smp_call_remote_async(asid->cpu, tlb_remote, &ctx);
+                    void *wanted = NULL;
+
+                    while (!__atomic_compare_exchange_n(
+                        &asid->cpu->pmap.tlb_ctx,
+                        &wanted,
+                        &ctx,
+                        true,
+                        __ATOMIC_ACQUIRE,
+                        __ATOMIC_RELAXED
+                    )) {
+                        cpu_relax();
+                        wanted = NULL;
+                    }
+
+                    smp_call_remote(asid->cpu, SMP_REMOTE_TLB);
                 }
             }
 
-            spin_rel_noirq(&tlb->pmap->cpus_lock);
+            spin_rel(&tlb->pmap->cpus_lock, state);
             preempt_unlock();
-
-            while (__atomic_load_n(&ctx.pending, __ATOMIC_ACQUIRE) != 0) {
-                cpu_relax();
-            }
         } else {
-            smp_call_remote(NULL, tlb_remote, &ctx);
+            SLIST_FOREACH(cpus, cpu_t, node, cpu) {
+                if (cpu != cur) {
+                    __atomic_fetch_add(&ctx.pending, 1, __ATOMIC_ACQUIRE);
+                    void *wanted = NULL;
+
+                    while (!__atomic_compare_exchange_n(
+                        &cpu->pmap.tlb_ctx,
+                        &wanted,
+                        &ctx,
+                        true,
+                        __ATOMIC_ACQUIRE,
+                        __ATOMIC_RELAXED
+                    )) {
+                        cpu_relax();
+                        wanted = NULL;
+                    }
+
+                    smp_call_remote(cpu, SMP_REMOTE_TLB);
+                }
+            }
+        }
+
+        while (__atomic_load_n(&ctx.pending, __ATOMIC_ACQUIRE) != 0) {
+            cpu_relax();
         }
     }
 
@@ -214,7 +253,7 @@ void pmap_free_cpu(struct cpu *cpu) {
 static void *alloc_table(vmm_t *vmm, unsigned level) {
     page_t *page = pmem_alloc_now();
     if (unlikely(!page)) return NULL;
-    memset(&page->anon.deref_lock, 0, sizeof(page->anon.deref_lock));
+    memset(&page->anon, 0, sizeof(page->anon));
     page->anon.references = 0;
     page->anon.autounreserve = true;
     page->anon.is_page_table = true;
@@ -295,18 +334,28 @@ void pmap_switch(pmap_t *target) {
     restore_irq(state);
 }
 
-static void switch_away(void *ctx) {
-    cpu_t *cpu = ctx;
-    ASSERT(ctx == get_current_cpu());
+static void do_leave_pmap(pmap_t *pmap) {
+    if (pmap == this_cpu_read(pmap.current)) {
+        arch_pt_switch(kernel_page_table, -1, true);
+        this_cpu_write(pmap.current, NULL);
+    }
 
-    arch_pt_switch(kernel_page_table, -1, true);
-    cpu->pmap.current = NULL;
+    pmap_asid_data_t *asid = &this_cpu_read(pmap.asids)[pmap->asid];
+
+    if (asid->table == pmap->table) {
+        asid->table = NULL;
+    }
+}
+
+void pmap_handle_leave_pmap(void) {
+    cpu_t *cpu = get_current_cpu();
+    do_leave_pmap(cpu->pmap.leave_pmap_subject);
+    __atomic_store_n(&cpu->pmap.leave_pmap_subject, NULL, __ATOMIC_RELEASE);
 }
 
 void pmap_prepare_destroy(pmap_t *pmap) {
     // ensure no cpus are using this pmap
-    preempt_lock();
-    spin_acq_noirq(&pmap->cpus_lock);
+    irq_state_t state = spin_acq(&pmap->cpus_lock);
 
     cpu_t *cur_cpu = get_current_cpu();
 
@@ -315,20 +364,32 @@ void pmap_prepare_destroy(pmap_t *pmap) {
         if (!asid) break;
         ASSERT(asid->table == pmap->table);
 
-        if (asid->cpu->pmap.current == pmap) {
-            if (asid->cpu == cur_cpu) {
-                switch_away(asid->cpu);
-            } else {
-                smp_call_remote(asid->cpu, switch_away, asid->cpu);
+        if (asid->cpu == cur_cpu) {
+            do_leave_pmap(pmap);
+        } else {
+            pmap_t *wanted = NULL;
+            while (!__atomic_compare_exchange_n(
+                &asid->cpu->pmap.leave_pmap_subject,
+                &wanted,
+                pmap,
+                true,
+                __ATOMIC_ACQUIRE,
+                __ATOMIC_RELAXED
+            )) {
+                cpu_relax();
+                wanted = NULL;
             }
+
+            smp_call_remote(asid->cpu, SMP_REMOTE_LEAVE_PMAP);
+
+            while (__atomic_load_n(&asid->cpu->pmap.leave_pmap_subject, __ATOMIC_ACQUIRE) == pmap) cpu_relax();
         }
 
         asid->table = NULL;
         hlist_remove(&pmap->cpus, &asid->node);
     }
 
-    spin_rel_noirq(&pmap->cpus_lock);
-    preempt_unlock();
+    spin_rel(&pmap->cpus_lock, state);
 }
 
 static size_t do_destroy_range(vmm_t *vmm, void *table, unsigned level, uintptr_t virt, size_t size) {
@@ -374,6 +435,7 @@ static size_t do_destroy_range(vmm_t *vmm, void *table, unsigned level, uintptr_
             void *child = arch_pt_edge_target(level, pte);
             size_t cleaf = do_destroy_range(vmm, child, level - 1, virt, cur);
             page_t *cpage = virt_to_page(child);
+            ASSERT(cpage->anon.is_page_table);
             cpage->anon.references -= cleaf;
 
             if (cpage->anon.references == 0) {
@@ -405,7 +467,9 @@ void pmap_destroy_range(vmm_t *vmm, uintptr_t virt, size_t size) {
 
     UNUSED size_t leaves = do_destroy_range(vmm, vmm->pmap.table, arch_pt_levels() - 1, virt, size);
 #if HYDROGEN_ASSERTIONS
-    virt_to_page(vmm->pmap.table)->anon.references -= leaves;
+    page_t *page = virt_to_page(vmm->pmap.table);
+    ENSURE(page->anon.is_page_table);
+    page->anon.references -= leaves;
 #endif
 }
 
@@ -489,6 +553,7 @@ static bool do_prepare_alloc(vmm_t *vmm, void *table, unsigned level, uintptr_t 
             ASSERT(arch_pt_is_edge(level, pte));
 
             page_t *page = virt_to_page(arch_pt_edge_target(level, pte));
+            ASSERT(page->anon.is_page_table);
 
             if (page->anon.references == 0) {
                 // newly allocated by this call, remove it
@@ -543,7 +608,9 @@ static size_t do_prepare_fill(vmm_t *vmm, void *table, unsigned level, uintptr_t
         size -= cur;
     } while (size > 0);
 
-    virt_to_page(table)->anon.references += leaves;
+    page_t *page = virt_to_page(table);
+    ASSERT(page->anon.is_page_table);
+    page->anon.references += leaves;
     return leaves;
 }
 
@@ -584,7 +651,7 @@ static void do_alloc(void *table, unsigned level, uintptr_t virt, size_t size, i
         if (level == 0) {
             ASSERT(arch_pt_read(table, level, index) == ARCH_PT_PREPARE_PTE);
             page_t *page = pmem_alloc();
-            memset(&page->anon.deref_lock, 0, sizeof(page->anon.deref_lock));
+            memset(&page->anon, 0, sizeof(page->anon));
             page->anon.references = 1;
             page->anon.autounreserve = false;
             page->anon.is_page_table = false;
@@ -875,7 +942,9 @@ void pmap_move(vmm_t *svmm, uintptr_t src, vmm_t *dvmm, uintptr_t dest, size_t s
             void *child = arch_pt_edge_target(i, pte);
             page_t *page = virt_to_page(child);
 
-            if (--virt_to_page(child)->anon.references == 0) {
+            ASSERT(page->anon.is_page_table);
+
+            if (--page->anon.references == 0 && table != kernel_page_table) {
                 arch_pt_write(table, i, index, 0);
                 tlb_add_edge(&tlb, src, true);
                 shlist_insert_head(&tlb.free_queue, &page->anon.free_node);
@@ -954,6 +1023,7 @@ static size_t do_unmap(void *table, unsigned level, uintptr_t virt, size_t size,
             leaves += ret;
 
             page_t *page = virt_to_page(child);
+            ASSERT(page->anon.is_page_table);
             page->anon.references -= ret;
 
             if (page->anon.references == 0 && table != kernel_page_table) {
@@ -987,7 +1057,9 @@ void pmap_unmap(vmm_t *vmm, uintptr_t virt, size_t size) {
     tlb_init(&tlb, vmm ? &vmm->pmap : NULL);
     void *table = vmm ? vmm->pmap.table : kernel_page_table;
     size_t leaves = do_unmap(table, arch_pt_levels() - 1, virt, size, &tlb);
-    virt_to_page(table)->anon.references -= leaves;
+    page_t *page = virt_to_page(table);
+    ASSERT(page->anon.is_page_table);
+    page->anon.references -= leaves;
     tlb_commit(&tlb, vmm);
 
     migrate_unlock(state);
@@ -1251,7 +1323,10 @@ static size_t build_leaf_counts(void *table, unsigned level) {
         }
     }
 
-    virt_to_page(table)->anon.references = leaves;
+    page_t *page = virt_to_page(table);
+    memset(&page->anon, 0, sizeof(page->anon));
+    page->anon.is_page_table = true;
+    page->anon.references = leaves;
     return leaves;
 }
 
@@ -1337,17 +1412,16 @@ static page_t *alloc_page_for_user_mapping(vmm_t *vmm, vmm_region_t *region) {
 
     if ((region->flags & HYDROGEN_MEM_LAZY_RESERVE) == 0) {
         page = pmem_alloc();
-        page->anon.autounreserve = false;
     } else {
         page = pmem_alloc_now();
         if (unlikely(!page)) return NULL;
-        page->anon.autounreserve = true;
         vmm->num_reserved += 1;
     }
 
-    memset(&page->anon.deref_lock, 0, sizeof(page->anon.deref_lock));
+    memset(&page->anon, 0, sizeof(page->anon));
     page->anon.references = 1;
     page->anon.id = __atomic_fetch_add(&next_id, 1, __ATOMIC_RELAXED);
+    page->anon.autounreserve = region->flags & HYDROGEN_MEM_LAZY_RESERVE;
     page->anon.is_page_table = false;
     return page;
 }
@@ -1467,7 +1541,7 @@ static int copy_mapping(vmm_t *vmm, vmm_region_t *region, page_t **out, uint64_t
     }
 
     page_t *dst = pmem_alloc();
-    memset(&dst->anon.deref_lock, 0, sizeof(dst->anon.deref_lock));
+    memset(&dst->anon, 0, sizeof(dst->anon));
     dst->anon.references = 1;
     dst->anon.autounreserve = src->anon.autounreserve;
     dst->anon.is_page_table = false;

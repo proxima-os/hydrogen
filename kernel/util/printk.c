@@ -387,6 +387,9 @@ static void klog_file_free(object_t *ptr) {
 }
 
 static hydrogen_ret_t klog_file_read(file_t *ptr, void *buffer, size_t size, uint64_t position) {
+    sched_prepare_wait(true);
+    return ret_error(sched_perform_wait(0));
+
     klog_file_t *self = (klog_file_t *)ptr;
     printk_state_t state = printk_lock();
 

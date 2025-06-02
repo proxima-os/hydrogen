@@ -4,14 +4,12 @@
 
 struct cpu;
 
-typedef size_t smp_call_id_t;
+typedef enum {
+    SMP_REMOTE_NOOP,
+    SMP_REMOTE_HALT,
+    SMP_REMOTE_PREEMPT,
+    SMP_REMOTE_TLB,
+    SMP_REMOTE_LEAVE_PMAP,
+} smp_remote_call_type_t;
 
-/* if `dest` is NULL, broadcast. `func` runs in IRQ context. */
-void smp_call_remote(struct cpu *dest, void (*func)(void *), void *ctx);
-smp_call_id_t smp_call_remote_async(struct cpu *dest, void (*func)(void *), void *ctx);
-void smp_call_wait(struct cpu *dest, smp_call_id_t id);
-
-void smp_trigger_user_transition(struct cpu *dest);
-
-/* this function is internal */
-void smp_handle_remote_call(void);
+void smp_call_remote(struct cpu *dest, smp_remote_call_type_t type);

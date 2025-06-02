@@ -137,6 +137,8 @@ int sched_get_priority(bool *timeslice_out);
 void sched_queue_task(task_t *task);
 _Noreturn void sched_idle(void);
 
+void sched_handle_remote_preempt(void);
+
 // note: migration locks only prevent automatic migration. explicit migrations
 // via sched_migrate are still allowed.
 migrate_state_t migrate_lock(void);

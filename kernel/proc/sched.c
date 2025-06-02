@@ -464,10 +464,8 @@ static bool should_preempt(cpu_t *cpu) {
     return cpu->sched.current->queue < 0 || cpu->sched.cur_queue < cpu->sched.current->queue;
 }
 
-static void remote_maybe_preempt(void *ctx) {
-    cpu_t *cpu = ctx;
-    ASSERT(cpu == get_current_cpu());
-
+void sched_handle_remote_preempt(void) {
+    cpu_t *cpu = get_current_cpu();
     if (should_preempt(cpu)) queue_yield(cpu);
 }
 
@@ -477,7 +475,7 @@ static void maybe_preempt(cpu_t *cpu) {
     if (cpu == get_current_cpu()) {
         queue_yield(cpu);
     } else {
-        smp_call_remote_async(cpu, remote_maybe_preempt, cpu);
+        smp_call_remote(cpu, SMP_REMOTE_PREEMPT);
     }
 }
 
@@ -552,7 +550,7 @@ bool sched_interrupt(thread_t *thread, bool force_user_transition) {
         thread->interrupted = true;
 
         if (force_user_transition && thread->user_thread && cpu != get_current_cpu()) {
-            smp_trigger_user_transition(cpu);
+            smp_call_remote(cpu, SMP_REMOTE_NOOP);
         }
     }
 

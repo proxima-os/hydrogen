@@ -8,11 +8,14 @@ typedef struct {
     unsigned char *data;
     size_t read_idx;
     size_t write_idx;
+    size_t capacity;
     bool has_data;
 } ringbuf_t;
 
-int ringbuf_setup(ringbuf_t *buf);
+int ringbuf_setup(ringbuf_t *buf, size_t init_cap);
 void ringbuf_free(ringbuf_t *buf);
+
+int ringbuf_expand(ringbuf_t *buf);
 
 size_t ringbuf_readable(ringbuf_t *buf);
 size_t ringbuf_writable(ringbuf_t *buf);

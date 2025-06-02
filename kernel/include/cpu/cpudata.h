@@ -17,11 +17,6 @@ typedef struct cpu {
     rcu_cpu_state_t rcu;
     pmap_cpu_data_t pmap;
     slist_node_t node;
-    struct {
-        smp_call_id_t current;
-        void (*func)(void *);
-        void *ctx;
-    } remote_call;
     timer_event_t *events;
     spinlock_t events_lock;
 } cpu_t;

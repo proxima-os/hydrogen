@@ -111,6 +111,8 @@ struct session {
     pid_t *pid;
     refcnt_t references;
     size_t num_members;
+
+    struct pty *terminal;
 };
 
 extern mutex_t pids_lock;

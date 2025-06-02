@@ -5,15 +5,15 @@
 #include "kernel/return.h"
 #include "mem/vmalloc.h"
 #include <hydrogen/limits.h>
+#include <string.h>
 
-#define BUFFER_SIZE __PIPE_BUF
-
-int ringbuf_setup(ringbuf_t *buf) {
+int ringbuf_setup(ringbuf_t *buf, size_t init_cap) {
     if (!buf->data) {
-        buf->data = vmalloc(BUFFER_SIZE);
+        buf->data = vmalloc(init_cap);
         if (unlikely(!buf->data)) return ENOMEM;
         buf->read_idx = 0;
         buf->write_idx = 0;
+        buf->capacity = init_cap;
         buf->has_data = false;
     }
 
@@ -21,8 +21,23 @@ int ringbuf_setup(ringbuf_t *buf) {
 }
 
 void ringbuf_free(ringbuf_t *buf) {
-    vfree(buf->data, BUFFER_SIZE);
+    vfree(buf->data, buf->capacity);
     buf->data = NULL;
+}
+
+int ringbuf_expand(ringbuf_t *buf) {
+    size_t new_cap = buf->capacity * 2;
+    unsigned char *new_buf = vrealloc(buf->data, buf->capacity, new_cap);
+    if (unlikely(!new_buf)) return ENOMEM;
+    buf->data = new_buf;
+
+    if (buf->has_data && buf->write_idx <= buf->read_idx) {
+        memcpy(&buf->data[buf->capacity], buf->data, buf->write_idx);
+        buf->write_idx += buf->capacity;
+    }
+
+    buf->capacity = new_cap;
+    return 0;
 }
 
 size_t ringbuf_readable(ringbuf_t *buf) {
@@ -31,15 +46,15 @@ size_t ringbuf_readable(ringbuf_t *buf) {
     if (buf->read_idx < buf->write_idx) {
         return buf->write_idx - buf->read_idx;
     } else {
-        return (BUFFER_SIZE - buf->read_idx) + buf->write_idx;
+        return (buf->capacity - buf->read_idx) + buf->write_idx;
     }
 }
 
 size_t ringbuf_writable(ringbuf_t *buf) {
-    if (!buf->has_data) return BUFFER_SIZE;
+    if (!buf->has_data) return buf->capacity;
 
     if (buf->read_idx < buf->write_idx) {
-        return (BUFFER_SIZE - buf->write_idx) + buf->read_idx;
+        return (buf->capacity - buf->write_idx) + buf->read_idx;
     } else {
         return buf->read_idx - buf->write_idx;
     }
@@ -60,7 +75,7 @@ hydrogen_ret_t ringbuf_read(ringbuf_t *buf, void *dest, size_t size) {
         p1_available = 0;
         if (unlikely(!p0_available)) return ret_integer(0);
     } else {
-        p0_available = BUFFER_SIZE - buf->read_idx;
+        p0_available = buf->capacity - buf->read_idx;
         p1_available = buf->write_idx;
     }
 
@@ -80,7 +95,7 @@ hydrogen_ret_t ringbuf_read(ringbuf_t *buf, void *dest, size_t size) {
         buf->read_idx = p1_count;
     } else {
         buf->read_idx += p0_count;
-        if (buf->read_idx == BUFFER_SIZE) buf->read_idx = 0;
+        if (buf->read_idx == buf->capacity) buf->read_idx = 0;
     }
 
     if (cur_count == available) buf->has_data = false;
@@ -93,7 +108,7 @@ hydrogen_ret_t ringbuf_write(ringbuf_t *buf, const void *src, size_t size) {
 
     if (buf->has_data) {
         if (buf->read_idx < buf->write_idx) {
-            p0_available = BUFFER_SIZE - buf->write_idx;
+            p0_available = buf->capacity - buf->write_idx;
             p1_available = buf->read_idx;
         } else {
             p0_available = buf->read_idx - buf->write_idx;
@@ -102,7 +117,7 @@ hydrogen_ret_t ringbuf_write(ringbuf_t *buf, const void *src, size_t size) {
             if (unlikely(!p0_available)) return ret_integer(0);
         }
     } else {
-        p0_available = BUFFER_SIZE;
+        p0_available = buf->capacity;
         p1_available = 0;
         buf->read_idx = 0;
         buf->write_idx = 0;
@@ -124,7 +139,7 @@ hydrogen_ret_t ringbuf_write(ringbuf_t *buf, const void *src, size_t size) {
         buf->write_idx = p1_count;
     } else {
         buf->write_idx += p0_count;
-        if (buf->write_idx == BUFFER_SIZE) buf->write_idx = 0;
+        if (buf->write_idx == buf->capacity) buf->write_idx = 0;
     }
 
     buf->has_data = true;
@@ -136,7 +151,7 @@ int ringbuf_get(ringbuf_t *buf) {
 
     unsigned char c = buf->data[buf->read_idx++];
 
-    if (buf->read_idx == BUFFER_SIZE) buf->read_idx = 0;
+    if (buf->read_idx == buf->capacity) buf->read_idx = 0;
     if (buf->read_idx == buf->write_idx) buf->has_data = false;
 
     return c;
@@ -147,7 +162,7 @@ bool ringbuf_put(ringbuf_t *buf, unsigned char c) {
 
     buf->data[buf->write_idx++] = c;
 
-    if (buf->write_idx == BUFFER_SIZE) buf->write_idx = 0;
+    if (buf->write_idx == buf->capacity) buf->write_idx = 0;
     buf->has_data = true;
 
     return true;

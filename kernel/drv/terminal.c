@@ -1,3 +1,4 @@
+#include "drv/terminal.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
 #include "errno.h"
@@ -7,10 +8,11 @@
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "kernel/return.h"
-#include "kernel/types.h"
 #include "mem/vmalloc.h"
 #include "proc/mutex.h"
 #include "proc/process.h"
+#include "proc/rcu.h"
+#include "proc/sched.h"
 #include "string.h"
 #include "sys/filesystem.h"
 #include "util/eventqueue.h"
@@ -18,6 +20,7 @@
 #include "util/list.h"
 #include "util/object.h"
 #include "util/panic.h"
+#include "util/printk.h"
 #include "util/refcount.h"
 #include "util/ringbuf.h"
 #include "util/time.h"
@@ -31,32 +34,6 @@
 #include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
-
-typedef struct {
-    fs_device_t base;
-    inode_t inode;
-    unsigned index;
-    bool have_inode_ref;
-    bool locked;
-
-    mutex_t files_lock;
-    list_t files;
-    bool have_master;
-
-    mutex_t rx_lock;
-    ringbuf_t rx;
-    list_t rx_read_waiting;
-    list_t rx_write_waiting;
-    event_source_t rx_writable_event;
-
-    mutex_t tx_lock;
-    ringbuf_t tx;
-    list_t tx_read_waiting;
-    list_t tx_write_waiting;
-    event_source_t tx_readable_event;
-    struct __termios settings;
-    unsigned column;
-} pty_t;
 
 static int pty_wait(list_t *list, mutex_t *lock) {
     list_insert_tail(list, &current_thread->wait_node);
@@ -121,7 +98,6 @@ static hydrogen_ret_t pty_ioctl(pty_t *pty, unsigned long request, void *buffer,
 
         if (request == __IOCTL_PTY_SET_SETTINGS_FLUSH && ringbuf_readable(&pty->rx)) {
             ringbuf_clear(&pty->rx);
-            event_source_signal(&pty->rx_writable_event);
             mutex_acq(&pty->files_lock, 0, false);
 
             LIST_FOREACH(pty->files, pts_file_t, node, file) {
@@ -155,6 +131,8 @@ static void ptm_free(object_t *ptr) {
     LIST_FOREACH(self->pty->files, pts_file_t, node, file) {
         event_source_signal(&file->disconnect_event);
     }
+
+    // TODO: Send SIGHUP
 
     mutex_rel(&self->pty->files_lock);
     vfree(self, sizeof(*self));
@@ -204,8 +182,6 @@ static hydrogen_ret_t ptm_read(file_t *ptr, void *buffer, size_t size, uint64_t 
         readable = ringbuf_readable(&pty->tx);
     }
 
-    size_t writable = ringbuf_writable(&pty->tx);
-
     hydrogen_ret_t ret = ringbuf_read(&pty->tx, buffer, size);
     if (unlikely(ret.error)) {
         mutex_rel(&pty->tx_lock);
@@ -214,17 +190,6 @@ static hydrogen_ret_t ptm_read(file_t *ptr, void *buffer, size_t size, uint64_t 
 
     if (readable == ret.integer) {
         event_source_reset(&pty->tx_readable_event);
-    }
-
-    if (writable == 0) {
-        pty_wake(&pty->tx_write_waiting);
-        mutex_acq(&pty->files_lock, 0, false);
-
-        LIST_FOREACH(pty->files, pts_file_t, node, file) {
-            event_source_signal(&file->writable_event);
-        }
-
-        mutex_rel(&pty->files_lock);
     }
 
     mutex_rel(&pty->tx_lock);
@@ -238,18 +203,12 @@ static hydrogen_ret_t ptm_write(file_t *ptr, const void *buffer, size_t size, ui
 
     size_t writable = ringbuf_writable(&pty->rx);
 
-    while (!writable) {
-        if (self->base.flags & __O_NONBLOCK) {
-            mutex_rel(&pty->rx_lock);
-            return ret_error(EAGAIN);
-        }
-
-        int error = pty_wait(&pty->rx_write_waiting, &pty->rx_lock);
+    while (writable < size) {
+        int error = ringbuf_expand(&pty->rx);
         if (unlikely(error)) {
             mutex_rel(&pty->rx_lock);
             return ret_error(error);
         }
-
         writable = ringbuf_writable(&pty->rx);
     }
 
@@ -259,10 +218,6 @@ static hydrogen_ret_t ptm_write(file_t *ptr, const void *buffer, size_t size, ui
     if (unlikely(ret.error)) {
         mutex_rel(&pty->rx_lock);
         return ret;
-    }
-
-    if (writable == ret.integer) {
-        event_source_reset(&pty->rx_writable_event);
     }
 
     if (readable == 0) {
@@ -402,8 +357,6 @@ static hydrogen_ret_t pts_read(file_t *ptr, void *buffer, size_t size, uint64_t 
         readable = ringbuf_readable(&pty->rx);
     }
 
-    size_t writable = ringbuf_writable(&pty->rx);
-
     hydrogen_ret_t ret = ringbuf_read(&pty->rx, buffer, size);
     if (unlikely(ret.error)) {
         mutex_rel(&pty->rx_lock);
@@ -420,68 +373,84 @@ static hydrogen_ret_t pts_read(file_t *ptr, void *buffer, size_t size, uint64_t 
         mutex_rel(&pty->files_lock);
     }
 
-    if (writable == 0) {
-        pty_wake(&pty->rx_write_waiting);
-        event_source_signal(&pty->rx_writable_event);
-    }
-
     mutex_rel(&pty->rx_lock);
     return ret;
 }
 
-static ssize_t process_single_char(pty_t *pty, unsigned char c, size_t available) {
-    ASSERT(available != 0);
-
+static size_t process_single_char(pty_t *pty, unsigned char c, size_t available) {
     switch (c) {
     case '\n':
         if (pty->settings.__output_flags & __ONLCR) {
-            if (available < 2) return -1;
-            ringbuf_put(&pty->tx, '\r');
-            ringbuf_put(&pty->tx, '\n');
-            pty->column = 0;
+            if (available >= 2) {
+                ringbuf_put(&pty->tx, '\r');
+                ringbuf_put(&pty->tx, '\n');
+                pty->column = 0;
+            }
+
             return 2;
         }
 
-        if (pty->settings.__output_flags & __ONLRET) pty->column = 0;
-        break;
+        if (available >= 1) {
+            if (pty->settings.__output_flags & __ONLRET) pty->column = 0;
+            ringbuf_put(&pty->tx, c);
+        }
+
+        return 1;
     case '\r':
         if ((pty->settings.__output_flags & __ONOCR) != 0 && pty->column == 0) return 0;
 
         if (pty->settings.__output_flags & __OCRNL) {
-            c = '\n';
-            if (pty->settings.__output_flags & __ONLRET) pty->column = 0;
-            break;
+            if (available >= 1) {
+                if (pty->settings.__output_flags & __ONLRET) pty->column = 0;
+                ringbuf_put(&pty->tx, '\n');
+            }
+
+            return 1;
         }
 
-        pty->column = 0;
-        break;
+        if (available >= 1) {
+            pty->column = 0;
+            ringbuf_put(&pty->tx, c);
+        }
+
+        return 1;
     case '\t': {
         unsigned spaces = 8 - (pty->column & 7);
 
         if ((pty->settings.__output_flags & __TABDLY) == __TAB3) {
-            if (available < spaces) return -1;
-
-            pty->column += spaces;
-            for (unsigned i = 0; i < spaces; i++) ringbuf_put(&pty->tx, ' ');
+            if (available >= spaces) {
+                pty->column += spaces;
+                for (unsigned i = 0; i < spaces; i++) ringbuf_put(&pty->tx, ' ');
+            }
 
             return spaces;
         }
 
-        pty->column += spaces;
-        break;
+        if (available >= 1) {
+            pty->column += spaces;
+            ringbuf_put(&pty->tx, c);
+        }
+
+        return 1;
     }
     case '\b':
-        if (pty->column) pty->column -= 1;
-        break;
-    default:
-        if (c >= 0x20 && c != 0x7f && ((pty->settings.__input_flags & __IUTF8) == 0 || (c & 0xc0) != 0x80)) {
-            pty->column += 1;
+        if (available >= 1) {
+            if (pty->column > 0) pty->column -= 1;
+            ringbuf_put(&pty->tx, c);
         }
-        break;
-    }
 
-    ringbuf_put(&pty->tx, c);
-    return 1;
+        return 1;
+    default:
+        if (available >= 1) {
+            if (c >= 0x20 && c != 0x7f && ((pty->settings.__input_flags & __IUTF8) == 0 || (c & 0xc0) != 0x80)) {
+                pty->column += 1;
+            }
+
+            ringbuf_put(&pty->tx, c);
+        }
+
+        return 1;
+    }
 }
 
 typedef struct {
@@ -489,11 +458,13 @@ typedef struct {
     size_t processed;
 } process_result_t;
 
-static int process_user_buffer(process_result_t *out, pty_t *pty, const void *buffer, size_t size, size_t available) {
+static int process_user_buffer(process_result_t *out, pty_t *pty, const void *buffer, size_t size) {
     process_result_t result = {};
     unsigned char buf[1024];
 
-    while (size > 0 && available > 0) {
+    size_t available = ringbuf_writable(&pty->tx);
+
+    while (size > 0) {
         size_t cur = sizeof(buf) < size ? sizeof(buf) : size;
         int error = user_memcpy(buf, buffer, cur);
         if (unlikely(error)) {
@@ -501,9 +472,21 @@ static int process_user_buffer(process_result_t *out, pty_t *pty, const void *bu
             return error;
         }
 
-        for (size_t i = 0; i < cur && available > 0; i++) {
-            ssize_t count = process_single_char(pty, buf[i], available);
-            if (count < 0) goto done;
+        for (size_t i = 0; i < cur; i++) {
+            size_t count;
+
+            for (;;) {
+                count = process_single_char(pty, buf[i], available);
+                if (count <= available) break;
+
+                error = ringbuf_expand(&pty->tx);
+                if (unlikely(error)) {
+                    if (result.processed) goto done;
+                    return error;
+                }
+                available = ringbuf_writable(&pty->tx);
+            }
+
             result.processed += 1;
             result.written += count;
             available -= count;
@@ -524,33 +507,29 @@ static hydrogen_ret_t pts_write(file_t *ptr, const void *buffer, size_t size, ui
 
     mutex_acq(&pty->tx_lock, 0, false);
 
-    size_t writable = ringbuf_writable(&pty->tx);
-
-    while (!writable) {
-        if (self->base.flags & __O_NONBLOCK) {
-            mutex_rel(&pty->tx_lock);
-            return ret_error(EAGAIN);
-        }
-
-        int error = pty_wait(&pty->tx_write_waiting, &pty->tx_lock);
-        if (unlikely(error)) {
-            mutex_rel(&pty->tx_lock);
-            return ret_error(error);
-        }
-
-        writable = ringbuf_writable(&pty->tx);
-    }
-
     size_t readable = ringbuf_readable(&pty->tx);
     process_result_t result;
 
     if (pty->settings.__output_flags & __OPOST) {
-        int error = process_user_buffer(&result, pty, buffer, size, writable);
+        int error = process_user_buffer(&result, pty, buffer, size);
         if (unlikely(error)) {
             mutex_rel(&pty->tx_lock);
             return ret_error(error);
         }
     } else {
+        size_t writable = ringbuf_writable(&pty->tx);
+
+        while (writable < size) {
+            int error = ringbuf_expand(&pty->tx);
+
+            if (unlikely(error)) {
+                mutex_rel(&pty->tx_lock);
+                return ret_error(error);
+            }
+
+            writable = ringbuf_writable(&pty->tx);
+        }
+
         hydrogen_ret_t ret = ringbuf_write(&pty->tx, buffer, size);
         if (unlikely(ret.error)) {
             mutex_rel(&pty->tx_lock);
@@ -558,16 +537,6 @@ static hydrogen_ret_t pts_write(file_t *ptr, const void *buffer, size_t size, ui
         }
         result.written = ret.integer;
         result.processed = ret.integer;
-    }
-
-    if (writable == result.written) {
-        mutex_acq(&pty->files_lock, 0, false);
-
-        LIST_FOREACH(pty->files, pts_file_t, node, file) {
-            event_source_reset(&file->writable_event);
-        }
-
-        mutex_rel(&pty->files_lock);
     }
 
     if (readable == 0 && result.written != 0) {
@@ -650,20 +619,74 @@ static hydrogen_ret_t pty_open(fs_device_t *ptr, inode_t *inode, dentry_t *path,
 
     init_file(&file->base, &pts_ops, inode, path, flags);
 
+    mutex_acq(&pty->rx_lock, 0, false);
     mutex_acq(&pty->files_lock, 0, false);
-    if (!pty->have_master) event_source_signal(&file->disconnect_event);
+
+    if (!pty->have_master) {
+        if ((flags & __O_NONBLOCK) == 0 && (pty->settings.__control_flags & __CLOCAL) == 0) {
+            // POSIX says we have to wait until a connection is established in this case. Ptys start connected and,
+            // once disconnected, cannot be reconnected, so just wait until we get interrupted.
+            mutex_rel(&pty->files_lock);
+            mutex_rel(&pty->rx_lock);
+            sched_prepare_wait(true);
+            return ret_error(sched_perform_wait(0));
+        }
+
+        event_source_signal(&file->disconnect_event);
+    }
+
     list_insert_tail(&pty->files, &file->node);
     mutex_rel(&pty->files_lock);
 
-    mutex_acq(&pty->rx_lock, 0, false);
     if (ringbuf_readable(&pty->rx)) event_source_signal(&file->readable_event);
     mutex_rel(&pty->rx_lock);
 
-    mutex_acq(&pty->tx_lock, 0, false);
-    if (ringbuf_writable(&pty->tx)) event_source_signal(&file->writable_event);
-    mutex_rel(&pty->tx_lock);
+    event_source_signal(&file->writable_event);
+
+    if ((flags & __O_NOCTTY) == 0) {
+        rcu_read_lock();
+        pgroup_t *group = rcu_read(current_thread->process->group);
+        bool session_leader = group->session->pid == current_thread->process->pid;
+        rcu_read_unlock();
+
+        if (session_leader) {
+            // `group` is still valid, as session leaders cannot change groups
+
+            mutex_acq(&pty->foreground_lock, 0, false);
+
+            session_t *prev = NULL;
+            if (__atomic_compare_exchange_n(
+                    &pty->controller,
+                    &prev,
+                    group->session,
+                    false,
+                    __ATOMIC_ACQ_REL,
+                    __ATOMIC_RELAXED
+                )) {
+                ASSERT(pty->foreground == NULL);
+                rcu_write(pty->foreground, group);
+            }
+
+            mutex_rel(&pty->foreground_lock);
+        }
+    }
 
     return ret_pointer(file);
+}
+
+void pty_controller_terminate(pty_t *pty, struct session *session) {
+    if (!__atomic_compare_exchange_n(&pty->controller, &session, NULL, false, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE)) {
+        return;
+    }
+
+    rcu_sync();
+    session_deref(session);
+}
+
+void pty_group_terminate(pty_t *pty, struct pgroup *group) {
+    if (pty->foreground == group) {
+        pty->foreground = NULL;
+    }
 }
 
 static const fs_device_ops_t pty_ops = {
@@ -671,10 +694,28 @@ static const fs_device_ops_t pty_ops = {
     .open = pty_open,
 };
 
+#define INIT_BUFFER_SIZE 128
+
 static hydrogen_ret_t ptmx_open(fs_device_t *self, inode_t *inode, dentry_t *path, int flags, ident_t *ident) {
     static const struct __termios default_settings = {
-        .__input_flags = __IUTF8,
+        .__input_flags = __ICRNL | __IXON,
         .__output_flags = __OPOST | __ONLCR,
+        .__control_flags = __CS8 | __CREAD | __HUPCL,
+        .__local_flags = __ECHO | __ECHOE | __ECHOK | __ICANON | __IEXTEN | __ISIG | __ECHOCTL | __ECHOKE,
+        .__control_chars =
+            {
+                [__VEOF] = 0x04,   /* ^D */
+                [__VERASE] = 0x7f, /* DEL */
+                [__VINTR] = 0x03,  /* ^C */
+                [__VKILL] = 0x15,  /* ^U */
+                [__VMIN] = 1,
+                [__VQUIT] = 0x1c,  /* ^\ */
+                [__VSUSP] = 0x1a,  /* ^Z */
+                [__VSTART] = 0x11, /* ^Q */
+                [__VSTOP] = 0x13,  /* ^S */
+            },
+        .__input_speed = 38400,
+        .__output_speed = 38400,
     };
 
     ptm_file_t *file = vmalloc(sizeof(*file));
@@ -704,11 +745,12 @@ static hydrogen_ret_t ptmx_open(fs_device_t *self, inode_t *inode, dentry_t *pat
 
     pty->locked = true;
     pty->settings = default_settings;
+    pty->have_master = true;
 
-    error = ringbuf_setup(&pty->rx);
+    error = ringbuf_setup(&pty->rx, INIT_BUFFER_SIZE);
     if (unlikely(error)) goto err2;
 
-    error = ringbuf_setup(&pty->tx);
+    error = ringbuf_setup(&pty->tx, INIT_BUFFER_SIZE);
     if (unlikely(error)) goto err3;
 
     event_source_signal(&pty->rx_writable_event);
@@ -770,8 +812,132 @@ static fs_device_t ptmx_device = {.ops = &ptmx_ops, .references = REF_INIT(1)};
 static const fs_ops_t devpts_ops = {};
 static filesystem_t devpts_fs = {.ops = &devpts_ops, .block_size = PAGE_SIZE};
 
+static void devpts_root_file_free(object_t *ptr) {
+    file_t *self = (file_t *)ptr;
+    vfree(self, sizeof(*self));
+}
+
+static hydrogen_ret_t devpts_root_file_seek(file_t *self, hydrogen_seek_anchor_t anchor, int64_t offset) {
+    uint64_t position;
+
+    switch (anchor) {
+    case HYDROGEN_SEEK_BEGIN: position = 2; break;
+    case HYDROGEN_SEEK_CURRENT: position = self->position; break;
+    case HYDROGEN_SEEK_END:
+        mutex_acq(&self->inode->lock, 0, false);
+        position = ptys_capacity;
+        while (position > 0 && ptys[position - 1] <= INTPTR_MAX) position--;
+        position += 2;
+        mutex_rel(&self->inode->lock);
+        break;
+    default: return ret_error(EINVAL);
+    }
+
+    uint64_t base = position;
+    position += (uint64_t)offset;
+
+    if (offset >= 0) {
+        if (position < base || position > INT64_MAX) return ret_error(EOVERFLOW);
+    } else if (position > base) {
+        return ret_error(EINVAL);
+    }
+
+    return ret_integer(position);
+}
+
+static hydrogen_ret_t devpts_root_file_readdir(file_t *self, void *buffer, size_t size) {
+    unsigned char name_buf[32];
+
+    size_t total = 0;
+    mutex_acq(&self->path->lock, 0, false);
+    mutex_acq(&self->inode->lock, 0, false);
+
+    do {
+        uint64_t id;
+        hydrogen_file_type_t type;
+        const void *name;
+        size_t length;
+
+        if (self->position == 0) {
+            id = self->inode->id;
+            type = self->inode->type;
+            name = ".";
+            length = 1;
+        } else if (self->position == 1) {
+            rcu_read_lock();
+            dentry_t *root = rcu_read(current_thread->process->root_dir);
+            dentry_ref(root);
+            rcu_read_unlock();
+
+            dentry_t *parent = self->path;
+
+            for (dentry_t *cur = self->path; cur != root; cur = cur->fs->mountpoint) {
+                if (cur->parent != NULL) {
+                    parent = cur->parent;
+                    break;
+                }
+            }
+
+            id = parent->inode->id;
+            type = parent->inode->type;
+            name = "..";
+            length = 2;
+        } else {
+            uint64_t index = self->position - 2;
+            if (index >= ptys_capacity) break;
+
+            if (ptys[index] <= INTPTR_MAX) {
+                self->position += 1;
+                continue;
+            }
+
+            id = index + 1;
+            type = HYDROGEN_CHARACTER_DEVICE;
+            name = name_buf;
+            length = sprintk(name_buf, sizeof(name_buf), "%U", index);
+        }
+
+        hydrogen_ret_t ret = emit_single_dirent(&buffer, &size, id, self->position, type, name, length);
+        if (unlikely(ret.error)) {
+            if (total != 0) break;
+            mutex_rel(&self->inode->lock);
+            mutex_rel(&self->path->lock);
+            return ret;
+        }
+
+        if (ret.integer == 0) {
+            if (total != 0) break;
+            mutex_rel(&self->inode->lock);
+            mutex_rel(&self->path->lock);
+            return ret_error(EINVAL);
+        }
+
+        total += ret.integer;
+        self->position += 1;
+    } while (size > 0);
+
+    self->inode->atime = get_current_timestamp();
+
+    mutex_rel(&self->inode->lock);
+    mutex_rel(&self->path->lock);
+
+    return ret_integer(total);
+}
+
+static const file_ops_t devpts_root_file_ops = {
+    .base.free = devpts_root_file_free,
+    .seek = devpts_root_file_seek,
+    .readdir = devpts_root_file_readdir,
+};
+
 static hydrogen_ret_t devpts_root_open(inode_t *self, dentry_t *path, int flags) {
-    return ret_error(ENOTSUP);
+    file_t *file = vmalloc(sizeof(*file));
+    if (unlikely(!file)) return ret_error(ENOMEM);
+    memset(file, 0, sizeof(*file));
+
+    init_file(file, &devpts_root_file_ops, self, path, flags);
+
+    return ret_pointer(file);
 }
 
 static int devpts_root_lookup(inode_t *self, dentry_t *entry) {

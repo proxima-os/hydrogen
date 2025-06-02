@@ -236,7 +236,7 @@ hydrogen_ret_t fifo_open(fifo_t *fifo, inode_t *inode, dentry_t *path, int flags
     ASSERT(fifo == &inode->fifo);
     mutex_acq(&fifo->lock, 0, false);
 
-    int error = ringbuf_setup(&fifo->buffer);
+    int error = ringbuf_setup(&fifo->buffer, __PIPE_BUF);
     if (unlikely(error)) {
         mutex_rel(&fifo->lock);
         return ret_error(error);

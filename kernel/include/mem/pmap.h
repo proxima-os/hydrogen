@@ -27,6 +27,8 @@ typedef struct {
 typedef struct {
     pmap_asid_data_t *asids;
     pmap_t *current;
+    pmap_t *leave_pmap_subject;
+    void *tlb_ctx;
 } pmap_cpu_data_t;
 
 void pmap_init(void);
@@ -72,5 +74,8 @@ void pmap_handle_page_fault(
     pmap_fault_type_t type,
     unsigned flags
 );
+
+void pmap_handle_leave_pmap(void);
+void pmap_handle_remote_tlb(void);
 
 unsigned vmm_to_pmap_flags(unsigned flags);

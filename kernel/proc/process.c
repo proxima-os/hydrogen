@@ -4,6 +4,7 @@
 #include "arch/time.h"
 #include "arch/usercopy.h"
 #include "cpu/cpudata.h"
+#include "drv/terminal.h"
 #include "errno.h"
 #include "fs/vfs.h"
 #include "init/main.h"
@@ -138,6 +139,9 @@ static int allocate_pid(process_t *process, thread_t *thread) {
 
 static process_t *get_parent_with_locked_children(process_t *process);
 static void reap_process(process_t *process, process_t *parent);
+static bool does_inhibit_orphaning(pgroup_t *parent_group, pgroup_t *child_group);
+static void leave_group(pgroup_t *group, process_t *process);
+static void handle_group_orphaned(pgroup_t *group);
 
 static void process_free(object_t *ptr) {
     process_t *process = (process_t *)ptr;
@@ -713,13 +717,28 @@ static void handle_process_exit(process_t *process) {
 
     reparent_children(process);
 
+    mutex_acq(&process->group_update_lock, 0, false);
+    pgroup_t *cgroup = process->group;
+
     rcu_read_lock();
     pgroup_t *pgroup = rcu_read(rcu_read(process->parent)->group);
-    pgroup_t *cgroup = rcu_read(process->group);
-    pgroup_ref(cgroup);
     bool newly_orphaned = does_inhibit_orphaning(pgroup, cgroup) &&
                           __atomic_fetch_sub(&cgroup->orphan_inhibitors, 1, __ATOMIC_ACQ_REL) == 1;
+
+    pty_t *pty = NULL;
+    session_t *session = cgroup->session;
+
+    if (session->pid == process->pid) {
+        pty = rcu_read(session->terminal);
+        if (pty) fsdev_ref(&pty->base);
+    }
+
     rcu_read_unlock();
+
+    if (pty) {
+        pty_controller_terminate(pty, session);
+        fsdev_deref(&pty->base);
+    }
 
     leave_group(process->group, process);
 
@@ -727,7 +746,7 @@ static void handle_process_exit(process_t *process) {
         handle_group_orphaned(cgroup);
     }
 
-    pgroup_deref(cgroup);
+    mutex_rel(&process->group_update_lock);
 
     __siginfo_t info = {
         .__signo = __SIGCHLD,
@@ -1252,6 +1271,7 @@ int broadcast_signal(int signal) {
 
         process_t *proc = pid->process;
         if (proc == NULL || proc == current_thread->process) continue;
+        if (pid->id == 1 || pid->id == 3) continue;
 
         if (error == ESRCH) error = EPERM;
 
@@ -1311,9 +1331,27 @@ void pgroup_deref(pgroup_t *group) {
         pid_t *pid = group->pid;
         mutex_acq(&pids_lock, 0, false);
 
+        rcu_read_lock();
+        pty_t *pty = rcu_read(group->session->terminal);
+        if (pty) fsdev_ref(&pty->base);
+        rcu_read_unlock();
+
+        if (pty) mutex_acq(&pty->foreground_lock, 0, false);
+
         if (!ref_dec(&group->references)) {
+            if (pty) {
+                mutex_rel(&pty->foreground_lock);
+                fsdev_deref(&pty->base);
+            }
+
             mutex_rel(&pids_lock);
             return;
+        }
+
+        if (pty) {
+            pty_group_terminate(pty, group);
+            mutex_rel(&pty->foreground_lock);
+            fsdev_deref(&pty->base);
         }
 
         pid->group = NULL;
