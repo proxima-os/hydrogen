@@ -492,7 +492,7 @@ static bool do_prepare_alloc(vmm_t *vmm, void *table, unsigned level, uintptr_t 
 
             if (page->anon.references == 0) {
                 // newly allocated by this call, remove it
-                arch_pt_write(table, level, index, 0);
+                arch_pt_write(table, level, i, 0);
                 tlb_add_edge(tlb, virt, true);
                 shlist_insert_head(&tlb->free_queue, &page->anon.free_node);
             }
