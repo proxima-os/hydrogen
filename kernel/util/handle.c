@@ -78,7 +78,7 @@ static int expand(namespace_t *ns, size_t min_capacity) {
     size_t map_size = get_map_size(new_cap);
     size_t buf_size = map_offs + map_size;
     void *buffer = vmalloc(buf_size);
-    if (unlikely(!buffer)) return 0;
+    if (unlikely(!buffer)) return ENOMEM;
 
     handle_data_t **old_data = ns->data;
     handle_data_t **new_data = buffer;
