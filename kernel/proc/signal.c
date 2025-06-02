@@ -181,19 +181,22 @@ void queue_signal_unlocked(
         return;
     }
 
-    if (__atomic_load_n(&sig->target, __ATOMIC_ACQUIRE) != NULL) {
-        if (process != sig->process) {
-            mutex_acq(&sig->process->sig_lock, 0, false);
-            mutex_acq(&sig->process->threads_lock, 0, false);
-            if (sig->target) mutex_acq(&sig->target->lock, 0, false);
+    if (sig->target != NULL) {
+        process_t *proc = sig->process;
+        signal_target_t *targ = sig->target;
+
+        if (process != proc) {
+            mutex_acq(&proc->sig_lock, 0, false);
+            mutex_acq(&proc->threads_lock, 0, false);
+            if (targ) mutex_acq(&targ->lock, 0, false);
         }
 
-        if (sig->target) do_remove_sig(sig->target, sig);
+        if (targ) do_remove_sig(targ, sig);
 
-        if (process != sig->process) {
-            if (sig->target) mutex_rel(&sig->target->lock);
-            mutex_rel(&sig->process->threads_lock);
-            mutex_rel(&sig->process->sig_lock);
+        if (process != proc) {
+            if (targ) mutex_rel(&targ->lock);
+            mutex_rel(&proc->threads_lock);
+            mutex_rel(&proc->sig_lock);
         }
     }
 
