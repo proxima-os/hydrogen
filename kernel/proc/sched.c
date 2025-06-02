@@ -857,11 +857,13 @@ void *alloc_kernel_stack(void) {
 
     if (unlikely(!pmem_reserve(KERNEL_STACK_SIZE >> PAGE_SHIFT))) {
         kvmm_free(addr, KERNEL_STACK_SIZE + PAGE_SIZE);
+        return NULL;
     }
 
     if (unlikely(!pmap_prepare(NULL, addr + PAGE_SIZE, KERNEL_STACK_SIZE))) {
         pmem_unreserve(KERNEL_STACK_SIZE >> PAGE_SHIFT);
         kvmm_free(addr, KERNEL_STACK_SIZE + PAGE_SIZE);
+        return NULL;
     }
 
     pmap_alloc(NULL, addr + PAGE_SIZE, KERNEL_STACK_SIZE, PMAP_READABLE | PMAP_WRITABLE);
