@@ -30,7 +30,7 @@ int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible) {
 
     int status = 0;
 
-    if (__atomic_exchange_n(&mutex->state, MUTEX_CONTESTED, __ATOMIC_ACQUIRE) == MUTEX_LOCKED) {
+    if (__atomic_exchange_n(&mutex->state, MUTEX_CONTESTED, __ATOMIC_ACQUIRE) != MUTEX_UNLOCKED) {
         list_insert_tail(&mutex->waiters, &current_thread->wait_node);
         sched_prepare_wait(interruptible);
         spin_rel_noirq(&mutex->lock);
