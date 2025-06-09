@@ -87,6 +87,7 @@ typedef struct {
     thread_t idle_thread;
     unsigned preempt_level;
     bool preempt_queued;
+    bool reaper_waiting;
     spinlock_t lock;
     slist_t tasks;
     uint64_t timeslice_start_time;

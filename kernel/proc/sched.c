@@ -169,17 +169,21 @@ static void reaper_func(void *ctx) {
     cpu_t *cpu = get_current_cpu();
 
     for (;;) {
-        irq_state_t state = save_disable_irq();
+        preempt_lock();
         thread_t *thread;
 
         for (;;) {
             thread = LIST_REMOVE_HEAD(cpu->sched.reaper_queue, thread_t, queue_node);
             if (thread != NULL) break;
+            cpu->sched.reaper_waiting = true;
             sched_prepare_wait(false);
+            preempt_unlock();
             sched_perform_wait(0);
+            preempt_lock();
+            cpu->sched.reaper_waiting = false;
         }
 
-        restore_irq(state);
+        preempt_unlock();
 
         reap_thread(thread);
         obj_deref(&thread->base);
@@ -197,6 +201,7 @@ static void sched_init_late(void) {
     if (unlikely(error)) panic("sched: failed to create reaper thread (%e)", error);
 
     cpu->sched.boost_event.deadline = arch_read_time() + BOOST_INTERVAL_NS;
+    cpu->sched.reaper_waiting = true;
     timer_queue_event(&cpu->sched.boost_event);
 }
 
@@ -294,11 +299,11 @@ static void post_switch(thread_t *prev) {
     }
 
     if (prev->state == THREAD_EXITING) {
-        list_insert_tail(&cpu->sched.reaper_queue, &prev->queue_node);
-
-        if (cpu->sched.reaper->state != THREAD_RUNNING) {
+        if (cpu->sched.reaper_waiting && cpu->sched.reaper->state != THREAD_RUNNING) {
             do_wake(cpu, cpu->sched.reaper, 0);
         }
+
+        list_insert_tail(&cpu->sched.reaper_queue, &prev->queue_node);
     }
 
     thread_t *current = cpu->sched.current;
