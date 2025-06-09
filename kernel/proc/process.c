@@ -506,7 +506,7 @@ static void reap_process(process_t *process, process_t *parent) {
 
         list_remove(&parent->waitid_available, &process->waitid_node);
 
-        LIST_FOREACH(parent->waitid_waiting, thread_t, wait_node, thread) {
+        LIST_FOREACH(parent->waitid_waiting, thread_t, wait_nodes[1], thread) {
             sched_wake(thread);
         }
 
@@ -626,7 +626,7 @@ static void reparent_children(process_t *process) {
             list_insert_tail(&init_process->waitid_available, &child->waitid_node);
 
             if (child->have_status) {
-                LIST_FOREACH(init_process->waitid_waiting, thread_t, wait_node, thread) {
+                LIST_FOREACH(init_process->waitid_waiting, thread_t, wait_nodes[1], thread) {
                     sched_wake(thread);
                 }
             }
@@ -660,7 +660,7 @@ static void handle_status_change(process_t *process, process_t *parent, __siginf
     process->have_status = true;
     event_source_signal(&process->status_event);
 
-    LIST_FOREACH(process->waiters, thread_t, wait_node, thread) {
+    LIST_FOREACH(process->waiters, thread_t, wait_nodes[1], thread) {
         sched_wake(thread);
     }
 }
@@ -669,7 +669,7 @@ static void discard_status(process_t *process, process_t *parent, bool own_waiti
     process->have_status = false;
     event_source_reset(&process->status_event);
 
-    LIST_FOREACH(process->waiters, thread_t, wait_node, thread) {
+    LIST_FOREACH(process->waiters, thread_t, wait_nodes[1], thread) {
         sched_wake(thread);
     }
 
@@ -678,7 +678,7 @@ static void discard_status(process_t *process, process_t *parent, bool own_waiti
 
         list_remove(&parent->waitid_available, &process->waitid_node);
 
-        LIST_FOREACH(parent->waitid_waiting, thread_t, wait_node, thread) {
+        LIST_FOREACH(parent->waitid_waiting, thread_t, wait_nodes[1], thread) {
             sched_wake(thread);
         }
 
@@ -943,11 +943,11 @@ int proc_wait(process_t *process, unsigned flags, __siginfo_t *info, uint64_t de
         }
 
         sched_prepare_wait(true);
-        list_insert_tail(&process->waiters, &current_thread->wait_node);
+        list_insert_tail(&process->waiters, &current_thread->wait_nodes[1]);
         mutex_rel(&process->status_lock);
         int error = sched_perform_wait(deadline);
         mutex_acq(&process->status_lock, 0, false);
-        list_remove(&process->waiters, &current_thread->wait_node);
+        list_remove(&process->waiters, &current_thread->wait_nodes[1]);
 
         if (unlikely(error)) {
             mutex_rel(&process->status_lock);
@@ -1023,11 +1023,11 @@ again:
         }
 
         sched_prepare_wait(true);
-        list_insert_tail(&parent->waitid_waiting, &current_thread->wait_node);
+        list_insert_tail(&parent->waitid_waiting, &current_thread->wait_nodes[1]);
         mutex_rel(&parent->waitid_lock);
         int error = sched_perform_wait(deadline);
         mutex_acq(&parent->waitid_lock, 0, false);
-        list_remove(&parent->waitid_waiting, &current_thread->wait_node);
+        list_remove(&parent->waitid_waiting, &current_thread->wait_nodes[1]);
 
         if (unlikely(error)) {
             mutex_rel(&parent->waitid_lock);
@@ -1040,7 +1040,7 @@ uint64_t proc_alarm(process_t *process, uint64_t time) {
     irq_state_t state = spin_acq(&process->alarm_lock);
 
     while (process->alarm_queued) {
-        list_insert_tail(&process->alarm_waiting, &current_thread->wait_node);
+        list_insert_tail(&process->alarm_waiting, &current_thread->wait_nodes[0]);
         sched_prepare_wait(false);
         spin_rel(&process->alarm_lock, state);
         sched_perform_wait(0);
@@ -1525,7 +1525,7 @@ int setpgid(process_t *process, int pgid) {
         process_t *parent = get_parent_with_locked_children(process);
         mutex_acq(&parent->waitid_lock, 0, false);
 
-        LIST_FOREACH(parent->waitid_waiting, thread_t, wait_node, thread) {
+        LIST_FOREACH(parent->waitid_waiting, thread_t, wait_nodes[1], thread) {
             sched_wake(thread);
         }
 

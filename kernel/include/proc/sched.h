@@ -39,7 +39,7 @@ typedef struct thread {
     struct pid *pid;
     struct cpu *cpu;
     list_node_t queue_node;
-    list_node_t wait_node;
+    list_node_t wait_nodes[2];
     arch_thread_t arch;
     void *stack;
     struct vmm *vmm;

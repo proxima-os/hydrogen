@@ -401,7 +401,7 @@ int hydrogen_memory_wait(uint32_t *location, uint32_t expected, uint64_t deadlin
         return EAGAIN;
     }
 
-    list_insert_tail(&loc->waiters, &current_thread->wait_node);
+    list_insert_tail(&loc->waiters, &current_thread->wait_nodes[1]);
     sched_prepare_wait(true);
     mutex_rel(&loc->lock);
     mutex_rel(&futex_table_lock);
@@ -414,7 +414,7 @@ int hydrogen_memory_wait(uint32_t *location, uint32_t expected, uint64_t deadlin
     // uses wait_node for something else before hydrogen_memory_wake has removed the node from the wait list
     mutex_acq(&futex_table_lock, 0, false);
     mutex_acq(&loc->lock, 0, false);
-    list_remove(&loc->waiters, &current_thread->wait_node);
+    list_remove(&loc->waiters, &current_thread->wait_nodes[1]);
     free_location_or_unlock(loc);
     mutex_rel(&futex_table_lock);
 
@@ -440,11 +440,11 @@ hydrogen_ret_t hydrogen_memory_wake(uint32_t *location, size_t count) {
     mutex_acq(&loc->lock, 0, false);
 
     size_t awoken = 0;
-    thread_t *waiter = LIST_HEAD(loc->waiters, thread_t, wait_node);
+    thread_t *waiter = LIST_HEAD(loc->waiters, thread_t, wait_nodes[1]);
 
     while ((count == 0 || awoken < count) && waiter != NULL) {
         if (sched_wake(waiter)) awoken += 1;
-        waiter = LIST_NEXT(*waiter, thread_t, wait_node);
+        waiter = LIST_NEXT(*waiter, thread_t, wait_nodes[1]);
     }
 
     mutex_rel(&loc->lock);

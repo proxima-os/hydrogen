@@ -36,23 +36,23 @@
 #include <stdint.h>
 
 static int pty_wait(list_t *list, mutex_t *lock) {
-    list_insert_tail(list, &current_thread->wait_node);
+    list_insert_tail(list, &current_thread->wait_nodes[1]);
     sched_prepare_wait(true);
     if (lock) mutex_rel(lock);
 
     int error = sched_perform_wait(0);
 
     if (lock) mutex_acq(lock, 0, false);
-    if (unlikely(error)) list_remove(list, &current_thread->wait_node);
+    if (unlikely(error)) list_remove(list, &current_thread->wait_nodes[1]);
     return error;
 }
 
 static void pty_wake(list_t *list) {
-    thread_t *cur = LIST_HEAD(*list, thread_t, wait_node);
+    thread_t *cur = LIST_HEAD(*list, thread_t, wait_nodes[1]);
 
     while (cur) {
-        thread_t *next = LIST_NEXT(*cur, thread_t, wait_node);
-        if (sched_wake(cur)) list_remove(list, &cur->wait_node);
+        thread_t *next = LIST_NEXT(*cur, thread_t, wait_nodes[1]);
+        if (sched_wake(cur)) list_remove(list, &cur->wait_nodes[1]);
         cur = next;
     }
 }

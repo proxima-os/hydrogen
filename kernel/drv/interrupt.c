@@ -74,9 +74,9 @@ static void handle_user_irq(void *ptr) {
 
         event_source_signal(&interrupt->pending_source);
 
-        LIST_FOREACH(interrupt->waiting, thread_t, wait_node, thread) {
+        LIST_FOREACH(interrupt->waiting, thread_t, wait_nodes[0], thread) {
             if (sched_wake(thread)) {
-                list_remove(&interrupt->waiting, &thread->wait_node);
+                list_remove(&interrupt->waiting, &thread->wait_nodes[0]);
             }
         }
     }
@@ -198,13 +198,13 @@ int interrupt_wait(interrupt_t *irq, uint64_t deadline, uint32_t flags) {
         }
 
         sched_prepare_wait(true);
-        list_insert_tail(&irq->waiting, &current_thread->wait_node);
+        list_insert_tail(&irq->waiting, &current_thread->wait_nodes[0]);
         spin_rel(&irq->lock, state);
         int error = sched_perform_wait(deadline);
         state = spin_acq(&irq->lock);
 
         if (unlikely(error)) {
-            list_remove(&irq->waiting, &current_thread->wait_node);
+            list_remove(&irq->waiting, &current_thread->wait_nodes[0]);
             spin_rel(&irq->lock, state);
             return error;
         }

@@ -241,11 +241,11 @@ again: {
             // This can only happen if some slots are reserved. They might be unreserved instead of allocated;
             // wait until reserved count drops to 0 so that we can be sure there are no handles available.
             sched_prepare_wait(false);
-            list_insert_tail(&ns->reserved_waiting, &current_thread->wait_node);
+            list_insert_tail(&ns->reserved_waiting, &current_thread->wait_nodes[1]);
             mutex_rel(&ns->update_lock);
             sched_perform_wait(0);
             mutex_acq(&ns->update_lock, 0, false);
-            list_remove(&ns->reserved_waiting, &current_thread->wait_node);
+            list_remove(&ns->reserved_waiting, &current_thread->wait_nodes[1]);
             goto again;
         }
 
@@ -348,7 +348,7 @@ int hnd_reserve(namespace_t *ns) {
 }
 
 static void wake_reserved_waiter(namespace_t *ns) {
-    LIST_FOREACH(ns->reserved_waiting, thread_t, wait_node, thread) {
+    LIST_FOREACH(ns->reserved_waiting, thread_t, wait_nodes[1], thread) {
         if (sched_wake(thread)) break;
     }
 }

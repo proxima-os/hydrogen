@@ -187,12 +187,12 @@ retry:
             return ret_error(EAGAIN);
         }
 
-        list_insert_tail(&queue->waiting, &current_thread->wait_node);
+        list_insert_tail(&queue->waiting, &current_thread->wait_nodes[0]);
         sched_prepare_wait(true);
         spin_rel(&queue->pending_lock, state);
         int error = sched_perform_wait(deadline);
         state = spin_acq(&queue->pending_lock);
-        list_remove(&queue->waiting, &current_thread->wait_node);
+        list_remove(&queue->waiting, &current_thread->wait_nodes[0]);
 
         if (unlikely(error)) {
             spin_rel(&queue->pending_lock, state);
@@ -236,7 +236,7 @@ int event_source_add(event_source_t *source, active_event_t *event) {
         if (!(event->flags & HYDROGEN_EVENT_NO_WAKE)) {
             event->queue->num_waking += 1;
 
-            LIST_FOREACH(event->queue->waiting, thread_t, wait_node, thread) {
+            LIST_FOREACH(event->queue->waiting, thread_t, wait_nodes[0], thread) {
                 sched_wake(thread);
             }
         }
@@ -329,7 +329,7 @@ void event_source_signal(event_source_t *source) {
         if (!(event->flags & HYDROGEN_EVENT_NO_WAKE)) {
             event->queue->num_waking += 1;
 
-            LIST_FOREACH(event->queue->waiting, thread_t, wait_node, thread) {
+            LIST_FOREACH(event->queue->waiting, thread_t, wait_nodes[0], thread) {
                 sched_wake(thread);
             }
         }

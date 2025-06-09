@@ -31,7 +31,7 @@ int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible) {
     int status = 0;
 
     if (__atomic_exchange_n(&mutex->state, MUTEX_CONTESTED, __ATOMIC_ACQUIRE) != MUTEX_UNLOCKED) {
-        list_insert_tail(&mutex->waiters, &current_thread->wait_node);
+        list_insert_tail(&mutex->waiters, &current_thread->wait_nodes[0]);
         sched_prepare_wait(interruptible);
         spin_rel_noirq(&mutex->lock);
         preempt_unlock();
@@ -40,7 +40,7 @@ int mutex_acq(mutex_t *mutex, uint64_t deadline, bool interruptible) {
         spin_acq_noirq(&mutex->lock);
 
         if (status) {
-            list_remove(&mutex->waiters, &current_thread->wait_node);
+            list_remove(&mutex->waiters, &current_thread->wait_nodes[0]);
 
             if (list_empty(&mutex->waiters)) {
                 // correct mutex state if it's still locked
@@ -90,9 +90,9 @@ void mutex_rel(mutex_t *mutex) {
     preempt_lock();
     spin_acq_noirq(&mutex->lock);
 
-    LIST_FOREACH(mutex->waiters, thread_t, wait_node, waiter) {
+    LIST_FOREACH(mutex->waiters, thread_t, wait_nodes[0], waiter) {
         if (sched_wake(waiter)) {
-            list_remove(&mutex->waiters, &waiter->wait_node);
+            list_remove(&mutex->waiters, &waiter->wait_nodes[0]);
             if (list_empty(&mutex->waiters)) __atomic_store_n(&mutex->state, MUTEX_LOCKED, __ATOMIC_RELEASE);
             goto done;
         }

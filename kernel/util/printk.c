@@ -290,13 +290,13 @@ static void flush_to_sinks(void) {
 }
 
 static void wake_readers(void) {
-    thread_t *thread = LIST_HEAD(klog_waiting, thread_t, wait_node);
+    thread_t *thread = LIST_HEAD(klog_waiting, thread_t, wait_nodes[0]);
 
     while (thread) {
-        thread_t *next = LIST_NEXT(*thread, thread_t, wait_node);
+        thread_t *next = LIST_NEXT(*thread, thread_t, wait_nodes[0]);
 
         if (sched_wake(thread)) {
-            list_remove(&klog_waiting, &thread->wait_node);
+            list_remove(&klog_waiting, &thread->wait_nodes[0]);
         }
 
         thread = next;
@@ -399,14 +399,14 @@ static hydrogen_ret_t klog_file_read(file_t *ptr, void *buffer, size_t size, uin
             return ret_error(EAGAIN);
         }
 
-        list_insert_tail(&klog_waiting, &current_thread->wait_node);
+        list_insert_tail(&klog_waiting, &current_thread->wait_nodes[0]);
         sched_prepare_wait(true);
         printk_unlock(state);
         int error = sched_perform_wait(0);
         printk_lock();
 
         if (unlikely(error)) {
-            list_remove(&klog_waiting, &current_thread->wait_node);
+            list_remove(&klog_waiting, &current_thread->wait_nodes[0]);
             printk_unlock(state);
             return ret_error(error);
         }

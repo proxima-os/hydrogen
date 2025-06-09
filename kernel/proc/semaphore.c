@@ -19,14 +19,14 @@ int sema_wait(semaphore_t *sema, uint64_t deadline, bool interruptible) {
     mutex_acq(&sema->lock, 0, false);
 
     while (sema->count == 0) {
-        list_insert_tail(&sema->waiting, &current_thread->wait_node);
+        list_insert_tail(&sema->waiting, &current_thread->wait_nodes[0]);
         sched_prepare_wait(interruptible);
         mutex_rel(&sema->lock);
         int error = sched_perform_wait(deadline);
         mutex_acq(&sema->lock, 0, false);
 
         if (unlikely(error)) {
-            list_remove(&sema->waiting, &current_thread->wait_node);
+            list_remove(&sema->waiting, &current_thread->wait_nodes[0]);
             mutex_rel(&sema->lock);
             return error;
         }
@@ -41,13 +41,13 @@ void sema_signal(semaphore_t *sema) {
     mutex_acq(&sema->lock, 0, false);
 
     if (sema->count++ == 0) {
-        thread_t *thread = LIST_HEAD(sema->waiting, thread_t, wait_node);
+        thread_t *thread = LIST_HEAD(sema->waiting, thread_t, wait_nodes[0]);
 
         while (thread) {
-            thread_t *next = LIST_NEXT(*thread, thread_t, wait_node);
+            thread_t *next = LIST_NEXT(*thread, thread_t, wait_nodes[0]);
 
             if (sched_wake(thread)) {
-                list_remove(&sema->waiting, &thread->wait_node);
+                list_remove(&sema->waiting, &thread->wait_nodes[0]);
             }
 
             thread = next;

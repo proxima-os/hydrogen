@@ -28,7 +28,7 @@ typedef struct {
 } fifo_file_t;
 
 static int fifo_wait(fifo_t *fifo, list_t *list, inode_t *inode) {
-    list_insert_tail(list, &current_thread->wait_node);
+    list_insert_tail(list, &current_thread->wait_nodes[1]);
     sched_prepare_wait(true);
     mutex_rel(&fifo->lock);
     if (inode) mutex_rel(&inode->lock);
@@ -37,16 +37,16 @@ static int fifo_wait(fifo_t *fifo, list_t *list, inode_t *inode) {
 
     mutex_acq(&fifo->lock, 0, false);
     if (inode) mutex_acq(&inode->lock, 0, false);
-    if (unlikely(error)) list_remove(list, &current_thread->wait_node);
+    if (unlikely(error)) list_remove(list, &current_thread->wait_nodes[1]);
     return error;
 }
 
 static void fifo_awaken(list_t *list) {
-    thread_t *cur = LIST_HEAD(*list, thread_t, wait_node);
+    thread_t *cur = LIST_HEAD(*list, thread_t, wait_nodes[1]);
 
     while (cur) {
-        thread_t *next = LIST_NEXT(*cur, thread_t, wait_node);
-        if (sched_wake(cur)) list_remove(list, &cur->wait_node);
+        thread_t *next = LIST_NEXT(*cur, thread_t, wait_nodes[1]);
+        if (sched_wake(cur)) list_remove(list, &cur->wait_nodes[1]);
         cur = next;
     }
 }
