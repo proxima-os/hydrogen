@@ -7,7 +7,6 @@ extern struct {
     arch_vdso_info_t arch;
     uint64_t boot_timestamp_low;
     uint64_t boot_timestamp_high;
-    __int128_t boot_timestamp;
     size_t boot_timestamp_seq;
 } vdso_info;
 
