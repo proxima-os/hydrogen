@@ -345,13 +345,14 @@ static void time_account_submit(thread_t *thread, uint64_t time) {
     thread->user_time += user_time;
 }
 
-static void do_yield(cpu_t *cpu, bool migrating) {
+static void do_yield(cpu_t *cpu, bool migrating, bool requeue_nonrunning) {
     ASSERT(cpu == get_current_cpu());
 
     rcu_quiet(cpu);
 
     thread_t *prev = cpu->sched.current;
-    if (!migrating && prev->state == THREAD_RUNNING) enqueue(cpu, prev);
+    if (!migrating && (requeue_nonrunning || prev->state == THREAD_RUNNING)) enqueue(cpu, prev);
+    else prev->active = false;
 
     thread_t *next = dequeue(cpu);
     if (!next) next = &cpu->sched.idle_thread;
@@ -374,9 +375,6 @@ static void do_yield(cpu_t *cpu, bool migrating) {
     if (prev == next) return;
 
     cpu->sched.current = next;
-
-    prev->active = false;
-    next->active = true;
 
     time_account_submit(prev, time);
     next->account_start_time = next->kernel_start_time = time;
@@ -429,7 +427,7 @@ static void do_preempt_work(void) {
         if (__atomic_load_n(&cpu->sched.preempt_queued, __ATOMIC_RELAXED)) {
             irq_state_t state = spin_acq(&cpu->sched.lock);
             cpu->sched.preempt_queued = false;
-            do_yield(cpu, false);
+            do_yield(cpu, false, true);
             cpu = get_current_cpu();
             spin_rel(&cpu->sched.lock, state);
         }
@@ -452,7 +450,7 @@ void sched_yield(void) {
     irq_state_t istate = spin_acq(&cpu->sched.lock);
 
     ASSERT(cpu->sched.current->state == THREAD_RUNNING);
-    do_yield(cpu, false);
+    do_yield(cpu, false, true);
     cpu = get_current_cpu();
 
     spin_rel(&cpu->sched.lock, istate);
@@ -496,6 +494,7 @@ static void do_wake(cpu_t *cpu, thread_t *thread, int status) {
     thread->state = THREAD_RUNNING;
     thread->wake_status = status;
     if (!thread->active) enqueue(cpu, thread);
+    thread->active = true;
     maybe_preempt(cpu);
 }
 
@@ -596,7 +595,7 @@ int sched_perform_wait(uint64_t deadline) {
             }
 
             thread->wake_status = -1;
-            do_yield(cpu, false);
+            do_yield(cpu, false, false);
             cpu = get_current_cpu();
         }
     }
@@ -638,7 +637,7 @@ _Noreturn void sched_exit(int status) {
     thread->state = THREAD_EXITING;
     thread->exit_status = status;
 
-    do_yield(cpu, false);
+    do_yield(cpu, false, false);
     UNREACHABLE();
 }
 
@@ -671,7 +670,7 @@ static void do_migrate(cpu_t *src, cpu_t *dest) {
 
     // do_yield unlocks thread->cpu_lock to avoid the scenario where the destination
     // cpu has interrupts disabled while waiting on thread->cpu_lock
-    do_yield(src, true);
+    do_yield(src, true, true);
 
     ASSERT(dest == get_current_cpu());
     spin_rel_noirq(&dest->sched.lock);
