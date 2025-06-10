@@ -1,11 +1,13 @@
 #pragma once
 
+#include "arch/irq.h"
 #include "arch/memmap.h"
 #include "cpu/cpudata.h"
 #include "kernel/compiler.h"
 #include "kernel/pgsize.h"
 #include "mem/memmap.h"
 #include "mem/pmap-protos.h"
+#include "mem/pmap.h"
 #include "proc/sched.h"
 #include "string.h"
 #include "x86_64/cpu.h"
@@ -226,17 +228,17 @@ static inline void x86_64_invpcid(uintptr_t virt, unsigned long asid, unsigned l
     asm("invpcid %0, %1" ::"m"(desc), "r"(type) : "memory");
 }
 
-static inline void x86_64_invlpg_asid(uintptr_t virt, void *table, int asid) {
+static inline void x86_64_invlpg_asid(uintptr_t virt, int asid) {
     if (asid < 0 || asid == this_cpu_read(arch.current_pcid)) {
         x86_64_invlpg(virt);
     } else {
         // invplg only flushes in the current pcid, so we need to switch to the other one temporarily
-        preempt_lock();
+        irq_state_t state = save_disable_irq();
         size_t cr3 = x86_64_read_cr3();
-        x86_64_write_cr3(virt_to_phys(table) | asid | (1ul << 63));
+        x86_64_write_cr3(virt_to_phys(pmap_get_last_table_for_asid(asid)) | asid | (1ul << 63));
         x86_64_invlpg(virt);
         x86_64_write_cr3(cr3 | (1ul << 63));
-        preempt_unlock();
+        restore_irq(state);
     }
 }
 
@@ -249,7 +251,7 @@ static inline void x86_64_invlpgb(uintptr_t virt, int asid, int type) {
     asm("invlpgb" ::"a"((virt & ~0xfff) | type), "d"(asid));
 }
 
-static inline void arch_pt_flush_leaf(uintptr_t virt, void *table, int asid, bool broadcast, bool current) {
+static inline void arch_pt_flush_leaf(uintptr_t virt, int asid, bool broadcast, bool current) {
     if (broadcast && x86_64_cpu_features.invlpgb) {
         if (asid >= 0) {
             x86_64_invlpgb(virt, asid, X86_64_INVLPGB_ADDRESS | X86_64_INVLPGB_PCID | X86_64_INVLPGB_ONLY_LEAF);
@@ -264,11 +266,11 @@ static inline void arch_pt_flush_leaf(uintptr_t virt, void *table, int asid, boo
             x86_64_invpcid(virt, asid, X86_64_INVPCID_SINGLE_ADDRESS);
         }
 
-        x86_64_invlpg_asid(virt, table, asid);
+        x86_64_invlpg_asid(virt, asid);
     }
 }
 
-static inline void arch_pt_flush_edge(uintptr_t virt, void *table, int asid, bool broadcast, bool current) {
+static inline void arch_pt_flush_edge(uintptr_t virt, int asid, bool broadcast, bool current) {
     if (broadcast && x86_64_cpu_features.invlpgb) {
         if (asid >= 0) {
             x86_64_invlpgb(virt, asid, X86_64_INVLPGB_ADDRESS | X86_64_INVLPGB_PCID);
@@ -279,7 +281,7 @@ static inline void arch_pt_flush_edge(uintptr_t virt, void *table, int asid, boo
 
     if (current) {
         if (asid >= 0 || !x86_64_cpu_features.pcid) {
-            x86_64_invlpg_asid(0, table, asid);
+            x86_64_invlpg_asid(0, asid);
         } else {
             // We need to flush edge TLB entries for all PCIDs. This can only be done by flipping
             // PGE or clearing PCIDE. We prefer flipping PGE, since clearing PCIDE can only be done
@@ -292,11 +294,13 @@ static inline void arch_pt_flush_edge(uintptr_t virt, void *table, int asid, boo
                 x86_64_write_cr4(cr4 & ~X86_64_CR4_PGE);
                 x86_64_write_cr4(cr4);
             } else {
+                irq_state_t state = save_disable_irq();
                 size_t cr3 = x86_64_read_cr3();
-                x86_64_write_cr3(virt_to_phys(table));
+                x86_64_write_cr3(virt_to_phys(pmap_get_last_table_for_asid(asid)));
                 x86_64_write_cr4(cr4 & ~X86_64_CR4_PCIDE);
                 x86_64_write_cr4(cr4);
                 x86_64_write_cr3(cr3);
+                restore_irq(state);
             }
 
             preempt_unlock();
@@ -304,15 +308,19 @@ static inline void arch_pt_flush_edge(uintptr_t virt, void *table, int asid, boo
     }
 }
 
-static inline void arch_pt_flush(void *table, int asid) {
+static inline void arch_pt_flush(int asid) {
     if (asid >= 0) {
         if (x86_64_cpu_features.invpcid) {
             x86_64_invpcid(0, asid, X86_64_INVPCID_SINGLE_CONTEXT);
         } else {
-            x86_64_write_cr3(virt_to_phys(table) | asid);
+            irq_state_t state = save_disable_irq();
+            x86_64_write_cr3(virt_to_phys(pmap_get_last_table_for_asid(asid)) | asid);
+            restore_irq(state);
         }
     } else if (!x86_64_cpu_features.pge) {
-        x86_64_write_cr3(virt_to_phys(table));
+        irq_state_t state = save_disable_irq();
+        x86_64_write_cr3(virt_to_phys(pmap_get_last_table_for_asid(asid)));
+        restore_irq(state);
     } else if (x86_64_cpu_features.invpcid) {
         x86_64_invpcid(0, 0, X86_64_INVPCID_ALL_CONTEXTS_GLOBAL);
     } else {

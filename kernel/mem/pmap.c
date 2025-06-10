@@ -39,7 +39,6 @@ static bool kernel_pt_switched;
 
 typedef struct {
     pmap_t *pmap;
-    void *table;
     shlist_t free_queue;
     int asid;
     bool current : 1;
@@ -54,18 +53,16 @@ static void tlb_init(tlb_ctx_t *tlb, pmap_t *pmap) {
     tlb->pmap = pmap;
 
     if (pmap) {
-        tlb->table = this_cpu_read(pmap.asids)[pmap->asid].table;
         tlb->asid = pmap->asid;
-        tlb->current = tlb->table == pmap->table;
+        tlb->current = pmap == this_cpu_read(pmap.asids)[pmap->asid].pmap;
     } else {
-        tlb->table = kernel_page_table;
         tlb->asid = -1;
         tlb->current = __atomic_load_n(&kernel_pt_switched, __ATOMIC_RELAXED);
     }
 }
 
 static void tlb_add_leaf(tlb_ctx_t *tlb, uintptr_t addr, bool global) {
-    arch_pt_flush_leaf(addr, tlb->table, tlb->asid, global, tlb->current);
+    arch_pt_flush_leaf(addr, tlb->asid, global, tlb->current);
 
     if (global) {
         if (!arch_pt_flush_can_broadcast()) {
@@ -78,7 +75,7 @@ static void tlb_add_leaf(tlb_ctx_t *tlb, uintptr_t addr, bool global) {
 
 static void tlb_add_edge(tlb_ctx_t *tlb, uintptr_t addr, bool global) {
     if (!arch_pt_flush_edge_coarse()) {
-        arch_pt_flush_edge(addr, tlb->table, tlb->asid, global, tlb->current);
+        arch_pt_flush_edge(addr, tlb->asid, global, tlb->current);
 
         if (global) {
             if (!arch_pt_flush_can_broadcast()) {
@@ -102,11 +99,11 @@ static void tlb_remote(void *ptr) {
     struct tlb_remote_ctx *ctx = ptr;
 
     if (ctx->tlb->pmap) {
-        if (this_cpu_read(pmap.asids)[ctx->tlb->asid].table == ctx->tlb->pmap->table) {
-            arch_pt_flush(ctx->tlb->pmap->table, ctx->tlb->asid);
+        if (this_cpu_read(pmap.asids)[ctx->tlb->asid].pmap == ctx->tlb->pmap) {
+            arch_pt_flush(ctx->tlb->asid);
         }
     } else {
-        arch_pt_flush(kernel_page_table, -1);
+        arch_pt_flush(-1);
     }
 
     __atomic_fetch_sub(&ctx->pending, 1, __ATOMIC_RELEASE);
@@ -136,7 +133,7 @@ static void anon_free(page_t *page, vmm_t *vmm) {
 
 static void tlb_commit(tlb_ctx_t *tlb, vmm_t *vmm) {
     if (tlb->edge) {
-        arch_pt_flush_edge(0, tlb->table, tlb->asid, tlb->edge_global, tlb->current);
+        arch_pt_flush_edge(0, tlb->asid, tlb->edge_global, tlb->current);
 
         if (tlb->edge_global) {
             if (!arch_pt_flush_can_broadcast()) {
@@ -292,45 +289,59 @@ int pmap_create(vmm_t *vmm) {
 void pmap_switch(pmap_t *target) {
     ASSERT(target != NULL);
 
+    irq_state_t state = save_disable_irq();
     cpu_t *cpu = get_current_cpu();
-    pmap_t *old = cpu->pmap.current;
-    if (target == old) return;
 
     pmap_asid_data_t *asid = &cpu->pmap.asids[target->asid];
+    pmap_t *old = asid->pmap;
 
-    // tlb_remote accesses this stuff from irq context
-    irq_state_t state = save_disable_irq();
+    if (old == target) {
+        if (cpu->pmap.current != target) arch_pt_switch(target->table, target->asid, true);
 
-    if (old != NULL && old->asid == target->asid) {
-        if ((uintptr_t)old < (uintptr_t)target) {
-            spin_acq_noirq(&old->cpus_lock);
-            spin_acq_noirq(&target->cpus_lock);
-        } else {
-            spin_acq_noirq(&target->cpus_lock);
-            spin_acq_noirq(&old->cpus_lock);
-        }
+        cpu->pmap.current = target;
 
-        hlist_remove(&old->cpus, &asid->node);
+        restore_irq(state);
+        return;
+    }
 
-        // this has to be done while both old->cpus_lock and target->cpus_lock is held
-        //  if old->cpus_lock isn't held, destruction might free the tables before we're ready
-        //  if target->cpus_lock isn't held, tlb_commit on target might not flush tlb entries for us
-        arch_pt_switch(target->table, target->asid, target->table == asid->table);
+    if (old == NULL) {
+        spin_acq_noirq(&target->cpus_lock);
 
-        spin_rel_noirq(&old->cpus_lock);
+        asid->pmap = target;
+        hlist_insert_head(&target->cpus, &asid->node);
+
+        if (cpu->pmap.current) arch_pt_switch(target->table, target->asid, false);
+        else arch_pt_switch_init(target->table, target->asid, false);
+
+        cpu->pmap.current = target;
+
+        spin_rel_noirq(&target->cpus_lock);
+        restore_irq(state);
+        return;
+    }
+
+    if ((uintptr_t)old < (uintptr_t)target) {
+        spin_acq_noirq(&old->cpus_lock);
+        spin_acq_noirq(&target->cpus_lock);
     } else {
         spin_acq_noirq(&target->cpus_lock);
-        arch_pt_switch(target->table, target->asid, target->table == asid->table);
+        spin_acq_noirq(&old->cpus_lock);
     }
 
-    if (target->table != asid->table) {
-        asid->table = target->table;
-        hlist_insert_head(&target->cpus, &asid->node);
-    }
+    hlist_remove(&old->cpus, &asid->node);
 
+    // this has to be done while both old->cpus_lock and target->cpus_lock is held
+    //  if old->cpus_lock isn't held, destruction might free the tables before we're ready
+    //  if target->cpus_lock isn't held, tlb_commit on target might not flush tlb entries for us
+    arch_pt_switch(target->table, target->asid, false);
+
+    spin_rel_noirq(&old->cpus_lock);
+
+    asid->pmap = target;
+    hlist_insert_head(&target->cpus, &asid->node);
     cpu->pmap.current = target;
-    spin_rel_noirq(&target->cpus_lock);
 
+    spin_rel_noirq(&target->cpus_lock);
     restore_irq(state);
 }
 
@@ -342,8 +353,9 @@ static void do_leave_pmap(pmap_t *pmap) {
 
     pmap_asid_data_t *asid = &this_cpu_read(pmap.asids)[pmap->asid];
 
-    if (asid->table == pmap->table) {
-        asid->table = NULL;
+    if (asid->pmap == pmap) {
+        hlist_remove(&pmap->cpus, &asid->node);
+        asid->pmap = NULL;
     }
 }
 
@@ -362,7 +374,7 @@ void pmap_prepare_destroy(pmap_t *pmap) {
     for (;;) {
         pmap_asid_data_t *asid = HLIST_HEAD(pmap->cpus, pmap_asid_data_t, node);
         if (!asid) break;
-        ASSERT(asid->table == pmap->table);
+        ASSERT(asid->pmap == pmap);
 
         if (asid->cpu == cur_cpu) {
             do_leave_pmap(pmap);
@@ -384,9 +396,6 @@ void pmap_prepare_destroy(pmap_t *pmap) {
 
             while (__atomic_load_n(&asid->cpu->pmap.leave_pmap_subject, __ATOMIC_ACQUIRE) == pmap) cpu_relax();
         }
-
-        asid->table = NULL;
-        hlist_remove(&pmap->cpus, &asid->node);
     }
 
     spin_rel(&pmap->cpus_lock, state);
@@ -1497,7 +1506,7 @@ static void create_new_user_mapping(
     arch_pt_write(result->table, result->level, result->index, pte);
 
     if (arch_pt_new_leaf_needs_flush()) {
-        arch_pt_flush_leaf(address, vmm->pmap.table, vmm->pmap.asid, false, true);
+        arch_pt_flush_leaf(address, vmm->pmap.asid, false, true);
     }
 }
 
@@ -1581,10 +1590,10 @@ static void do_handle_user_fault(
         migrate_state_t state = migrate_lock();
 
         if (arch_pt_new_edge_needs_flush()) {
-            arch_pt_flush_edge(address, vmm->pmap.table, vmm->pmap.asid, false, true);
+            arch_pt_flush_edge(address, vmm->pmap.asid, false, true);
         }
 
-        arch_pt_flush_leaf(address, vmm->pmap.table, vmm->pmap.asid, false, true);
+        arch_pt_flush_leaf(address, vmm->pmap.asid, false, true);
 
         migrate_unlock(state);
         return;
@@ -1637,7 +1646,7 @@ static void do_handle_user_fault(
         );
 
         if (arch_pt_new_leaf_needs_flush()) {
-            arch_pt_flush_leaf(address, vmm->pmap.table, vmm->pmap.asid, false, true);
+            arch_pt_flush_leaf(address, vmm->pmap.asid, false, true);
         }
 
         migrate_unlock(state);
@@ -1745,7 +1754,7 @@ void pmap_handle_page_fault(
             arch_pt_write(cur_pmap->table, level, result.root_index, result.root_pte);
 
             if (arch_pt_new_edge_needs_flush()) {
-                arch_pt_flush_edge(address, kernel_page_table, -1, false, true);
+                arch_pt_flush_edge(address, -1, false, true);
             }
 
             return;
@@ -1756,10 +1765,10 @@ void pmap_handle_page_fault(
 
     if (is_access_allowed(result.level, result.pte, type)) {
         if (arch_pt_new_edge_needs_flush()) {
-            arch_pt_flush_edge(address, kernel_page_table, -1, false, true);
+            arch_pt_flush_edge(address, -1, false, true);
         }
 
-        arch_pt_flush_leaf(address, kernel_page_table, -1, false, true);
+        arch_pt_flush_leaf(address, -1, false, true);
         return;
     }
 
@@ -1787,4 +1796,12 @@ unsigned vmm_to_pmap_flags(unsigned flags) {
     }
 
     return pmap_flags;
+}
+
+void *pmap_get_last_table_for_asid(int asid) {
+    if (asid >= 0) {
+        return this_cpu_read(pmap.asids)[asid].pmap->table;
+    } else {
+        return kernel_page_table;
+    }
 }

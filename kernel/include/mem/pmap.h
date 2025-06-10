@@ -20,7 +20,7 @@ typedef struct {
 
 typedef struct {
     struct cpu *cpu;
-    void *table;
+    pmap_t *pmap;
     hlist_node_t node;
 } pmap_asid_data_t;
 
@@ -79,3 +79,5 @@ void pmap_handle_leave_pmap(void);
 void pmap_handle_remote_tlb(void);
 
 unsigned vmm_to_pmap_flags(unsigned flags);
+
+void *pmap_get_last_table_for_asid(int asid); // requires irqs to be disabled

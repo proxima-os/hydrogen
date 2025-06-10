@@ -95,22 +95,20 @@ static inline bool arch_pt_flush_edge_coarse(void);
 
 /* flush any cached leaf pte(s) for the given address and asid. if `broadcast` is true,
  * and `arch_pt_flush_can_broadcast` returns true, do the same on all processors.
- * `table` is the last table that was switched to on the current processor with the given asid.
  * if `asid` is negative, this is a kernel mapping.
  * if `broadcast` is false, the mapping is in the page table that was last switched to
  * on this processor with the given asid.
- * if `current` is true, the mapping to be flushed comes from `table`.
+ * if `current` is true, the mapping to be flushed comes from the current table for `asid`.
  * always called with migration disabled. */
-static inline void arch_pt_flush_leaf(uintptr_t virt, void *table, int asid, bool broadcast, bool current);
+static inline void arch_pt_flush_leaf(uintptr_t virt, int asid, bool broadcast, bool current);
 
 /* the same as arch_pt_flush_leaf, except flushes edge pte(s) instead of leaf pte(s) */
-static inline void arch_pt_flush_edge(uintptr_t virt, void *table, int asid, bool broadcast, bool current);
+static inline void arch_pt_flush_edge(uintptr_t virt, int asid, bool broadcast, bool current);
 
 /* flush all cached pte(s) on the current processor with the given asid.
- * `table` is the last table that was switched to on the current processor with the given asid.
  * if `asid` is negative, flush all cached kernel pte(s).
  * always called with migration disabled. */
-static inline void arch_pt_flush(void *table, int asid);
+static inline void arch_pt_flush(int asid);
 
 /* wait for tlb flushes broadcasted by the current processor to complete */
 static inline void arch_pt_flush_wait(void);
