@@ -216,10 +216,9 @@ hydrogen_ret_t hydrogen_thread_exec(
 
         if (process != HYDROGEN_THIS_PROCESS) obj_deref(&proc->base);
         if (namespace != HYDROGEN_THIS_NAMESPACE) obj_deref(&current_thread->namespace->base);
-        obj_deref(&current_thread->vmm->base);
+        obj_deref(&vmm_switch(exec_data->vmm)->base);
 
         current_thread->namespace = ns;
-        current_thread->vmm = exec_data->vmm;
 
         do_exec(exec_data);
     }
