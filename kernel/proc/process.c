@@ -249,9 +249,17 @@ static void alarm_send(task_t *task) {
     __siginfo_t info = {.__signo = __SIGALRM, .__code = __SI_TIMER};
     queue_signal(process, &process->sig_target, &info, 0, &process->alarm_sig);
 
+    preempt_lock();
     irq_state_t state = spin_acq(&process->alarm_lock);
+
     process->alarm_queued = false;
+
+    LIST_FOREACH(process->alarm_waiting, thread_t, wait_nodes[0], thread) {
+        if (sched_wake(thread)) break;
+    }
+
     spin_rel(&process->alarm_lock, state);
+    preempt_unlock();
 }
 
 static void proc_init(void) {
