@@ -671,6 +671,14 @@ static void handle_status_change(process_t *process, process_t *parent, __siginf
     LIST_FOREACH(process->waiters, thread_t, wait_nodes[1], thread) {
         sched_wake(thread);
     }
+
+    mutex_acq(&parent->waitid_lock, 0, false);
+
+    LIST_FOREACH(parent->waitid_waiting, thread_t, wait_nodes[1], thread) {
+        sched_wake(thread);
+    }
+
+    mutex_rel(&parent->waitid_lock);
 }
 
 static void discard_status(process_t *process, process_t *parent, bool own_waitid_lock) {
