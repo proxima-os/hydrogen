@@ -832,11 +832,16 @@ hydrogen_ret_t vmm_map(
 
     rmutex_acq(&vmm->lock, 0, false);
 
+    uintptr_t head;
+
     int error = try_map_exact(vmm, hint, size, flags, object, rights, offset);
-    if (error == 0 || (flags & HYDROGEN_MEM_EXACT) != 0) goto ret;
+    if (error == 0 || (flags & HYDROGEN_MEM_EXACT) != 0) {
+        head = hint;
+        goto ret;
+    }
 
     vmm_region_t *prev, *next;
-    uintptr_t head, tail;
+    uintptr_t tail;
     error = find_map_location(vmm, size, &prev, &next, &head, &tail);
     if (unlikely(error)) goto ret;
 
