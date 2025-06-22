@@ -351,6 +351,7 @@ static futex_location_t *get_futex_location(futex_address_t *address, bool creat
         current->hash = hash;
 
         hlist_insert_head(&futex_table[hash & (futex_table_cap - 1)], &current->node);
+        futex_table_cnt += 1;
     }
 
     return current;
