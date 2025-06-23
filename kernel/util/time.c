@@ -194,7 +194,10 @@ void timer_queue_event(timer_event_t *event) {
     spin_acq_noirq(&cpu->events_lock);
 
     event->children = NULL;
+    event->prev = NULL;
+    event->next = NULL;
     cpu->events = meld(cpu->events, event);
+    cpu->events->parent = NULL;
 
     __atomic_store_n(&event->cpu, cpu, __ATOMIC_RELEASE);
 
