@@ -9,6 +9,8 @@
 #include "util/spinlock.h"
 
 static cpu_mask_t rcu_cpu_states;
+static cpu_mask_t rcu_cpus_enabled;
+
 static spinlock_t rcu_lock;
 static size_t rcu_generation;
 static size_t rcu_max_generation;
@@ -32,10 +34,15 @@ INIT_DEFINE_EARLY(rcu, rcu_init, INIT_REFERENCE(scheduler_early));
 INIT_DEFINE_EARLY_AP(rcu_ap, rcu_init, INIT_REFERENCE(scheduler_early_ap));
 
 static void start_generation(size_t cur_gen) {
-    cpu_mask_fill(&rcu_cpu_states);
+    //cpu_mask_fill(&rcu_cpu_states);
+    cpu_mask_copy_atomic(&rcu_cpu_states, &rcu_cpus_enabled);
+
     cur_gen += 1;
-    __atomic_store_n(&rcu_generation, cur_gen, __ATOMIC_RELAXED);
     rcu_max_generation = cur_gen;
+
+    if (cpu_mask_empty(&rcu_cpu_states)) cur_gen += 1;
+
+    __atomic_store_n(&rcu_generation, cur_gen, __ATOMIC_RELEASE);
 }
 
 void rcu_quiet(cpu_t *cpu) {
@@ -54,14 +61,14 @@ void rcu_quiet(cpu_t *cpu) {
             if (gen <= rcu_max_generation) {
                 start_generation(gen);
             } else {
-                __atomic_store_n(&rcu_generation, gen, __ATOMIC_RELAXED);
+                __atomic_store_n(&rcu_generation, gen, __ATOMIC_RELEASE);
             }
         }
 
         spin_rel_noirq(&rcu_lock);
     }
 
-    if (!slist_empty(&state->cur_cb) && __atomic_load_n(&rcu_generation, __ATOMIC_RELAXED) > state->generation) {
+    if (!slist_empty(&state->cur_cb) && __atomic_load_n(&rcu_generation, __ATOMIC_ACQUIRE) > state->generation) {
         slist_append_end(&state->prev_cb, &state->cur_cb);
 
         if (!state->task_queued) {
@@ -85,6 +92,22 @@ void rcu_quiet(cpu_t *cpu) {
 
         spin_rel_noirq(&rcu_lock);
     }
+}
+
+void rcu_disable(void) {
+    preempt_lock();
+    cpu_t *cpu = get_current_cpu();
+    cpu_mask_set_atomic(&rcu_cpus_enabled, cpu->id, false, __ATOMIC_ACQ_REL);
+    rcu_quiet(cpu);
+    preempt_unlock();
+}
+
+void rcu_enable(void) {
+    preempt_lock();
+    cpu_t *cpu = get_current_cpu();
+    cpu_mask_set_atomic(&rcu_cpus_enabled, cpu->id, true, __ATOMIC_ACQ_REL);
+    rcu_quiet(cpu);
+    preempt_unlock();
 }
 
 void rcu_call(task_t *task) {

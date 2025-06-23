@@ -3,11 +3,13 @@
 #include "cpu/cpudata.h"
 #include "errno.h"
 #include "proc/process.h"
+#include "proc/rcu.h"
 #include "proc/sched.h"
 #include "proc/signal.h"
 #include "sys/syscall.h"
 
 void enter_from_user_mode(arch_context_t *context) {
+    rcu_enable();
     current_thread->kernel_start_time = arch_read_time();
     current_thread->user_ctx = context;
 }
@@ -53,4 +55,5 @@ void exit_to_user_mode(int syscall_status) {
     }
 
     sched_commit_time_accounting();
+    rcu_disable();
 }

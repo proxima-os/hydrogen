@@ -22,6 +22,10 @@ typedef struct {
 
 INIT_DECLARE(rcu);
 
+// These must not be called while in an RCU critical section.
 void rcu_quiet(struct cpu *cpu);
+void rcu_disable(void);
+void rcu_enable(void);
+
 void rcu_call(task_t *task);
 void rcu_sync(void);

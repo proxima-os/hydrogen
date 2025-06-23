@@ -51,3 +51,13 @@ static inline void cpu_mask_set_notear(cpu_mask_t *mask, size_t cpu, bool value)
     if (value) __atomic_store_n(&mask->data, cur | (1ull << cpu), __ATOMIC_RELAXED);
     else __atomic_store_n(&mask->data, cur & ~(1ull << cpu), __ATOMIC_RELAXED);
 }
+
+static inline void cpu_mask_set_atomic(cpu_mask_t *mask, size_t cpu, bool value, int order) {
+    if (value) __atomic_fetch_or(&mask->data, 1ull << cpu, order);
+    else __atomic_fetch_and(&mask->data, 1ull << cpu, order);
+}
+
+// copies the cpu mask using atomic loads
+static inline void cpu_mask_copy_atomic(cpu_mask_t *dest, const cpu_mask_t *src) {
+    dest->data = __atomic_load_n(&src->data, __ATOMIC_ACQUIRE);
+}

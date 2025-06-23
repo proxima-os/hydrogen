@@ -379,6 +379,9 @@ static void do_yield(cpu_t *cpu, bool migrating, bool requeue_nonrunning) {
 
     if (prev == next) return;
 
+    if (prev == &cpu->sched.idle_thread) rcu_enable();
+    if (next == &cpu->sched.idle_thread) rcu_disable();
+
     cpu->sched.current = next;
 
     time_account_submit(prev, time);
