@@ -368,6 +368,8 @@ static void do_yield(cpu_t *cpu, bool migrating, bool requeue_nonrunning) {
 
     if (delta >= prev->timeslice_rem) {
         prev->timeslice_rem = prev->timeslice_tot;
+    } else {
+        prev->timeslice_rem -= delta;
     }
 
     timer_cancel_event(&cpu->sched.timeslice_event);
